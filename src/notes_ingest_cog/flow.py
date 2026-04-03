@@ -214,7 +214,22 @@ def _process_one(
         )
         return {"skipped": True, "reason": "transcript_too_short", "file": file_name}
 
-    transcript_id = task_store_transcript(api, raw_text, file_name, file_id)
+    try:
+        transcript_id = task_store_transcript(api, raw_text, file_name, file_id)
+    except Exception as exc:
+        if (
+            "uq_wcs_transcripts_drive_file_id" in str(exc)
+            or "unique" in str(exc).lower()
+        ):
+            logger.warning(
+                log.with_log_prefix(
+                    log.LOG_WARNING,
+                    f"Transcript already processed, skipping: {file_name!r}",
+                )
+            )
+            return {"skipped": True, "reason": "already_processed", "file": file_name}
+        raise
+
     notes = task_call_llm(cfg, raw_text, file_name)
     note_id = task_store_notes(api, transcript_id, notes, cfg)
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
