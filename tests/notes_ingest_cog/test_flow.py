@@ -73,11 +73,12 @@ def mock_drive_text():
 
 def test_process_transcript_skips_unsupported_mime(mock_env) -> None:
     """Unsupported MIME type returns skipped result without calling LLM."""
-    result = process_transcript(
-        file_id="file-123",
-        file_name="something.pdf",
-        mime_type="application/pdf",
-    )
+    with patch("notes_ingest_cog.flow.GoogleAPI"):
+        result = process_transcript(
+            file_id="file-123",
+            file_name="something.pdf",
+            mime_type="application/pdf",
+        )
     assert result.get("skipped") is True
     assert "unsupported_mime_type" in result.get("reason", "")
 

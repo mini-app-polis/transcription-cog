@@ -61,14 +61,12 @@ def test_read_transcript_txt_via_download_bytes() -> None:
 
 def test_read_transcript_txt_fallback_to_service() -> None:
     """Falls back to raw Drive service when no download_bytes method exists."""
-    g = MagicMock(spec=[])  # no attributes by default
+    g = MagicMock()
     g.drive = MagicMock(spec=["service"])
     g.drive.service.files.return_value.get_media.return_value.execute.return_value = (
         b"fallback content"
     )
-
     result = read_transcript_text(g, "file-id", TXT_MIME)
-
     assert result == "fallback content"
 
 
@@ -82,18 +80,7 @@ def test_read_transcript_unsupported_mime_raises() -> None:
 def test_read_transcript_txt_no_download_method_raises() -> None:
     """TypeError raised when no bytes download method is available."""
     g = MagicMock()
-    # Remove all known download method names and service
-    for attr in (
-        "download_bytes",
-        "download_file_bytes",
-        "download_file_as_bytes",
-        "get_file_bytes",
-        "service",
-    ):
-        if hasattr(g.drive, attr):
-            delattr(type(g.drive), attr)
-    g.drive = MagicMock(spec=[])  # empty spec — no download methods, no service
-
+    g.drive = MagicMock(spec=[])
     with pytest.raises(
         TypeError, match="does not expose a supported bytes download method"
     ):

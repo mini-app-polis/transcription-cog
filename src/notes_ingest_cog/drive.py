@@ -51,7 +51,7 @@ def read_transcript_text(g: GoogleAPI, file_id: str, mime_type: str) -> str:
             try:
                 req = g.drive.service.files().get_media(fileId=file_id)
                 data = req.execute()
-                if isinstance(raw, bytes | bytearray):
+                if isinstance(data, bytes | bytearray):
                     return bytes(data).decode("utf-8", errors="replace")
             except Exception:
                 pass
