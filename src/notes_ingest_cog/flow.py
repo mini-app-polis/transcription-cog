@@ -18,14 +18,12 @@ Flow steps:
 
 from __future__ import annotations
 
-import json
-
 from dotenv import load_dotenv
-from jsonschema import validate, ValidationError
+from jsonschema import ValidationError, validate
 from mini_app_polis import logger as log
 from mini_app_polis.google import GoogleAPI
 from mini_app_polis.llm import LLMMessage, build_llm
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
 from .api_client import NotesApiClient
 from .config import Config, load_config
@@ -177,9 +175,7 @@ def task_store_notes(
         notes_json=notes,
     )
     response = api.create_note(payload)
-    logger.info(
-        log.with_log_prefix(log.LOG_SUCCESS, f"Notes stored: {response.id}")
-    )
+    logger.info(log.with_log_prefix(log.LOG_SUCCESS, f"Notes stored: {response.id}"))
     return response.id
 
 

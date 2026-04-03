@@ -8,19 +8,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
-from uuid import UUID
 
 from pydantic import BaseModel, Field
-
 
 # ── Session / source taxonomy ─────────────────────────────────────────────────
 
 SessionType = Literal[
-    "private_lesson",       # lesson I took with an instructor
-    "class_taught",         # group class I taught
-    "class_attended",       # group class I attended as a student
-    "workshop",             # convention or event workshop
-    "coaching_session",     # performance/competition coaching
+    "private_lesson",  # lesson I took with an instructor
+    "class_taught",  # group class I taught
+    "class_attended",  # group class I attended as a student
+    "workshop",  # convention or event workshop
+    "coaching_session",  # performance/competition coaching
     "other",
 ]
 
@@ -38,6 +36,7 @@ Visibility = Literal["private", "public"]
 
 # ── Drive file metadata ───────────────────────────────────────────────────────
 
+
 class DriveFileRecord(BaseModel):
     """Validated metadata for a file returned from the Drive API."""
 
@@ -49,6 +48,7 @@ class DriveFileRecord(BaseModel):
 
 
 # ── LLM output ───────────────────────────────────────────────────────────────
+
 
 class NotesOutput(BaseModel):
     """Validated structured notes produced by the LLM.
@@ -81,6 +81,7 @@ class NotesOutput(BaseModel):
 
 # ── API payloads ──────────────────────────────────────────────────────────────
 
+
 class TranscriptCreatePayload(BaseModel):
     """POST /v1/wcs/transcripts request body."""
 
@@ -104,6 +105,7 @@ class NoteCreatePayload(BaseModel):
 
 
 # ── API responses ─────────────────────────────────────────────────────────────
+
 
 class TranscriptResponse(BaseModel):
     """Response from POST /v1/wcs/transcripts."""

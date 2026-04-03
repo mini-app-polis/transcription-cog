@@ -14,6 +14,7 @@ TXT_MIME = "text/plain"
 
 # ── infer_source_type ─────────────────────────────────────────────────────────
 
+
 def test_infer_source_type_plaud() -> None:
     assert infer_source_type("plaud_recording_2024.txt") == "plaud"
 
@@ -35,6 +36,7 @@ def test_infer_source_type_unknown() -> None:
 
 
 # ── read_transcript_text ──────────────────────────────────────────────────────
+
 
 def test_read_transcript_google_doc() -> None:
     """Google Doc calls export_google_doc_as_text."""
@@ -81,11 +83,18 @@ def test_read_transcript_txt_no_download_method_raises() -> None:
     """TypeError raised when no bytes download method is available."""
     g = MagicMock()
     # Remove all known download method names and service
-    for attr in ("download_bytes", "download_file_bytes", "download_file_as_bytes",
-                 "get_file_bytes", "service"):
+    for attr in (
+        "download_bytes",
+        "download_file_bytes",
+        "download_file_as_bytes",
+        "get_file_bytes",
+        "service",
+    ):
         if hasattr(g.drive, attr):
             delattr(type(g.drive), attr)
     g.drive = MagicMock(spec=[])  # empty spec — no download methods, no service
 
-    with pytest.raises(TypeError, match="does not expose a supported bytes download method"):
+    with pytest.raises(
+        TypeError, match="does not expose a supported bytes download method"
+    ):
         read_transcript_text(g, "file-id", TXT_MIME)

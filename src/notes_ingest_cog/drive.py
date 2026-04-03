@@ -43,7 +43,7 @@ def read_transcript_text(g: GoogleAPI, file_id: str, mime_type: str) -> str:
         ):
             if hasattr(g.drive, method_name):
                 raw = getattr(g.drive, method_name)(file_id)
-                if isinstance(raw, (bytes, bytearray)):
+                if isinstance(raw, bytes | bytearray):
                     return bytes(raw).decode("utf-8", errors="replace")
 
         # Raw service fallback
@@ -51,7 +51,7 @@ def read_transcript_text(g: GoogleAPI, file_id: str, mime_type: str) -> str:
             try:
                 req = g.drive.service.files().get_media(fileId=file_id)
                 data = req.execute()
-                if isinstance(data, (bytes, bytearray)):
+                if isinstance(raw, bytes | bytearray):
                     return bytes(data).decode("utf-8", errors="replace")
             except Exception:
                 pass
@@ -63,7 +63,9 @@ def read_transcript_text(g: GoogleAPI, file_id: str, mime_type: str) -> str:
     raise ValueError(f"Unsupported mime type for transcript: {mime_type!r}")
 
 
-def archive_file(g: GoogleAPI, file_id: str, processed_folder_id: str, name: str) -> None:
+def archive_file(
+    g: GoogleAPI, file_id: str, processed_folder_id: str, name: str
+) -> None:
     """Move a processed file to the archive folder.
 
     Per PIPE-005: raw inputs are archived after processing, never deleted.

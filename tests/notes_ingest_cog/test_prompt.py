@@ -22,7 +22,9 @@ def test_build_messages_transcript_in_user() -> None:
 
 def test_build_messages_filename_in_user() -> None:
     """Source filename appears in the user message when provided."""
-    messages = build_messages("some transcript", source_filename="2024-01-15_lesson.txt")
+    messages = build_messages(
+        "some transcript", source_filename="2024-01-15_lesson.txt"
+    )
     assert "2024-01-15_lesson.txt" in messages[1]["content"]
 
 

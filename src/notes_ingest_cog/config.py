@@ -7,9 +7,8 @@ reference for required variables. Secrets are managed via Doppler → Railway.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
-
 
 LLMProvider = Literal["anthropic", "openai"]
 

@@ -31,7 +31,9 @@ LOG = log.get_logger()
 def _init_sentry(dsn: str) -> None:
     if not dsn:
         LOG.warning(
-            log.with_log_prefix(log.LOG_WARNING, "SENTRY_DSN not set — error tracking disabled")
+            log.with_log_prefix(
+                log.LOG_WARNING, "SENTRY_DSN not set — error tracking disabled"
+            )
         )
         return
     sentry_sdk.init(

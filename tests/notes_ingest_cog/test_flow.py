@@ -8,13 +8,19 @@ import pytest
 
 from notes_ingest_cog.flow import _coerce_session_type, process_transcript
 
-
 # ── _coerce_session_type ──────────────────────────────────────────────────────
+
 
 def test_coerce_session_type_valid() -> None:
     """Valid session types pass through unchanged."""
-    for t in ("private_lesson", "class_taught", "class_attended", "workshop",
-              "coaching_session", "other"):
+    for t in (
+        "private_lesson",
+        "class_taught",
+        "class_attended",
+        "workshop",
+        "coaching_session",
+        "other",
+    ):
         assert _coerce_session_type(t) == t
 
 
