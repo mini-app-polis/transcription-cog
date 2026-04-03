@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.2...v1.0.3) (2026-04-03)
+
+
+### Bug Fixes
+
+* handle transcript data ([db1a9a7](https://github.com/mini-app-polis/notes-ingest-cog/commit/db1a9a75081092566c8f19cd356588a105a8da94))
+
 ## [1.0.2](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.1...v1.0.2) (2026-04-03)
 
 
