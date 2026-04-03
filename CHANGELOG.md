@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.4...v1.1.0) (2026-04-03)
+
+
+### Features
+
+* add concurrency limit to prevent parallel folder scans ([5087a98](https://github.com/mini-app-polis/notes-ingest-cog/commit/5087a98b57820d00f2577a24629a68cbf9c8774c))
+
 ## [1.0.4](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.3...v1.0.4) (2026-04-03)
 
 
