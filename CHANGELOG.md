@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.0...v1.0.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* flow entry no parameters ([a199e59](https://github.com/mini-app-polis/notes-ingest-cog/commit/a199e5987d8833072c68d13e645aeda5b53eab0b))
+
 # 1.0.0 (2026-04-03)
 
 
