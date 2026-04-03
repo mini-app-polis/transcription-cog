@@ -1,3 +1,11 @@
+## [1.0.4](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.3...v1.0.4) (2026-04-03)
+
+
+### Bug Fixes
+
+* dependency install ([a5ce60f](https://github.com/mini-app-polis/notes-ingest-cog/commit/a5ce60f35cfa9dfe2b4b09eae687fd7672294349))
+* uv lock ([e404f7a](https://github.com/mini-app-polis/notes-ingest-cog/commit/e404f7a61f1df29de982e29426f4220b2b43cf94))
+
 ## [1.0.3](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.2...v1.0.3) (2026-04-03)
 
 
