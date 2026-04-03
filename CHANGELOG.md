@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.1...v1.0.2) (2026-04-03)
+
+
+### Bug Fixes
+
+* in folder file detection ([d220db3](https://github.com/mini-app-polis/notes-ingest-cog/commit/d220db31218e1c1d52fe034a652feadd50cf82c4))
+
 ## [1.0.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.0...v1.0.1) (2026-04-03)
 
 
