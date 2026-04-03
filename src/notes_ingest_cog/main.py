@@ -78,8 +78,7 @@ def main() -> None:
     serve(
         process_transcript.to_deployment(
             name="notes-ingest-cog",
-            # Concurrency group: prevents parallel runs stomping on the same DB records
-            # cancel-in-progress=False — data pipelines must never be interrupted mid-write
+            concurrency_limit=1,
         ),
     )
 
