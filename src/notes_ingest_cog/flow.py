@@ -79,18 +79,12 @@ def _coerce_session_type(raw: str | None) -> SessionType:
 
 def _iter_files(g: GoogleAPI, folder_id: str):
     """Yield (file_id, file_name, mime_type) for supported files in folder."""
-    for item in g.drive.get_files_in_folder(folder_id):
+    for item in g.drive.get_files_in_folder(folder_id, include_folders=False):
         mime_type = (
-            item.get("mimeType")
-            if isinstance(item, dict)
-            else getattr(item, "mimeType", None)
+            item.mime_type if hasattr(item, "mime_type") else item.get("mimeType")
         )
-        file_id = (
-            item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
-        )
-        name = (
-            item.get("name") if isinstance(item, dict) else getattr(item, "name", None)
-        )
+        file_id = item.id if hasattr(item, "id") else item.get("id")
+        name = item.name if hasattr(item, "name") else item.get("name")
         if mime_type in _SUPPORTED_MIME_TYPES and file_id:
             yield file_id, name or file_id, mime_type
 
