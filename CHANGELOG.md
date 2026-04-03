@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.1.0...v1.1.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* skip already-processed transcripts via drive_file_id unique constraint ([82eb64f](https://github.com/mini-app-polis/notes-ingest-cog/commit/82eb64fd1a45e0fe6ee26699327f3eacd1341e26))
+
 # [1.1.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.0.4...v1.1.0) (2026-04-03)
 
 
