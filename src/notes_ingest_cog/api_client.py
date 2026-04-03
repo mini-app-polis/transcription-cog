@@ -46,7 +46,7 @@ class NotesApiClient:
             "/v1/wcs/transcripts",
             payload.model_dump(),
         )
-        return TranscriptResponse(**response)
+        return TranscriptResponse(**response["data"])
 
     def create_note(self, payload: NoteCreatePayload) -> NoteResponse:
         """POST /v1/wcs/notes — store processed notes, return record ID."""
@@ -54,4 +54,4 @@ class NotesApiClient:
             "/v1/wcs/notes",
             payload.model_dump(),
         )
-        return NoteResponse(**response)
+        return NoteResponse(**response["data"])
