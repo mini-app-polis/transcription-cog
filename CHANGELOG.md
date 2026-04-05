@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.3.0...v1.3.1) (2026-04-05)
+
+
+### Bug Fixes
+
+* adding known venue names ([d241adc](https://github.com/mini-app-polis/notes-ingest-cog/commit/d241adc4464b1e5a449cde4863387ebc6ad9b9e2))
+
 # [1.3.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.2.0...v1.3.0) (2026-04-05)
 
 
