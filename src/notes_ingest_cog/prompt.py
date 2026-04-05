@@ -5,11 +5,10 @@ Kept as a pure function with no side effects so it is trivially testable.
 
 from __future__ import annotations
 
+from .filename_parser import ParsedFilename
+
 _KNOWN_SECTIONS = """\
-  title                  - Short descriptive title for the session
-  date                   - ISO-8601 date (YYYY-MM-DD) from transcript or filename
-  session_type           - 'private_lesson' | 'class_taught' | 'class_attended' | 'workshop' | 'coaching_session' | 'other'
-  participants           - List of objects with label, role, name (optional)
+  title                  - Optional; only if the transcript clearly supplies one (do not invent)
   summary                - 2-4 sentence plain-English summary of the session
   key_concepts           - High-level principles and ideas discussed
   vocabulary_terms       - Dance/instructor-specific terms with working definitions
@@ -29,18 +28,24 @@ _SYSTEM_TEMPLATE = """\
 You are a Dance Lesson Notes Compiler. Your job is to convert a raw transcript \
 into structured JSON notes.
 
-CORE RULE — CONTENT DRIVES STRUCTURE:
-Only include a section in your output if the transcript genuinely contains that \
-type of content. Omit it entirely rather than populating it with thin or invented content.
+AUTHORITATIVE METADATA (from the filename — do NOT infer or override these):
+  recording_date: {recording_date}
+  session_type: {session_type}
+  instructors: {instructors}
+  students: {students}
+  organization: {organization}
+  topic (from filename, if any): {topic}
 
-SESSION TYPE GUIDANCE:
-  private_lesson  — the speaker is a student receiving 1-on-1 instruction
-  class_taught    — the speaker is the instructor teaching a group class
-  class_attended  — the speaker is a student in a group class taught by someone else
-  workshop        — a convention, event, or intensive session
-  coaching_session — performance or competition coaching
+Use the metadata above as ground truth. Do not output date, session type, \
+participants, or organization fields — they are not part of your JSON schema. \
+Focus only on transcript-derived content sections.
 
-KNOWN SECTIONS (include only those present in this transcript):
+CORE RULE — HIGH CONFIDENCE OR BLANK:
+Only include a section in your output if the transcript clearly supports it. \
+Omit the section entirely rather than filling it with guesses, padding, or \
+low-confidence invention.
+
+KNOWN SECTIONS (include only those present with high confidence):
 {known_sections}
 
 SECTION-SPECIFIC GUIDANCE:
@@ -69,27 +74,35 @@ If nothing qualifies, omit this field entirely.
 GENERAL RULES:
 - Do not invent facts. If something is unclear, use "(unclear in transcript)".
 - Keep bullets concise — one clear idea per item.
-- The source_filename may help infer date and session type.
 - Output ONLY valid JSON. No markdown fences, no commentary outside the JSON.\
 """
 
 
 def build_messages(
     transcript_text: str,
-    source_filename: str = "",
+    parsed: ParsedFilename,
 ) -> list[dict[str, str]]:
     """Return a provider-neutral message list for transcript → notes conversion.
 
     Args:
-        transcript_text:  Raw transcript content.
-        source_filename:  Original filename — helps the model infer date/session type.
+        transcript_text: Raw transcript content.
+        parsed: Filename-derived metadata (authoritative session context).
 
     Returns:
         List of role/content dicts compatible with mini_app_polis.llm.LLMMessage.
     """
-    system = _SYSTEM_TEMPLATE.format(known_sections=_KNOWN_SECTIONS)
-    filename_line = f"Source filename: {source_filename}\n\n" if source_filename else ""
-    user = f"{filename_line}Transcript begins below:\n\n{transcript_text}"
+    topic_display = parsed.topic if parsed.topic else "(none)"
+    org_display = parsed.organization if parsed.organization else "(none)"
+    system = _SYSTEM_TEMPLATE.format(
+        known_sections=_KNOWN_SECTIONS,
+        recording_date=parsed.recording_date,
+        session_type=parsed.session_type,
+        instructors=", ".join(parsed.instructors) if parsed.instructors else "(none)",
+        students=", ".join(parsed.students) if parsed.students else "(none)",
+        organization=org_display,
+        topic=topic_display,
+    )
+    user = f"Transcript begins below:\n\n{transcript_text}"
 
     return [
         {"role": "system", "content": system},

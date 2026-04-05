@@ -70,7 +70,7 @@ def load_config() -> Config:
         kaiano_api_base_url=_require("KAIANO_API_BASE_URL"),
         kaiano_api_internal_key=_require("KAIANO_API_INTERNAL_KEY"),
         healthchecks_url=os.getenv("HEALTHCHECKS_URL", ""),
-        sentry_dsn=os.getenv("SENTRY_DSN", ""),
+        sentry_dsn=os.getenv("SENTRY_DSN_NOTES_INGEST_COG", ""),
         logging_level=os.getenv("LOGGING_LEVEL", "INFO"),
         min_transcript_chars=int(os.getenv("MIN_TRANSCRIPT_CHARS", "200")),
     )

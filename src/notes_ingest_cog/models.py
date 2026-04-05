@@ -14,11 +14,8 @@ from pydantic import BaseModel, Field
 # ── Session / source taxonomy ─────────────────────────────────────────────────
 
 SessionType = Literal[
-    "private_lesson",  # lesson I took with an instructor
-    "class_taught",  # group class I taught
-    "class_attended",  # group class I attended as a student
-    "workshop",  # convention or event workshop
-    "coaching_session",  # performance/competition coaching
+    "private_lesson",
+    "group_class",
     "other",
 ]
 
@@ -32,6 +29,20 @@ SourceType = Literal[
 ]
 
 Visibility = Literal["private", "public"]
+
+
+# ── Parsed filename (authoritative session metadata) ──────────────────────────
+
+
+class FilenameMetadata(BaseModel):
+    """Structured fields derived from the transcript filename."""
+
+    recording_date: str
+    session_type: SessionType
+    instructors: list[str]
+    students: list[str]
+    organization: str
+    topic: str | None = None
 
 
 # ── Drive file metadata ───────────────────────────────────────────────────────
@@ -59,9 +70,6 @@ class NotesOutput(BaseModel):
     """
 
     title: str | None = None
-    date: str | None = None
-    session_type: str | None = None
-    participants: list[dict[str, Any]] = Field(default_factory=list)
     summary: str | None = None
     key_concepts: list[Any] = Field(default_factory=list)
     vocabulary_terms: list[dict[str, Any]] = Field(default_factory=list)
@@ -102,6 +110,9 @@ class NoteCreatePayload(BaseModel):
     model: str
     provider: str
     notes_json: dict[str, Any]
+    instructors: list[str]
+    students: list[str]
+    organization: str
 
 
 # ── API responses ─────────────────────────────────────────────────────────────

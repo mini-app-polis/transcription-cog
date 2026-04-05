@@ -8,17 +8,19 @@ all files found. No parameters required — all config comes from env vars
 via Doppler → Railway.
 
 Flow steps (per file):
-  1. Scan input folder for supported transcript files
-  2. Read transcript text from Drive
-  3. Guard: validate length
-  4. Store raw transcript via api-kaianolevine-com → wcs_transcripts
-  5. Call LLM — transcript → structured notes JSON
-  6. Validate and store notes via api-kaianolevine-com → wcs_notes
-  7. Archive original file to processed folder
+  1. Scan input folder for supported transcript files (MIME filter)
+  2. Validate filename convention; skip invalid or underscore-prefixed names
+  3. Read transcript text from Drive
+  4. Guard: validate length
+  5. Store raw transcript via api-kaianolevine-com → wcs_transcripts
+  6. Call LLM — transcript → structured notes JSON
+  7. Validate and store notes via api-kaianolevine-com → wcs_notes
+  8. Archive original file to processed folder
 """
 
 from __future__ import annotations
 
+import sentry_sdk
 from dotenv import load_dotenv
 from jsonschema import ValidationError, validate
 from mini_app_polis import logger as log
@@ -29,11 +31,8 @@ from prefect import flow, get_run_logger, task
 from .api_client import NotesApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
-from .models import (
-    NoteCreatePayload,
-    SessionType,
-    TranscriptCreatePayload,
-)
+from .filename_parser import FilenameParseError, ParsedFilename, parse_filename
+from .models import NoteCreatePayload, TranscriptCreatePayload
 from .prompt import build_messages
 from .schema import NOTES_SCHEMA
 
@@ -46,15 +45,6 @@ _SUPPORTED_MIME_TYPES = {
     "text/plain",
 }
 
-_VALID_SESSION_TYPES: set[str] = {
-    "private_lesson",
-    "class_taught",
-    "class_attended",
-    "workshop",
-    "coaching_session",
-    "other",
-}
-
 
 def _get_logger():
     """Dual logger pattern per PIPE-006."""
@@ -64,29 +54,13 @@ def _get_logger():
         return LOG
 
 
-def _coerce_session_type(raw: str | None) -> SessionType:
-    """Coerce LLM session_type output to a valid SessionType literal."""
-    if raw and raw in _VALID_SESSION_TYPES:
-        return raw  # type: ignore[return-value]
-    _LEGACY_MAP: dict[str, SessionType] = {
-        "group_class": "class_attended",
-        "coaching": "coaching_session",
-    }
-    if raw and raw in _LEGACY_MAP:
-        return _LEGACY_MAP[raw]
-    return "other"
-
-
 def _iter_files(g: GoogleAPI, folder_id: str):
     """Yield (file_id, file_name, mime_type) for supported files in folder."""
     for item in g.drive.get_files_in_folder(folder_id, include_folders=False):
-        mime_type = (
-            item.mime_type if hasattr(item, "mime_type") else item.get("mimeType")
-        )
-        file_id = item.id if hasattr(item, "id") else item.get("id")
-        name = item.name if hasattr(item, "name") else item.get("name")
-        if mime_type in _SUPPORTED_MIME_TYPES and file_id:
-            yield file_id, name or file_id, mime_type
+        if item.mime_type not in _SUPPORTED_MIME_TYPES or not item.id:
+            continue
+        name = item.name or item.id
+        yield item.id, name, item.mime_type
 
 
 @task(retries=2, retry_delay_seconds=30)
@@ -122,7 +96,7 @@ def task_store_transcript(
 
 
 @task(retries=2, retry_delay_seconds=60)
-def task_call_llm(cfg: Config, transcript_text: str, source_filename: str) -> dict:
+def task_call_llm(cfg: Config, transcript_text: str, parsed: ParsedFilename) -> dict:
     """Call the LLM and return validated notes JSON."""
     logger = _get_logger()
     logger.info(
@@ -132,7 +106,7 @@ def task_call_llm(cfg: Config, transcript_text: str, source_filename: str) -> di
         )
     )
     llm = build_llm(provider=cfg.llm_provider, model=cfg.llm_model)
-    msg_dicts = build_messages(transcript_text, source_filename=source_filename)
+    msg_dicts = build_messages(transcript_text, parsed=parsed)
     messages = [LLMMessage(role=m["role"], content=m["content"]) for m in msg_dicts]
 
     result = llm.generate_json(
@@ -162,19 +136,23 @@ def task_store_notes(
     transcript_id: str,
     notes: dict,
     cfg: Config,
+    parsed: ParsedFilename,
 ) -> str:
     """Store structured notes and return note_id."""
     logger = _get_logger()
-    session_type = _coerce_session_type(notes.get("session_type"))
+    title = parsed.topic or notes.get("title") or None
     payload = NoteCreatePayload(
         transcript_id=transcript_id,
-        title=notes.get("title"),
-        session_date=notes.get("date"),
-        session_type=session_type,
+        title=title,
+        session_date=parsed.recording_date,
+        session_type=parsed.session_type,
         visibility="private",
         model=cfg.llm_model,
         provider=cfg.llm_provider,
         notes_json=notes,
+        instructors=parsed.instructors,
+        students=parsed.students,
+        organization=parsed.organization,
     )
     response = api.create_note(payload)
     logger.info(log.with_log_prefix(log.LOG_SUCCESS, f"Notes stored: {response.id}"))
@@ -202,6 +180,30 @@ def _process_one(
     logger,
 ) -> dict:
     """Process a single transcript file end to end."""
+    if file_name.startswith("_"):
+        logger.warning(
+            log.with_log_prefix(
+                log.LOG_WARNING,
+                f"Skipping underscore-prefixed file: {file_name!r}",
+            )
+        )
+        return {"skipped": True, "reason": "underscore_prefix", "file": file_name}
+
+    try:
+        parsed = parse_filename(file_name)
+    except FilenameParseError as exc:
+        logger.warning(
+            log.with_log_prefix(
+                log.LOG_WARNING,
+                f"Invalid filename — skipping {file_name!r}: {exc}",
+            )
+        )
+        sentry_sdk.capture_message(
+            f"notes-ingest-cog: invalid transcript filename: {file_name!r} ({exc})",
+            level="warning",
+        )
+        return {"skipped": True, "reason": "invalid_filename", "file": file_name}
+
     raw_text = task_read_transcript(g, file_id, mime_type)
     raw_text = raw_text.strip()
 
@@ -230,8 +232,8 @@ def _process_one(
             return {"skipped": True, "reason": "already_processed", "file": file_name}
         raise
 
-    notes = task_call_llm(cfg, raw_text, file_name)
-    note_id = task_store_notes(api, transcript_id, notes, cfg)
+    notes = task_call_llm(cfg, raw_text, parsed)
+    note_id = task_store_notes(api, transcript_id, notes, cfg, parsed)
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
 
     return {"transcript_id": transcript_id, "note_id": note_id, "file": file_name}

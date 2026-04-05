@@ -5,8 +5,8 @@ process_transcript flow. Railway keeps this process alive indefinitely.
 
 Observability layers:
   L1 — Healthchecks.io: pinged after each served deployment cycle
-  L2 — Structured logs: mini_app_polis logger throughout
-  L3 — Sentry: captures all unhandled exceptions
+  L2 — Structured logs: mini_app_polis logger throughout the flow
+  L3 — Sentry: unhandled exceptions plus explicit capture (e.g. invalid filenames)
 """
 
 from __future__ import annotations
@@ -32,7 +32,8 @@ def _init_sentry(dsn: str) -> None:
     if not dsn:
         LOG.warning(
             log.with_log_prefix(
-                log.LOG_WARNING, "SENTRY_DSN not set — error tracking disabled"
+                log.LOG_WARNING,
+                "SENTRY_DSN_NOTES_INGEST_COG not set — error tracking disabled",
             )
         )
         return
@@ -40,6 +41,7 @@ def _init_sentry(dsn: str) -> None:
         dsn=dsn,
         traces_sample_rate=0.1,
         environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
+        release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
     )
     LOG.info(log.with_log_prefix(log.LOG_SUCCESS, "Sentry initialised"))
 
