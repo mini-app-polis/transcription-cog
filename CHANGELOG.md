@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.2.0...v1.3.0) (2026-04-05)
+
+
+### Features
+
+* aligning with new ecosystem standards 2.0.0 ([b5fdc66](https://github.com/mini-app-polis/notes-ingest-cog/commit/b5fdc664c1850f7e3efaae9b18687da1c971ca57))
+
 # [1.2.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.1.1...v1.2.0) (2026-04-05)
 
 
