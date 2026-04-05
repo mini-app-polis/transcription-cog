@@ -1,8 +1,4 @@
-"""Configuration for notes-ingest-cog.
-
-All settings are read from environment variables. Use .env.example as the
-reference for required variables. Secrets are managed via Doppler → Railway.
-"""
+"""Configuration for notes-ingest-cog."""
 
 from __future__ import annotations
 
@@ -27,25 +23,19 @@ def _require(name: str) -> str:
 
 @dataclass(frozen=True)
 class Config:
-    # Google Drive
     notes_input_folder_id: str
     notes_processed_folder_id: str
-
-    # LLM
     llm_provider: LLMProvider
     llm_model: str
-
-    # Internal API
     kaiano_api_base_url: str
     kaiano_api_internal_key: str
-
-    # Observability
     healthchecks_url: str
     sentry_dsn: str
     logging_level: str
-
-    # Pipeline behaviour
     min_transcript_chars: int = 200
+    # Task retry delays — sourced from env so tests can set to 0 (TEST-013)
+    task_retry_delay_short: int = 30
+    task_retry_delay_long: int = 60
 
     @property
     def default_models(self) -> dict[str, str]:
@@ -53,7 +43,6 @@ class Config:
 
 
 def load_config() -> Config:
-    """Load and validate configuration from environment variables."""
     provider_raw = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
     if provider_raw not in ("anthropic", "openai"):
         raise RuntimeError(
@@ -73,4 +62,6 @@ def load_config() -> Config:
         sentry_dsn=os.getenv("SENTRY_DSN_NOTES_INGEST_COG", ""),
         logging_level=os.getenv("LOGGING_LEVEL", "INFO"),
         min_transcript_chars=int(os.getenv("MIN_TRANSCRIPT_CHARS", "200")),
+        task_retry_delay_short=int(os.getenv("TASK_RETRY_DELAY_SHORT", "30")),
+        task_retry_delay_long=int(os.getenv("TASK_RETRY_DELAY_LONG", "60")),
     )

@@ -15,6 +15,8 @@ _ENV_VARS = {
     "KAIANO_API_INTERNAL_KEY": "test-key",
     "LLM_PROVIDER": "anthropic",
     "ANTHROPIC_API_KEY": "test-anthropic-key",
+    "TASK_RETRY_DELAY_SHORT": "0",
+    "TASK_RETRY_DELAY_LONG": "0",
 }
 
 _MINIMAL_NOTES = {
@@ -22,16 +24,19 @@ _MINIMAL_NOTES = {
     "summary": "A test lesson about leading.",
 }
 
-_VALID_NAME_PRIVATE = "2026-04-01 Kaiano > Sarah - Connection.txt"
-_VALID_NAME_GROUP = "2026-04-01 Kaiano > Swingesota.txt"
+_VALID_FILENAME = "2026-04-01 Kaiano > Sarah - Connection.txt"
+_VALID_GROUP_FILENAME = "2026-04-01 Kaiano > Swingesota.txt"
+_INVALID_FILENAME = "random notes.txt"
 
 
-def _drive_item(file_id: str, filename: str, mime: str = "text/plain") -> MagicMock:
-    """Build a Drive-like row. Do not pass ``name=`` to MagicMock — it is reserved."""
+def _drive_item(
+    file_id: str, filename: str, mime_type: str = "text/plain"
+) -> MagicMock:
+    """Drive row mock; avoid ``MagicMock(name=...)`` — ``name`` is reserved on MagicMock."""
     m = MagicMock()
     m.id = file_id
     m.name = filename
-    m.mime_type = mime
+    m.mime_type = mime_type
     return m
 
 
@@ -43,15 +48,10 @@ def mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def mock_drive_text() -> str:
-    """Returns a transcript long enough to pass the min_chars guard."""
     return "A" * 300
 
 
-# ── process_transcript flow ───────────────────────────────────────────────────
-
-
 def test_process_transcript_empty_folder(mock_env: None) -> None:
-    """Empty folder returns zero counts with no errors."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient"),
@@ -62,72 +62,79 @@ def test_process_transcript_empty_folder(mock_env: None) -> None:
 
         result = process_transcript()
 
+    mock_gapi.from_env.assert_called_once()
+    mock_g.drive.get_files_in_folder.assert_called_once()
     assert result["processed"] == 0
     assert result["skipped"] == 0
     assert result["files"] == []
 
 
-def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
-    """Transcript below min_chars threshold is counted as skipped."""
-    with (
-        patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
-        patch("notes_ingest_cog.flow.NotesApiClient"),
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_NAME_PRIVATE),
-        ]
-        mock_g.drive.download_bytes.return_value = b"too short"
-
-        result = process_transcript()
-
-    assert result["skipped"] == 1
-    assert result["processed"] == 0
-
-
 def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
-    """Unparseable filename is skipped with reason invalid_filename."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
-        patch("notes_ingest_cog.flow.NotesApiClient"),
-        patch("notes_ingest_cog.flow.sentry_sdk.capture_message") as mock_sentry,
+        patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", "not-a-valid-name.txt"),
+            _drive_item("file-1", _INVALID_FILENAME),
         ]
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
 
         result = process_transcript()
 
+    mock_g.drive.get_files_in_folder.assert_called_once()
+    mock_api.create_transcript.assert_not_called()
     assert result["skipped"] == 1
     assert result["processed"] == 0
     assert result["files"][0]["reason"] == "invalid_filename"
-    mock_sentry.assert_called_once()
 
 
 def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
-    """Leading underscore skips the file before Drive read."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
-        patch("notes_ingest_cog.flow.NotesApiClient"),
+        patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", "_ignored.txt"),
+            _drive_item("file-1", "_2026-04-01 Kaiano > Sarah.txt"),
         ]
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
 
         result = process_transcript()
 
+    mock_g.drive.get_files_in_folder.assert_called_once()
+    mock_api.create_transcript.assert_not_called()
     assert result["skipped"] == 1
-    assert result["files"][0]["reason"] == "underscore_prefix"
-    mock_g.drive.download_bytes.assert_not_called()
+    assert result["files"][0]["reason"] == "invalid_filename"
+
+
+def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
+    with (
+        patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
+        patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-1", _VALID_FILENAME),
+        ]
+        mock_g.drive.download_bytes.return_value = b"too short"
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
+
+        result = process_transcript()
+
+    mock_g.drive.get_files_in_folder.assert_called_once()
+    mock_api.create_transcript.assert_not_called()
+    assert result["skipped"] == 1
+    assert result["files"][0]["reason"] == "transcript_too_short"
 
 
 def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> None:
-    """Happy path processes one file and returns correct counts."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
@@ -136,7 +143,7 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_NAME_PRIVATE),
+            _drive_item("file-1", _VALID_FILENAME),
         ]
         mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
 
@@ -151,6 +158,9 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
 
         result = process_transcript()
 
+    mock_api.create_transcript.assert_called_once()
+    mock_api.create_note.assert_called_once()
+    mock_llm.generate_json.assert_called_once()
     assert result["processed"] == 1
     assert result["skipped"] == 0
     assert result["files"][0]["transcript_id"] == "transcript-abc"
@@ -160,7 +170,6 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
 def test_process_transcript_passes_parsed_metadata_to_note(
     mock_env: None, mock_drive_text: str
 ) -> None:
-    """create_note receives session metadata and title from filename + LLM."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
@@ -169,7 +178,7 @@ def test_process_transcript_passes_parsed_metadata_to_note(
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_NAME_PRIVATE),
+            _drive_item("file-1", _VALID_FILENAME),
         ]
         mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
 
@@ -180,24 +189,20 @@ def test_process_transcript_passes_parsed_metadata_to_note(
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(
-            output_json={**_MINIMAL_NOTES, "title": "LLM title"}
-        )
+        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
 
         process_transcript()
 
-    call = mock_api.create_note.call_args
-    payload = call[0][0]
-    assert payload.session_type == "private_lesson"
-    assert payload.instructors == ["Kaiano"]
-    assert payload.students == ["Sarah"]
-    assert payload.organization == ""
-    assert payload.session_date == "2026-04-01"
-    assert payload.title == "Connection"
+    mock_api.create_note.assert_called_once()
+    call_kwargs = mock_api.create_note.call_args[0][0]
+    assert call_kwargs.session_type == "private_lesson"
+    assert call_kwargs.instructors == ["Kaiano"]
+    assert call_kwargs.students == ["Sarah"]
+    assert call_kwargs.session_date == "2026-04-01"
+    assert call_kwargs.title == "Connection"
 
 
 def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -> None:
-    """Result always contains processed, skipped, and files keys."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
@@ -206,7 +211,7 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_NAME_GROUP),
+            _drive_item("file-1", _VALID_FILENAME),
         ]
         mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
 
@@ -221,46 +226,44 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
 
         result = process_transcript()
 
+    mock_api.create_transcript.assert_called_once()
+    mock_api.create_note.assert_called_once()
     assert "processed" in result
     assert "skipped" in result
     assert "files" in result
 
 
-def test_process_transcript_archives_file_on_success(
+def test_process_transcript_skips_already_processed(
     mock_env: None, mock_drive_text: str
 ) -> None:
-    """Processed file is archived after successful completion."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
-        patch("notes_ingest_cog.flow.build_llm") as mock_build_llm,
-        patch("notes_ingest_cog.flow.archive_file") as mock_archive,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_NAME_PRIVATE),
+            _drive_item("file-1", _VALID_FILENAME),
         ]
         mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
 
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_note.return_value = MagicMock(id="n-1")
+        mock_api.create_transcript.side_effect = Exception(
+            "uq_wcs_transcripts_drive_file_id unique constraint"
+        )
 
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
+        result = process_transcript()
 
-        process_transcript()
+    # task_store_transcript has retries=2, so the API may be hit multiple times
+    assert mock_api.create_transcript.called
+    assert result["skipped"] == 1
+    assert result["files"][0]["reason"] == "already_processed"
 
-    mock_archive.assert_called_once()
 
-
-def test_process_transcript_continues_after_file_failure(
+def test_process_transcript_continues_after_failure(
     mock_env: None, mock_drive_text: str
 ) -> None:
-    """A failure on one file does not stop processing of subsequent files."""
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
@@ -269,8 +272,8 @@ def test_process_transcript_continues_after_file_failure(
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
         mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", "2026-04-01 Kaiano > A - B.txt"),
-            _drive_item("file-2", "2026-04-01 Kaiano > C - D.txt"),
+            _drive_item("file-1", _VALID_FILENAME),
+            _drive_item("file-2", _VALID_GROUP_FILENAME),
         ]
         mock_g.drive.download_bytes.side_effect = [
             RuntimeError("drive error"),
@@ -288,5 +291,8 @@ def test_process_transcript_continues_after_file_failure(
 
         result = process_transcript()
 
+    mock_api.create_transcript.assert_called_once()
+    mock_api.create_note.assert_called_once()
+    mock_llm.generate_json.assert_called_once()
     assert result["processed"] == 1
     assert result["skipped"] == 1

@@ -10,3 +10,4 @@ htmlcov/
 dist/
 *.egg-info/
 .mypy_cache/
+.DS_Store

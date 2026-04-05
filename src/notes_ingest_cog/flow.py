@@ -7,9 +7,16 @@ configured Google Drive input folder. Scans the folder and processes
 all files found. No parameters required — all config comes from env vars
 via Doppler → Railway.
 
+Filename convention (required):
+    YYYY-MM-DD [instructors] > [students or organization].ext
+    YYYY-MM-DD [instructors] > [students or organization] - [Topic].ext
+
+Files that do not match the convention are skipped with a warning and
+left in the input folder for manual renaming.
+
 Flow steps (per file):
-  1. Scan input folder for supported transcript files (MIME filter)
-  2. Validate filename convention; skip invalid or underscore-prefixed names
+  1. Scan input folder for supported transcript files
+  2. Validate filename against naming convention
   3. Read transcript text from Drive
   4. Guard: validate length
   5. Store raw transcript via api-kaianolevine-com → wcs_transcripts
@@ -32,7 +39,10 @@ from .api_client import NotesApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
 from .filename_parser import FilenameParseError, ParsedFilename, parse_filename
-from .models import NoteCreatePayload, TranscriptCreatePayload
+from .models import (
+    NoteCreatePayload,
+    TranscriptCreatePayload,
+)
 from .prompt import build_messages
 from .schema import NOTES_SCHEMA
 
@@ -57,13 +67,16 @@ def _get_logger():
 def _iter_files(g: GoogleAPI, folder_id: str):
     """Yield (file_id, file_name, mime_type) for supported files in folder."""
     for item in g.drive.get_files_in_folder(folder_id, include_folders=False):
-        if item.mime_type not in _SUPPORTED_MIME_TYPES or not item.id:
-            continue
-        name = item.name or item.id
-        yield item.id, name, item.mime_type
+        mime_type = (
+            item.mime_type if hasattr(item, "mime_type") else item.get("mimeType")
+        )
+        file_id = item.id if hasattr(item, "id") else item.get("id")
+        name = item.name if hasattr(item, "name") else item.get("name")
+        if mime_type in _SUPPORTED_MIME_TYPES and file_id:
+            yield file_id, name or file_id, mime_type
 
 
-@task(retries=2, retry_delay_seconds=30)
+@task(retries=2)
 def task_read_transcript(g: GoogleAPI, file_id: str, mime_type: str) -> str:
     """Read transcript text from Drive."""
     logger = _get_logger()
@@ -71,7 +84,7 @@ def task_read_transcript(g: GoogleAPI, file_id: str, mime_type: str) -> str:
     return read_transcript_text(g, file_id, mime_type)
 
 
-@task(retries=2, retry_delay_seconds=30)
+@task(retries=2)
 def task_store_transcript(
     api: NotesApiClient,
     raw_text: str,
@@ -95,8 +108,12 @@ def task_store_transcript(
     return response.id
 
 
-@task(retries=2, retry_delay_seconds=60)
-def task_call_llm(cfg: Config, transcript_text: str, parsed: ParsedFilename) -> dict:
+@task(retries=2)
+def task_call_llm(
+    cfg: Config,
+    transcript_text: str,
+    parsed: ParsedFilename,
+) -> dict:
     """Call the LLM and return validated notes JSON."""
     logger = _get_logger()
     logger.info(
@@ -130,13 +147,13 @@ def task_call_llm(cfg: Config, transcript_text: str, parsed: ParsedFilename) -> 
     return notes
 
 
-@task(retries=2, retry_delay_seconds=30)
+@task(retries=2)
 def task_store_notes(
     api: NotesApiClient,
     transcript_id: str,
     notes: dict,
-    cfg: Config,
     parsed: ParsedFilename,
+    cfg: Config,
 ) -> str:
     """Store structured notes and return note_id."""
     logger = _get_logger()
@@ -145,14 +162,14 @@ def task_store_notes(
         transcript_id=transcript_id,
         title=title,
         session_date=parsed.recording_date,
-        session_type=parsed.session_type,
+        session_type=parsed.session_type,  # type: ignore[arg-type]
+        instructors=parsed.instructors,
+        students=parsed.students,
+        organization=parsed.organization,
         visibility="private",
         model=cfg.llm_model,
         provider=cfg.llm_provider,
         notes_json=notes,
-        instructors=parsed.instructors,
-        students=parsed.students,
-        organization=parsed.organization,
     )
     response = api.create_note(payload)
     logger.info(log.with_log_prefix(log.LOG_SUCCESS, f"Notes stored: {response.id}"))
@@ -180,15 +197,8 @@ def _process_one(
     logger,
 ) -> dict:
     """Process a single transcript file end to end."""
-    if file_name.startswith("_"):
-        logger.warning(
-            log.with_log_prefix(
-                log.LOG_WARNING,
-                f"Skipping underscore-prefixed file: {file_name!r}",
-            )
-        )
-        return {"skipped": True, "reason": "underscore_prefix", "file": file_name}
 
+    # Step 1: validate filename convention
     try:
         parsed = parse_filename(file_name)
     except FilenameParseError as exc:
@@ -199,14 +209,18 @@ def _process_one(
             )
         )
         sentry_sdk.capture_message(
-            f"notes-ingest-cog: invalid transcript filename: {file_name!r} ({exc})",
+            f"notes-ingest-cog: invalid filename skipped: {file_name!r} — {exc}",
             level="warning",
         )
         return {"skipped": True, "reason": "invalid_filename", "file": file_name}
 
-    raw_text = task_read_transcript(g, file_id, mime_type)
+    # Step 2: read transcript
+    raw_text = task_read_transcript.with_options(
+        retry_delay_seconds=cfg.task_retry_delay_short
+    )(g, file_id, mime_type)
     raw_text = raw_text.strip()
 
+    # Step 3: length guard
     if len(raw_text) < cfg.min_transcript_chars:
         logger.warning(
             log.with_log_prefix(
@@ -216,8 +230,11 @@ def _process_one(
         )
         return {"skipped": True, "reason": "transcript_too_short", "file": file_name}
 
+    # Step 4: store raw transcript
     try:
-        transcript_id = task_store_transcript(api, raw_text, file_name, file_id)
+        transcript_id = task_store_transcript.with_options(
+            retry_delay_seconds=cfg.task_retry_delay_short
+        )(api, raw_text, file_name, file_id)
     except Exception as exc:
         if (
             "uq_wcs_transcripts_drive_file_id" in str(exc)
@@ -232,8 +249,17 @@ def _process_one(
             return {"skipped": True, "reason": "already_processed", "file": file_name}
         raise
 
-    notes = task_call_llm(cfg, raw_text, parsed)
-    note_id = task_store_notes(api, transcript_id, notes, cfg, parsed)
+    # Step 5: call LLM
+    notes = task_call_llm.with_options(retry_delay_seconds=cfg.task_retry_delay_long)(
+        cfg, raw_text, parsed
+    )
+
+    # Step 6: store notes
+    note_id = task_store_notes.with_options(
+        retry_delay_seconds=cfg.task_retry_delay_short
+    )(api, transcript_id, notes, parsed, cfg)
+
+    # Step 7: archive
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
 
     return {"transcript_id": transcript_id, "note_id": note_id, "file": file_name}
@@ -243,18 +269,13 @@ def _process_one(
     name="process-transcript",
     description=(
         "Scan the WCS notes input folder and process all transcript files found. "
-        "No parameters required — triggered by watcher-cog when new files are dropped."
+        "No parameters required — triggered by watcher-cog when new files are dropped. "
+        "Files must follow the naming convention: "
+        "'YYYY-MM-DD Instructor > Student/Org - Topic.ext'"
     ),
 )
 def process_transcript() -> dict:
-    """Main Prefect flow — scans input folder and processes all transcripts found.
-
-    All configuration comes from environment variables via Doppler → Railway.
-    Triggered by watcher-cog; can also be run manually from Prefect UI with no input.
-
-    Returns:
-        Dict with counts of processed and skipped files.
-    """
+    """Main Prefect flow — scans input folder and processes all transcripts found."""
     logger = _get_logger()
     logger.info(
         log.with_log_prefix(log.LOG_START, "Scanning input folder for transcripts")

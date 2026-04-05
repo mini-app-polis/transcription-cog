@@ -1,12 +1,9 @@
 """Entry point for notes-ingest-cog.
 
-Initialises Sentry, connects to Prefect Cloud, and serves the
-process_transcript flow. Railway keeps this process alive indefinitely.
-
 Observability layers:
-  L1 — Healthchecks.io: pinged after each served deployment cycle
-  L2 — Structured logs: mini_app_polis logger throughout the flow
-  L3 — Sentry: unhandled exceptions plus explicit capture (e.g. invalid filenames)
+  L1 — Healthchecks.io: pinged on startup
+  L2 — Structured logs: mini_app_polis logger throughout
+  L3 — Sentry: captures all unhandled exceptions and invalid filename warnings
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ def _init_sentry(dsn: str) -> None:
         LOG.warning(
             log.with_log_prefix(
                 log.LOG_WARNING,
-                "SENTRY_DSN_NOTES_INGEST_COG not set — error tracking disabled",
+                "SENTRY_DSN not set — error tracking disabled",
             )
         )
         return
@@ -76,7 +73,6 @@ def main() -> None:
         )
     )
 
-    # prefect.serve() blocks — Prefect Cloud dispatches flow runs to this process
     serve(
         process_transcript.to_deployment(
             name="notes-ingest-cog",

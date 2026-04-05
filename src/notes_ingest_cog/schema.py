@@ -1,18 +1,4 @@
-"""JSON schema for structured notes output.
-
-Design principles:
-  1. CONTENT-DRIVEN — every section is optional. The model only populates
-     a section when content genuinely exists in the transcript.
-  2. KNOWN SECTIONS — the properties below are the current recognised
-     vocabulary. Adding a new section here promotes it from "suggested"
-     to "canonical" and it will be rendered with its own heading.
-  3. FEEDBACK LOOP — suggested_new_sections lets the model flag content
-     that doesn't fit any known section. Review these periodically.
-  4. STABILITY — additionalProperties: True means new model-invented keys
-     won't cause validation failures.
-  5. HIGH CONFIDENCE OR BLANK — only fill a field when the transcript
-     clearly supports it; otherwise omit it or leave it blank rather than guessing.
-"""
+"""JSON schema for structured notes output."""
 
 from __future__ import annotations
 
@@ -23,24 +9,17 @@ NOTES_SCHEMA: dict = {
         "title": {
             "type": "string",
             "description": (
-                "Optional short label for the session. Only set this if the transcript "
-                "explicitly gives a clear title or name; do not invent a catchy title."
+                "The main topic or name of this session, only if clearly stated. "
+                "Leave blank if uncertain. Do not invent a title."
             ),
         },
         "summary": {
             "type": "string",
-            "description": (
-                "2-4 sentence plain-English summary of the session. "
-                "Only if clearly supported by the transcript (high confidence or omit)."
-            ),
+            "description": "2-4 sentence plain-English summary of what was covered.",
         },
-        # Core content sections
         "key_concepts": {
             "type": "array",
-            "description": (
-                "High-level principles or ideas discussed. "
-                "Populate only with high-confidence items from the transcript."
-            ),
+            "description": "High-level principles or ideas discussed.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -57,10 +36,7 @@ NOTES_SCHEMA: dict = {
         },
         "vocabulary_terms": {
             "type": "array",
-            "description": (
-                "Dance-specific terms defined or meaningfully used. "
-                "High confidence only; omit the section if none."
-            ),
+            "description": "Dance-specific or instructor-specific terms that were defined or meaningfully used.",
             "items": {
                 "type": "object",
                 "additionalProperties": True,
@@ -72,10 +48,7 @@ NOTES_SCHEMA: dict = {
         },
         "drills": {
             "type": "array",
-            "description": (
-                "Specific practice exercises with intent and method. "
-                "Only when the transcript describes them clearly (high confidence or omit)."
-            ),
+            "description": "Specific practice exercises with clear intent and method.",
             "items": {
                 "type": "object",
                 "additionalProperties": True,
@@ -88,10 +61,7 @@ NOTES_SCHEMA: dict = {
         },
         "common_mistakes": {
             "type": "array",
-            "description": (
-                "Errors observed or discussed, paired with the correction. "
-                "High confidence or omit."
-            ),
+            "description": "Errors observed or discussed, paired with the correction.",
             "items": {
                 "type": "object",
                 "additionalProperties": True,
@@ -103,10 +73,7 @@ NOTES_SCHEMA: dict = {
         },
         "patterns_and_sequences": {
             "type": "array",
-            "description": (
-                "Named patterns, move sequences, or combinations. "
-                "High confidence or omit."
-            ),
+            "description": "Named patterns, move sequences, or combinations taught or referenced.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -123,10 +90,7 @@ NOTES_SCHEMA: dict = {
         },
         "student_observations": {
             "type": "array",
-            "description": (
-                "Instructor observations about the specific student's dancing. "
-                "High confidence or omit."
-            ),
+            "description": "Instructor observations about a specific student. Private or coaching sessions only.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -140,9 +104,7 @@ NOTES_SCHEMA: dict = {
         },
         "action_items": {
             "type": "array",
-            "description": (
-                "Concrete takeaways or homework assigned. High confidence or omit."
-            ),
+            "description": "Concrete takeaways or homework for the student(s).",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -159,10 +121,7 @@ NOTES_SCHEMA: dict = {
         },
         "competition_notes": {
             "type": "array",
-            "description": (
-                "Strategy, judging insight, or competition-specific advice. "
-                "High confidence or omit."
-            ),
+            "description": "Strategy, judging insight, or competition-specific advice.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -179,10 +138,7 @@ NOTES_SCHEMA: dict = {
         },
         "quotes": {
             "type": "array",
-            "description": (
-                "Memorable or particularly clear instructor quotes. "
-                "High confidence or omit."
-            ),
+            "description": "Memorable or particularly clear instructor quotes. Use the speaker's actual words.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -200,10 +156,7 @@ NOTES_SCHEMA: dict = {
         },
         "references": {
             "type": "array",
-            "description": (
-                "Named instructors, dancers, systems, or resources cited. "
-                "High confidence or omit."
-            ),
+            "description": "Named instructors, dancers, systems, or resources cited.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -221,9 +174,7 @@ NOTES_SCHEMA: dict = {
         },
         "off_topic_notes": {
             "type": "array",
-            "description": (
-                "Significant non-dance tangents worth preserving. High confidence or omit."
-            ),
+            "description": "Significant non-dance tangents worth preserving.",
             "items": {
                 "oneOf": [
                     {"type": "string"},
@@ -238,12 +189,11 @@ NOTES_SCHEMA: dict = {
                 ]
             },
         },
-        # Feedback loop
         "suggested_new_sections": {
             "type": "array",
             "description": (
-                "Content that doesn't fit any known section. Flagged for schema review. "
-                "Do NOT invent a new top-level key — put it here instead."
+                "Content that doesn't fit any known section. Flag here instead of "
+                "inventing a new top-level key. Omit entirely if nothing qualifies."
             ),
             "items": {
                 "type": "object",

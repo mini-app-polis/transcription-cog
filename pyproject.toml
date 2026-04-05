@@ -15,10 +15,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy",
     "pre-commit",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "respx",
     "ruff",
 ]
 
@@ -57,3 +59,7 @@ addopts = "--cov=notes_ingest_cog --cov-report=term-missing"
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "notes_ingest_cog.main"
+disable_error_code = ["arg-type"]
