@@ -34,6 +34,7 @@ from mini_app_polis import logger as log
 from mini_app_polis.google import GoogleAPI
 from mini_app_polis.llm import LLMMessage, build_llm
 from prefect import flow, get_run_logger, task
+from prefect.concurrency.sync import concurrency
 
 from .api_client import NotesApiClient
 from .config import Config, load_config
@@ -275,57 +276,78 @@ def _process_one(
     ),
 )
 def process_transcript() -> dict:
-    """Main Prefect flow — scans input folder and processes all transcripts found."""
+    """Main Prefect flow — scans input folder and processes all transcripts found.
+
+    All configuration comes from environment variables via Doppler → Railway.
+    Triggered by watcher-cog; can also be run manually from Prefect UI with no input.
+
+    The concurrency slot 'notes-ingest' (limit 1) ensures only one run can hold
+    the folder scan and processing lock at a time. A second run triggered while
+    the first is active will block at the slot until the first run completes,
+    including archiving all files. This prevents duplicate LLM calls on the same
+    file when watcher-cog fires mid-run.
+
+    Returns:
+        Dict with counts of processed and skipped files.
+    """
     logger = _get_logger()
-    logger.info(
-        log.with_log_prefix(log.LOG_START, "Scanning input folder for transcripts")
-    )
 
-    cfg = load_config()
-    g = GoogleAPI.from_env()
-    api = NotesApiClient(
-        base_url=cfg.kaiano_api_base_url,
-        internal_key=cfg.kaiano_api_internal_key,
-    )
-
-    files = list(_iter_files(g, cfg.notes_input_folder_id))
-
-    if not files:
-        logger.info("No transcript files found in input folder")
-        return {"processed": 0, "skipped": 0, "files": []}
-
-    logger.info(
-        log.with_log_prefix(log.LOG_START, f"Found {len(files)} file(s) to process")
-    )
-
-    results = []
-    processed = 0
-    skipped = 0
-
-    for file_id, file_name, mime_type in files:
-        logger.info(log.with_log_prefix(log.LOG_START, f"Processing: {file_name!r}"))
-        try:
-            result = _process_one(g, api, cfg, file_id, file_name, mime_type, logger)
-            results.append(result)
-            if result.get("skipped"):
-                skipped += 1
-            else:
-                processed += 1
-                logger.info(
-                    log.with_log_prefix(log.LOG_SUCCESS, f"Completed: {file_name!r}")
-                )
-        except Exception:
-            logger.exception(
-                log.with_log_prefix(
-                    log.LOG_FAILURE, f"Failed processing: {file_name!r}"
-                )
-            )
-            skipped += 1
-
-    logger.info(
-        log.with_log_prefix(
-            log.LOG_SUCCESS,
-            f"Run complete — processed: {processed}, skipped: {skipped}",
+    with concurrency("notes-ingest", occupy=1):
+        logger.info(
+            log.with_log_prefix(log.LOG_START, "Scanning input folder for transcripts")
         )
-    )
-    return {"processed": processed, "skipped": skipped, "files": results}
+
+        cfg = load_config()
+        g = GoogleAPI.from_env()
+        api = NotesApiClient(
+            base_url=cfg.kaiano_api_base_url,
+            internal_key=cfg.kaiano_api_internal_key,
+        )
+
+        files = list(_iter_files(g, cfg.notes_input_folder_id))
+
+        if not files:
+            logger.info("No transcript files found in input folder")
+            return {"processed": 0, "skipped": 0, "files": []}
+
+        logger.info(
+            log.with_log_prefix(log.LOG_START, f"Found {len(files)} file(s) to process")
+        )
+
+        results = []
+        processed = 0
+        skipped = 0
+
+        for file_id, file_name, mime_type in files:
+            logger.info(
+                log.with_log_prefix(log.LOG_START, f"Processing: {file_name!r}")
+            )
+            try:
+                result = _process_one(
+                    g, api, cfg, file_id, file_name, mime_type, logger
+                )
+                results.append(result)
+                if result.get("skipped"):
+                    skipped += 1
+                else:
+                    processed += 1
+                    logger.info(
+                        log.with_log_prefix(
+                            log.LOG_SUCCESS, f"Completed: {file_name!r}"
+                        )
+                    )
+            except Exception:
+                logger.exception(
+                    log.with_log_prefix(
+                        log.LOG_FAILURE, f"Failed processing: {file_name!r}"
+                    )
+                )
+                skipped += 1
+
+        logger.info(
+            log.with_log_prefix(
+                log.LOG_SUCCESS,
+                f"Run complete — processed: {processed}, skipped: {skipped}",
+            )
+        )
+        return {"processed": processed, "skipped": skipped, "files": results}
