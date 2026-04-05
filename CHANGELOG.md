@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.3.1...v1.3.2) (2026-04-05)
+
+
+### Bug Fixes
+
+* concurrency block ([0be733c](https://github.com/mini-app-polis/notes-ingest-cog/commit/0be733c4a468fd7f061da7279d14831245e3dcb3))
+
 ## [1.3.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.3.0...v1.3.1) (2026-04-05)
 
 
