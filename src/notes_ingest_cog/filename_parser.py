@@ -33,12 +33,11 @@ from dataclasses import dataclass, field
 _KNOWN_ORGS: list[str] = [
     "swingesota",
     "swing in the north",
-    "freedom swing",
     "westie academy",
-    "mnwest",
-    "dance for joy",
-    "capital swing",
-    "bameo",
+    "mnwcsdc",
+    "tcrebels",
+    "tc rebels",
+    "sitn",
 ]
 
 _DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(.+)$")
