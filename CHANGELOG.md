@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.1.1...v1.2.0) (2026-04-05)
+
+
+### Features
+
+* updating with filename intake requirements and adding sentry support ([9a0bee9](https://github.com/mini-app-polis/notes-ingest-cog/commit/9a0bee9db2a75657b243e4f0756cef67ca663154))
+
 ## [1.1.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.1.0...v1.1.1) (2026-04-03)
 
 
