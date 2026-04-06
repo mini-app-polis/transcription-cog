@@ -1,0 +1,12 @@
+# notes-ingest-cog / evaluator.yaml
+# Per-repo evaluation configuration — ecosystem-standards ADR-001, ADR-002
+
+type: pipeline-cog
+
+deferrals:
+  - rule: PY-013
+    reason: "Deduplication logic present but possible_duplicate_ prefixing not yet implemented."
+    until: null
+
+# TEST-001/002/004 were excepted in ecosystem.yaml but pipeline-cog type
+# scoping now covers these automatically — no exemptions needed.
