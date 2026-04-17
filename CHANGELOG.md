@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.5.0...v1.6.0) (2026-04-17)
+
+
+### Features
+
+* common upgrade ([1c7eb6a](https://github.com/mini-app-polis/notes-ingest-cog/commit/1c7eb6aa28d13e9b571e0625f67805bc4e88c5f7))
+
 # [1.5.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.4.0...v1.5.0) (2026-04-17)
 
 
