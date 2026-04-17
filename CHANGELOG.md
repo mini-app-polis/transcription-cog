@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.6.0...v1.6.1) (2026-04-17)
+
+
+### Bug Fixes
+
+* bump common-python-utils to 2.4.2 ([3e98a63](https://github.com/mini-app-polis/notes-ingest-cog/commit/3e98a63bc1d745099a1f0c7ab88fdd333c0e68c7))
+
 # [1.6.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.5.0...v1.6.0) (2026-04-17)
 
 
