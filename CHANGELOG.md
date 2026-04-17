@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.4.0...v1.5.0) (2026-04-17)
+
+
+### Features
+
+* upgrade common for auth ([93f23b0](https://github.com/mini-app-polis/notes-ingest-cog/commit/93f23b0178961548fdc58414dd3d82ea43f16c74))
+
 # [1.4.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.3.2...v1.4.0) (2026-04-17)
 
 
