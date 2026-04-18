@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.6.1...v1.7.0) (2026-04-18)
+
+
+### Features
+
+* bump common-python-utils ([c02e9ca](https://github.com/mini-app-polis/notes-ingest-cog/commit/c02e9ca99d63a0c4dd60d5ed1c2a0f7bcb5c2138))
+
 ## [1.6.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.6.0...v1.6.1) (2026-04-17)
 
 
