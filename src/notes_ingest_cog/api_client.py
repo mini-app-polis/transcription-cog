@@ -9,6 +9,7 @@ Auth: per-caller X-Internal-API-Key header via get_internal_headers().
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from mini_app_polis.api import KaianoApiClient
 
@@ -55,3 +56,26 @@ class NotesApiClient:
             payload.model_dump(),
         )
         return NoteResponse(**response["data"])
+
+    def post_evaluation(
+        self,
+        *,
+        source: str,
+        source_ref: str,
+        severity: str,
+        dimension: str,
+        detail: str,
+        meta: dict[str, Any],
+    ) -> None:
+        """POST /v1/evaluations — pipeline quality signal (best-effort at call site)."""
+        self._client.post(
+            "/v1/evaluations",
+            {
+                "source": source,
+                "source_ref": source_ref,
+                "severity": severity,
+                "dimension": dimension,
+                "detail": detail,
+                "meta": meta,
+            },
+        )

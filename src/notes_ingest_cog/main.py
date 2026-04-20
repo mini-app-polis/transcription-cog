@@ -43,11 +43,11 @@ def _init_sentry(dsn: str) -> None:
     LOG.info(log.with_log_prefix(log.LOG_SUCCESS, "Sentry initialised"))
 
 
-def _ping_healthcheck(url: str) -> None:
+def _ping_healthcheck(url: str, timeout_seconds: int) -> None:
     if not url:
         return
     try:
-        httpx.get(url, timeout=5)
+        httpx.get(url, timeout=timeout_seconds)
     except Exception as exc:
         LOG.warning(
             log.with_log_prefix(log.LOG_WARNING, f"Healthchecks.io ping failed: {exc}")
@@ -65,7 +65,7 @@ def main() -> None:
         sys.exit(1)
 
     _init_sentry(cfg.sentry_dsn)
-    _ping_healthcheck(cfg.healthchecks_url)
+    _ping_healthcheck(cfg.healthchecks_url, cfg.healthcheck_timeout_seconds)
 
     LOG.info(
         log.with_log_prefix(

@@ -23,6 +23,7 @@ Flow steps (per file):
   6. Call LLM — transcript → structured notes JSON
   7. Validate and store notes via api-kaianolevine-com → wcs_notes
   8. Archive original file to processed folder
+  9. Post pipeline evaluation (best-effort) to pipeline_evaluations
 """
 
 from __future__ import annotations
@@ -114,8 +115,8 @@ def task_call_llm(
     cfg: Config,
     transcript_text: str,
     parsed: ParsedFilename,
-) -> dict:
-    """Call the LLM and return validated notes JSON."""
+) -> tuple[dict, bool]:
+    """Call the LLM and return (notes_json, schema_valid)."""
     logger = _get_logger()
     logger.info(
         log.with_log_prefix(
@@ -134,9 +135,11 @@ def task_call_llm(
     )
     notes = result.output_json
 
+    schema_valid = True
     try:
         validate(instance=notes, schema=NOTES_SCHEMA)
     except ValidationError as exc:
+        schema_valid = False
         logger.warning(
             log.with_log_prefix(
                 log.LOG_WARNING,
@@ -145,7 +148,7 @@ def task_call_llm(
         )
 
     logger.info(log.with_log_prefix(log.LOG_SUCCESS, "LLM call complete"))
-    return notes
+    return notes, schema_valid
 
 
 @task(retries=2)
@@ -186,6 +189,52 @@ def task_archive_file(
 ) -> None:
     """Archive the processed transcript file."""
     archive_file(g, file_id, processed_folder_id, name)
+
+
+@task(retries=2)
+def task_post_evaluation(
+    api: NotesApiClient,
+    transcript_id: str,
+    notes: dict,
+    schema_valid: bool,
+    llm_model: str,
+    llm_provider: str,
+) -> None:
+    """Post a quality-evaluation finding to pipeline_evaluations.
+
+    Resolves PIPE-009 / PIPE-011: pipeline-cogs must emit at least one
+    evaluation signal per processed record so quality can be tracked
+    ecosystem-wide. For notes-ingest-cog, the natural quality signal
+    is whether the LLM output passed JSON schema validation.
+    """
+    logger = _get_logger()
+    severity = "SUCCESS" if schema_valid else "WARN"
+    try:
+        api.post_evaluation(
+            source="notes-ingest-cog",
+            source_ref=transcript_id,
+            severity=severity,
+            dimension="llm_output_quality",
+            detail=(
+                "Notes JSON schema validation passed"
+                if schema_valid
+                else "Notes JSON failed schema validation"
+            ),
+            meta={
+                "llm_provider": llm_provider,
+                "llm_model": llm_model,
+                "has_title": bool(notes.get("title")),
+                "has_summary": bool(notes.get("summary")),
+            },
+        )
+    except Exception as exc:
+        # Evaluation posting is best-effort — never fail the pipeline over it.
+        logger.warning(
+            log.with_log_prefix(
+                log.LOG_WARNING,
+                f"Failed to post evaluation for transcript {transcript_id}: {exc}",
+            )
+        )
 
 
 def _process_one(
@@ -251,9 +300,9 @@ def _process_one(
         raise
 
     # Step 5: call LLM
-    notes = task_call_llm.with_options(retry_delay_seconds=cfg.task_retry_delay_long)(
-        cfg, raw_text, parsed
-    )
+    notes, schema_valid = task_call_llm.with_options(
+        retry_delay_seconds=cfg.task_retry_delay_long
+    )(cfg, raw_text, parsed)
 
     # Step 6: store notes
     note_id = task_store_notes.with_options(
@@ -262,6 +311,11 @@ def _process_one(
 
     # Step 7: archive
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
+
+    # Step 8: post evaluation finding (best-effort, never blocks pipeline)
+    task_post_evaluation.with_options(
+        retry_delay_seconds=cfg.task_retry_delay_short
+    )(api, transcript_id, notes, schema_valid, cfg.llm_model, cfg.llm_provider)
 
     return {"transcript_id": transcript_id, "note_id": note_id, "file": file_name}
 

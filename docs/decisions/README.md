@@ -35,4 +35,6 @@ What becomes easier or more difficult to do because of this change?
 
 ## Index
 
-No decisions recorded yet.
+- [0001. Guard folder scan and writes with a Prefect concurrency slot](./0001-prefect-concurrency-slot.md)
+- [0002. Skip duplicates by unique constraint, defer possible_duplicate_ prefix](./0002-duplicate-handling-strategy.md)
+- [0003. Use LLM schema validity as the pipeline_evaluations signal](./0003-llm-output-as-pipeline-evaluation-signal.md)

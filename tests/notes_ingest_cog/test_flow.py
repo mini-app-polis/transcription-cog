@@ -161,6 +161,10 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
     mock_api.create_transcript.assert_called_once()
     mock_api.create_note.assert_called_once()
     mock_llm.generate_json.assert_called_once()
+    # PIPE-009 / PIPE-011: evaluation finding posted for every processed file
+    # (Evaluation posting is best-effort; mock the client at the import site
+    # if you want to assert against it. Otherwise it silently no-ops on the
+    # test API URL and is caught by task_post_evaluation's inner try/except.)
     assert result["processed"] == 1
     assert result["skipped"] == 0
     assert result["files"][0]["transcript_id"] == "transcript-abc"
@@ -194,6 +198,10 @@ def test_process_transcript_passes_parsed_metadata_to_note(
         process_transcript()
 
     mock_api.create_note.assert_called_once()
+    # PIPE-009 / PIPE-011: evaluation finding posted for every processed file
+    # (Evaluation posting is best-effort; mock the client at the import site
+    # if you want to assert against it. Otherwise it silently no-ops on the
+    # test API URL and is caught by task_post_evaluation's inner try/except.)
     call_kwargs = mock_api.create_note.call_args[0][0]
     assert call_kwargs.session_type == "private_lesson"
     assert call_kwargs.instructors == ["Kaiano"]
@@ -228,6 +236,10 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
 
     mock_api.create_transcript.assert_called_once()
     mock_api.create_note.assert_called_once()
+    # PIPE-009 / PIPE-011: evaluation finding posted for every processed file
+    # (Evaluation posting is best-effort; mock the client at the import site
+    # if you want to assert against it. Otherwise it silently no-ops on the
+    # test API URL and is caught by task_post_evaluation's inner try/except.)
     assert "processed" in result
     assert "skipped" in result
     assert "files" in result
@@ -255,8 +267,10 @@ def test_process_transcript_skips_already_processed(
 
         result = process_transcript()
 
-    # task_store_transcript has retries=2, so the API may be hit multiple times
-    assert mock_api.create_transcript.called
+    # task_store_transcript sets retries=2, so Prefect attempts the task three times
+    # before the exception reaches the flow handler (session env defaults do not
+    # override an explicit retries= on the decorator).
+    assert mock_api.create_transcript.call_count == 3
     assert result["skipped"] == 1
     assert result["files"][0]["reason"] == "already_processed"
 
@@ -296,3 +310,34 @@ def test_process_transcript_continues_after_failure(
     mock_llm.generate_json.assert_called_once()
     assert result["processed"] == 1
     assert result["skipped"] == 1
+
+
+def test_process_transcript_posts_evaluation(mock_env: None, mock_drive_text: str) -> None:
+    with (
+        patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
+        patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("notes_ingest_cog.flow.build_llm") as mock_build_llm,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-1", _VALID_FILENAME),
+        ]
+        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
+        mock_api.create_transcript.return_value = MagicMock(id="t-1")
+        mock_api.create_note.return_value = MagicMock(id="n-1")
+
+        mock_llm = MagicMock()
+        mock_build_llm.return_value = mock_llm
+        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
+
+        process_transcript()
+
+    mock_api.post_evaluation.assert_called_once()
+    call_kwargs = mock_api.post_evaluation.call_args.kwargs
+    assert call_kwargs["source"] == "notes-ingest-cog"
+    assert call_kwargs["source_ref"] == "t-1"
+    assert call_kwargs["dimension"] == "llm_output_quality"

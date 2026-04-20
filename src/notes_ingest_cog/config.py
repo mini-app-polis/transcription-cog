@@ -37,6 +37,8 @@ class Config:
     # Task retry delays — sourced from env so tests can set to 0 (TEST-013)
     task_retry_delay_short: int = 30
     task_retry_delay_long: int = 60
+    # HTTP timeout for external pings (TEST-013)
+    healthcheck_timeout_seconds: int = 5
 
     @property
     def default_models(self) -> dict[str, str]:
@@ -67,4 +69,5 @@ def load_config() -> Config:
         min_transcript_chars=int(os.getenv("MIN_TRANSCRIPT_CHARS", "200")),
         task_retry_delay_short=int(os.getenv("TASK_RETRY_DELAY_SHORT", "30")),
         task_retry_delay_long=int(os.getenv("TASK_RETRY_DELAY_LONG", "60")),
+        healthcheck_timeout_seconds=int(os.getenv("HEALTHCHECK_TIMEOUT_SECONDS", "5")),
     )
