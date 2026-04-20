@@ -55,6 +55,7 @@ def _ping_healthcheck(url: str) -> None:
 
 
 def main() -> None:
+    """TODO: describe this function."""
     LOG.info(log.with_log_prefix(log.LOG_START, "notes-ingest-cog starting"))
 
     try:

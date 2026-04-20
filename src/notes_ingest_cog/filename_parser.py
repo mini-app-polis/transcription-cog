@@ -46,6 +46,7 @@ _ARROW_RE = re.compile(r"^(.+?)\s*>\s*(.+)$")
 
 @dataclass(frozen=True)
 class ParsedFilename:
+    """TODO: describe this class."""
     recording_date: str
     instructors: list[str]
     students: list[str]
@@ -57,6 +58,7 @@ class ParsedFilename:
 
 
 class FilenameParseError(ValueError):
+    """TODO: describe this class."""
     pass
 
 

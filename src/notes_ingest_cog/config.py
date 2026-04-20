@@ -23,6 +23,7 @@ def _require(name: str) -> str:
 
 @dataclass(frozen=True)
 class Config:
+    """TODO: describe this class."""
     notes_input_folder_id: str
     notes_processed_folder_id: str
     llm_provider: LLMProvider
@@ -39,10 +40,12 @@ class Config:
 
     @property
     def default_models(self) -> dict[str, str]:
+        """TODO: describe this function."""
         return _DEFAULT_MODELS
 
 
 def load_config() -> Config:
+    """TODO: describe this function."""
     provider_raw = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
     if provider_raw not in ("anthropic", "openai"):
         raise RuntimeError(

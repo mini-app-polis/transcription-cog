@@ -26,6 +26,7 @@ Visibility = Literal["private", "public"]
 
 
 class DriveFileRecord(BaseModel):
+    """TODO: describe this class."""
     id: str = Field(..., description = 'TODO: describe this field.')
     name: str = Field(..., description = 'TODO: describe this field.')
     mime_type: str = Field(alias="mimeType", description = 'TODO: describe this field.')
@@ -33,6 +34,7 @@ class DriveFileRecord(BaseModel):
 
 
 class FilenameMetadata(BaseModel):
+    """TODO: describe this class."""
     recording_date: str = Field(..., description = 'TODO: describe this field.')
     instructors: list[str] = Field(..., description = 'TODO: describe this field.')
     students: list[str] = Field(..., description = 'TODO: describe this field.')
@@ -42,6 +44,7 @@ class FilenameMetadata(BaseModel):
 
 
 class NotesOutput(BaseModel):
+    """TODO: describe this class."""
     title: str | None = Field(default = None, description = 'TODO: describe this field.')
     session_type: str | None = Field(default = None, description = 'TODO: describe this field.')
     summary: str | None = Field(default = None, description = 'TODO: describe this field.')
@@ -61,6 +64,7 @@ class NotesOutput(BaseModel):
 
 
 class TranscriptCreatePayload(BaseModel):
+    """TODO: describe this class."""
     raw_text: str = Field(..., description = 'TODO: describe this field.')
     source_type: SourceType = Field(..., description = 'TODO: describe this field.')
     source_filename: str = Field(..., description = 'TODO: describe this field.')
@@ -68,6 +72,7 @@ class TranscriptCreatePayload(BaseModel):
 
 
 class NoteCreatePayload(BaseModel):
+    """TODO: describe this class."""
     transcript_id: str = Field(..., description = 'TODO: describe this field.')
     title: str | None = Field(..., description = 'TODO: describe this field.')
     session_date: str | None = Field(..., description = 'TODO: describe this field.')
@@ -82,10 +87,12 @@ class NoteCreatePayload(BaseModel):
 
 
 class TranscriptResponse(BaseModel):
+    """TODO: describe this class."""
     id: str = Field(..., description = 'TODO: describe this field.')
     created_at: datetime = Field(..., description = 'TODO: describe this field.')
 
 
 class NoteResponse(BaseModel):
+    """TODO: describe this class."""
     id: str = Field(..., description = 'TODO: describe this field.')
     created_at: datetime = Field(..., description = 'TODO: describe this field.')
