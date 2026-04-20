@@ -1,3 +1,11 @@
+## [1.7.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.0...v1.7.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* addressing evaluator findings ([4fb0213](https://github.com/mini-app-polis/notes-ingest-cog/commit/4fb0213671a96fa7706bb88d4d9fa68d195c4870))
+* addressing evaluator findings ([e2970d8](https://github.com/mini-app-polis/notes-ingest-cog/commit/e2970d8c6b8d9c03f05c8330f476b15316a2e142))
+
 # [1.7.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.6.1...v1.7.0) (2026-04-18)
 
 
