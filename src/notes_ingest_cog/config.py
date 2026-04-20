@@ -24,6 +24,7 @@ def _require(name: str) -> str:
 @dataclass(frozen=True)
 class Config:
     """TODO: describe this class."""
+
     notes_input_folder_id: str
     notes_processed_folder_id: str
     llm_provider: LLMProvider

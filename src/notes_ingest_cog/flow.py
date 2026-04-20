@@ -313,9 +313,9 @@ def _process_one(
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
 
     # Step 8: post evaluation finding (best-effort, never blocks pipeline)
-    task_post_evaluation.with_options(
-        retry_delay_seconds=cfg.task_retry_delay_short
-    )(api, transcript_id, notes, schema_valid, cfg.llm_model, cfg.llm_provider)
+    task_post_evaluation.with_options(retry_delay_seconds=cfg.task_retry_delay_short)(
+        api, transcript_id, notes, schema_valid, cfg.llm_model, cfg.llm_provider
+    )
 
     return {"transcript_id": transcript_id, "note_id": note_id, "file": file_name}
 

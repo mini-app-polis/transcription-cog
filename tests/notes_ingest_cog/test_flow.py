@@ -312,7 +312,9 @@ def test_process_transcript_continues_after_failure(
     assert result["skipped"] == 1
 
 
-def test_process_transcript_posts_evaluation(mock_env: None, mock_drive_text: str) -> None:
+def test_process_transcript_posts_evaluation(
+    mock_env: None, mock_drive_text: str
+) -> None:
     with (
         patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
         patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
