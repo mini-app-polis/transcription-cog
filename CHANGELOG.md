@@ -1,3 +1,10 @@
+## [1.7.2](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.1...v1.7.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **tests:** add mock verification to Drive and evaluation-post tests ([e34d637](https://github.com/mini-app-polis/notes-ingest-cog/commit/e34d637a35fb3531258f51cf80e39e1b4299e002))
+
 ## [1.7.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.0...v1.7.1) (2026-04-20)
 
 
