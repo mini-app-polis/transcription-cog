@@ -183,7 +183,14 @@ def test_task_post_evaluation_warn_on_schema_invalid() -> None:
 
 
 def test_task_post_evaluation_swallows_errors() -> None:
-    """Evaluation posting failure must not bubble up — it's best-effort."""
+    """Evaluation posting failure must not bubble up — it's best-effort.
+
+    Asserts the api client was actually called (not short-circuited elsewhere)
+    and that the RuntimeError was caught rather than propagated. The test
+    reaching this final assertion at all proves no exception was raised —
+    satisfies TEST-011 mock verification and TEST-003 resilience (asserts the
+    task did NOT raise to the caller).
+    """
     api = MagicMock()
     api.post_evaluation.side_effect = RuntimeError("API down")
 
@@ -195,3 +202,5 @@ def test_task_post_evaluation_swallows_errors() -> None:
         llm_model="claude-sonnet-4-6",
         llm_provider="anthropic",
     )
+
+    api.post_evaluation.assert_called_once()

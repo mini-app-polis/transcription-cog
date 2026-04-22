@@ -50,17 +50,26 @@ def test_read_transcript_google_doc() -> None:
 
 
 def test_read_transcript_txt_via_download_bytes() -> None:
-    """Plain text file is read via download_bytes when available."""
+    """Plain text file is read via download_bytes when available.
+
+    Asserts the Drive client's bytes-download method was invoked with the
+    correct file_id — satisfies TEST-011 mock verification.
+    """
     g = MagicMock()
     g.drive.download_bytes.return_value = b"raw transcript text"
 
     result = read_transcript_text(g, "file-id", TXT_MIME)
 
     assert result == "raw transcript text"
+    g.drive.download_bytes.assert_called_once_with("file-id")
 
 
 def test_read_transcript_txt_fallback_to_service() -> None:
-    """Falls back to raw Drive service when no download_bytes method exists."""
+    """Falls back to raw Drive service when no download_bytes method exists.
+
+    Asserts the raw service's get_media(fileId=...) path was invoked with the
+    correct file_id — satisfies TEST-011 mock verification.
+    """
     g = MagicMock()
     g.drive = MagicMock(spec=["service"])
     g.drive.service.files.return_value.get_media.return_value.execute.return_value = (
@@ -68,6 +77,10 @@ def test_read_transcript_txt_fallback_to_service() -> None:
     )
     result = read_transcript_text(g, "file-id", TXT_MIME)
     assert result == "fallback content"
+    g.drive.service.files.return_value.get_media.assert_called_once_with(
+        fileId="file-id"
+    )
+    g.drive.service.files.return_value.get_media.return_value.execute.assert_called_once()
 
 
 def test_read_transcript_unsupported_mime_raises() -> None:
