@@ -353,10 +353,7 @@ def process_transcript() -> dict:
 
         cfg = load_config()
         g = GoogleAPI.from_env()
-        api = NotesApiClient(
-            base_url=cfg.kaiano_api_base_url,
-            internal_key=cfg.kaiano_api_internal_key,
-        )
+        api = NotesApiClient()
 
         files = list(_iter_files(g, cfg.notes_input_folder_id))
 

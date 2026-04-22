@@ -20,7 +20,6 @@ def test_load_config_invalid_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOTES_INPUT_FOLDER_ID", "folder-id")
     monkeypatch.setenv("NOTES_PROCESSED_FOLDER_ID", "processed-id")
     monkeypatch.setenv("KAIANO_API_BASE_URL", "http://localhost:8000")
-    monkeypatch.setenv("KAIANO_API_INTERNAL_KEY", "test-key")
     with pytest.raises(RuntimeError, match="Unsupported LLM_PROVIDER"):
         load_config()
 
@@ -30,7 +29,6 @@ def test_load_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOTES_INPUT_FOLDER_ID", "input-folder")
     monkeypatch.setenv("NOTES_PROCESSED_FOLDER_ID", "processed-folder")
     monkeypatch.setenv("KAIANO_API_BASE_URL", "http://localhost:8000")
-    monkeypatch.setenv("KAIANO_API_INTERNAL_KEY", "test-key")
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.delenv("LLM_MODEL", raising=False)
     monkeypatch.delenv("LOGGING_LEVEL", raising=False)
@@ -48,7 +46,6 @@ def test_load_config_openai_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOTES_INPUT_FOLDER_ID", "input-folder")
     monkeypatch.setenv("NOTES_PROCESSED_FOLDER_ID", "processed-folder")
     monkeypatch.setenv("KAIANO_API_BASE_URL", "http://localhost:8000")
-    monkeypatch.setenv("KAIANO_API_INTERNAL_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_MODEL", raising=False)
 
@@ -63,7 +60,6 @@ def test_load_config_custom_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOTES_INPUT_FOLDER_ID", "input-folder")
     monkeypatch.setenv("NOTES_PROCESSED_FOLDER_ID", "processed-folder")
     monkeypatch.setenv("KAIANO_API_BASE_URL", "http://localhost:8000")
-    monkeypatch.setenv("KAIANO_API_INTERNAL_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     monkeypatch.setenv("LLM_MODEL", "claude-opus-4-6")
 

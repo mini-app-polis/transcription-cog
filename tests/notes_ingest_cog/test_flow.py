@@ -12,7 +12,6 @@ _ENV_VARS = {
     "NOTES_INPUT_FOLDER_ID": "input-folder",
     "NOTES_PROCESSED_FOLDER_ID": "processed-folder",
     "KAIANO_API_BASE_URL": "http://localhost:8000",
-    "KAIANO_API_INTERNAL_KEY": "test-key",
     "LLM_PROVIDER": "anthropic",
     "ANTHROPIC_API_KEY": "test-anthropic-key",
     "TASK_RETRY_DELAY_SHORT": "0",

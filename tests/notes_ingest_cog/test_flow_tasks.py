@@ -37,7 +37,6 @@ def _cfg() -> MagicMock:
     cfg.llm_model = "claude-sonnet-4-6"
     cfg.llm_provider = "anthropic"
     cfg.kaiano_api_base_url = "http://localhost:8000"
-    cfg.kaiano_api_internal_key = "test-key"
     return cfg
 
 
@@ -185,11 +184,10 @@ def test_task_post_evaluation_warn_on_schema_invalid() -> None:
 def test_task_post_evaluation_swallows_errors() -> None:
     """Evaluation posting failure must not bubble up — it's best-effort.
 
-    Asserts the api client was actually called (not short-circuited elsewhere)
-    and that the RuntimeError was caught rather than propagated. The test
-    reaching this final assertion at all proves no exception was raised —
-    satisfies TEST-011 mock verification and TEST-003 resilience (asserts the
-    task did NOT raise to the caller).
+    Asserts the api client was actually called (not short-circuited upstream)
+    and that the RuntimeError was caught rather than propagated. Reaching
+    this final assertion proves no exception was raised — satisfies TEST-011
+    mock verification and TEST-003 resilience.
     """
     api = MagicMock()
     api.post_evaluation.side_effect = RuntimeError("API down")

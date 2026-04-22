@@ -30,7 +30,6 @@ class Config:
     llm_provider: LLMProvider
     llm_model: str
     kaiano_api_base_url: str
-    kaiano_api_internal_key: str
     healthchecks_url: str
     sentry_dsn: str
     logging_level: str
@@ -57,13 +56,15 @@ def load_config() -> Config:
     provider: LLMProvider = provider_raw  # type: ignore[assignment]
     model = os.getenv("LLM_MODEL", _DEFAULT_MODELS[provider])
 
+    # Auth env vars (KAIANO_API_CLERK_MACHINE_SECRET) are read directly by
+    # KaianoApiClient.from_env() in api_client.py — validated there rather
+    # than duplicated into Config.
     return Config(
         notes_input_folder_id=_require("NOTES_INPUT_FOLDER_ID"),
         notes_processed_folder_id=_require("NOTES_PROCESSED_FOLDER_ID"),
         llm_provider=provider,
         llm_model=model,
         kaiano_api_base_url=_require("KAIANO_API_BASE_URL"),
-        kaiano_api_internal_key=_require("KAIANO_API_INTERNAL_KEY"),
         healthchecks_url=os.getenv("HEALTHCHECKS_URL", ""),
         sentry_dsn=os.getenv("SENTRY_DSN_NOTES_INGEST_COG", ""),
         logging_level=os.getenv("LOGGING_LEVEL", "INFO"),
