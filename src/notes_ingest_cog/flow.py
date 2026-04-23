@@ -14,16 +14,19 @@ Filename convention (required):
 Files that do not match the convention are skipped with a warning and
 left in the input folder for manual renaming.
 
-Flow steps (per file):
-  1. Scan input folder for supported transcript files
-  2. Validate filename against naming convention
-  3. Read transcript text from Drive
-  4. Guard: validate length
-  5. Store raw transcript via api-kaianolevine-com → wcs_transcripts
-  6. Call LLM — transcript → structured notes JSON
-  7. Validate and store notes via api-kaianolevine-com → wcs_notes
-  8. Archive original file to processed folder
-  9. Post pipeline evaluation (best-effort) to pipeline_evaluations
+Flow steps:
+  Per file:
+    1. Scan input folder for supported transcript files
+    2. Validate filename against naming convention
+    3. Read transcript text from Drive
+    4. Guard: validate length
+    5. Store raw transcript via api-kaianolevine-com → wcs_transcripts
+    6. Call LLM — transcript → structured notes JSON
+    7. Validate and store notes via api-kaianolevine-com → wcs_notes
+    8. Archive original file to processed folder
+  Per run (once, after all files):
+    9. Post one pipeline evaluation to pipeline_evaluations summarizing
+       the whole run (best-effort).
 """
 
 from __future__ import annotations
@@ -191,52 +194,6 @@ def task_archive_file(
     archive_file(g, file_id, processed_folder_id, name)
 
 
-@task(retries=2)
-def task_post_evaluation(
-    api: NotesApiClient,
-    transcript_id: str,
-    notes: dict,
-    schema_valid: bool,
-    llm_model: str,
-    llm_provider: str,
-) -> None:
-    """Post a quality-evaluation finding to pipeline_evaluations.
-
-    Resolves PIPE-009 / PIPE-011: pipeline-cogs must emit at least one
-    evaluation signal per processed record so quality can be tracked
-    ecosystem-wide. For notes-ingest-cog, the natural quality signal
-    is whether the LLM output passed JSON schema validation.
-    """
-    logger = _get_logger()
-    severity = "SUCCESS" if schema_valid else "WARN"
-    try:
-        api.post_evaluation(
-            source="notes-ingest-cog",
-            source_ref=transcript_id,
-            severity=severity,
-            dimension="llm_output_quality",
-            detail=(
-                "Notes JSON schema validation passed"
-                if schema_valid
-                else "Notes JSON failed schema validation"
-            ),
-            meta={
-                "llm_provider": llm_provider,
-                "llm_model": llm_model,
-                "has_title": bool(notes.get("title")),
-                "has_summary": bool(notes.get("summary")),
-            },
-        )
-    except Exception as exc:
-        # Evaluation posting is best-effort — never fail the pipeline over it.
-        logger.warning(
-            log.with_log_prefix(
-                log.LOG_WARNING,
-                f"Failed to post evaluation for transcript {transcript_id}: {exc}",
-            )
-        )
-
-
 def _process_one(
     g: GoogleAPI,
     api: NotesApiClient,
@@ -312,12 +269,98 @@ def _process_one(
     # Step 7: archive
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
 
-    # Step 8: post evaluation finding (best-effort, never blocks pipeline)
-    task_post_evaluation.with_options(retry_delay_seconds=cfg.task_retry_delay_short)(
-        api, transcript_id, notes, schema_valid, cfg.llm_model, cfg.llm_provider
+    return {
+        "transcript_id": transcript_id,
+        "note_id": note_id,
+        "file": file_name,
+        "schema_valid": schema_valid,
+    }
+
+
+@task(retries=2)
+def task_post_run_evaluation(
+    api: NotesApiClient,
+    *,
+    processed: int,
+    skipped: int,
+    results: list[dict],
+    errors: int,
+) -> None:
+    """Post ONE pipeline evaluation summarizing the whole flow run.
+
+    Resolves PIPE-009 / PIPE-011: pipeline-cogs must emit at least one
+    evaluation signal per run. The unit of evaluation is the flow run
+    (not the record). Severity reflects whether every processed file
+    passed schema validation and had no data-level skips.
+
+    Run-level severity rules:
+      SUCCESS: every processed file had schema_valid=True and no
+               data-level skips; empty runs also SUCCESS.
+      WARN:    at least one schema_valid=False, at least one data-level
+               skip (invalid_filename or transcript_too_short), or at
+               least one unhandled exception.
+      already_processed skips are benign and do not affect severity.
+
+    Best-effort: failure to POST must never fail the pipeline.
+    """
+    logger = _get_logger()
+
+    schema_invalid = sum(
+        1 for r in results if not r.get("skipped") and r.get("schema_valid") is False
+    )
+    data_skips = sum(
+        1
+        for r in results
+        if r.get("skipped")
+        and r.get("reason") in {"invalid_filename", "transcript_too_short"}
+    )
+    benign_skips = sum(
+        1
+        for r in results
+        if r.get("skipped") and r.get("reason") == "already_processed"
     )
 
-    return {"transcript_id": transcript_id, "note_id": note_id, "file": file_name}
+    has_problems = schema_invalid > 0 or data_skips > 0 or errors > 0
+    severity = "WARN" if has_problems else "SUCCESS"
+
+    if processed == 0 and skipped == 0 and errors == 0:
+        finding = "Run complete — no files to process."
+    else:
+        parts = [f"processed={processed}", f"skipped={skipped}"]
+        if errors:
+            parts.append(f"errors={errors}")
+        if schema_invalid:
+            parts.append(f"schema_invalid={schema_invalid}")
+        if data_skips:
+            parts.append(f"data_skips={data_skips}")
+        if benign_skips:
+            parts.append(f"already_processed={benign_skips}")
+        finding = "Run complete — " + ", ".join(parts) + "."
+
+    try:
+        from prefect.runtime import flow_run as _flow_run
+
+        run_id = _flow_run.id
+    except Exception:
+        run_id = None
+
+    try:
+        api.post_run_evaluation(
+            repo="notes-ingest-cog",
+            dimension="pipeline_consistency",
+            severity=severity,
+            finding=finding,
+            source="notes-ingest-cog",
+            flow_name="process-transcript",
+            run_id=run_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            log.with_log_prefix(
+                log.LOG_WARNING,
+                f"Failed to post run evaluation: {exc}",
+            )
+        )
 
 
 @flow(
@@ -342,7 +385,8 @@ def process_transcript() -> dict:
     file when watcher-cog fires mid-run.
 
     Returns:
-        Dict with counts of processed and skipped files.
+        Dict with counts of processed, skipped, and failed files (errors),
+        plus per-file result entries.
     """
     logger = _get_logger()
 
@@ -359,15 +403,25 @@ def process_transcript() -> dict:
 
         if not files:
             logger.info("No transcript files found in input folder")
+            task_post_run_evaluation.with_options(
+                retry_delay_seconds=cfg.task_retry_delay_short
+            )(
+                api,
+                processed=0,
+                skipped=0,
+                results=[],
+                errors=0,
+            )
             return {"processed": 0, "skipped": 0, "files": []}
 
         logger.info(
             log.with_log_prefix(log.LOG_START, f"Found {len(files)} file(s) to process")
         )
 
-        results = []
+        results: list[dict] = []
         processed = 0
         skipped = 0
+        errors = 0
 
         for file_id, file_name, mime_type in files:
             logger.info(
@@ -393,12 +447,27 @@ def process_transcript() -> dict:
                         log.LOG_FAILURE, f"Failed processing: {file_name!r}"
                     )
                 )
-                skipped += 1
+                errors += 1
+
+        task_post_run_evaluation.with_options(
+            retry_delay_seconds=cfg.task_retry_delay_short
+        )(
+            api,
+            processed=processed,
+            skipped=skipped,
+            results=results,
+            errors=errors,
+        )
 
         logger.info(
             log.with_log_prefix(
                 log.LOG_SUCCESS,
-                f"Run complete — processed: {processed}, skipped: {skipped}",
+                f"Run complete — processed: {processed}, skipped: {skipped}, errors: {errors}",
             )
         )
-        return {"processed": processed, "skipped": skipped, "files": results}
+        return {
+            "processed": processed,
+            "skipped": skipped,
+            "errors": errors,
+            "files": results,
+        }

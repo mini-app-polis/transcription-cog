@@ -7,14 +7,14 @@ task engine by calling the undecorated `.fn` attribute directly.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from notes_ingest_cog.filename_parser import ParsedFilename
 from notes_ingest_cog.flow import (
     task_archive_file,
-    task_post_evaluation,
+    task_post_run_evaluation,
     task_store_notes,
     task_store_transcript,
 )
@@ -143,62 +143,145 @@ def test_task_archive_file_moves_to_processed_folder() -> None:
     )
 
 
-# ── task_post_evaluation ──────────────────────────────────────────────────────
+# ── task_post_run_evaluation ───────────────────────────────────────────────────
 
 
-def test_task_post_evaluation_success_path() -> None:
+def test_task_post_run_evaluation_empty_batch_success() -> None:
     api = MagicMock()
 
-    task_post_evaluation.fn(
-        api,
-        transcript_id="t-1",
-        notes={"title": "X", "summary": "Y"},
-        schema_valid=True,
-        llm_model="claude-sonnet-4-6",
-        llm_provider="anthropic",
-    )
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=0,
+            skipped=0,
+            results=[],
+            errors=0,
+        )
 
-    api.post_evaluation.assert_called_once()
-    kwargs = api.post_evaluation.call_args.kwargs
+    api.post_run_evaluation.assert_called_once()
+    kwargs = api.post_run_evaluation.call_args.kwargs
     assert kwargs["severity"] == "SUCCESS"
-    assert kwargs["source"] == "notes-ingest-cog"
-    assert kwargs["source_ref"] == "t-1"
+    assert kwargs["repo"] == "notes-ingest-cog"
+    assert kwargs["dimension"] == "pipeline_consistency"
+    assert "no files to process" in kwargs["finding"].lower()
 
 
-def test_task_post_evaluation_warn_on_schema_invalid() -> None:
+def test_task_post_run_evaluation_all_clean_success() -> None:
     api = MagicMock()
 
-    task_post_evaluation.fn(
-        api,
-        transcript_id="t-1",
-        notes={},
-        schema_valid=False,
-        llm_model="claude-sonnet-4-6",
-        llm_provider="anthropic",
-    )
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=2,
+            skipped=0,
+            results=[
+                {"schema_valid": True, "file": "a.txt"},
+                {"schema_valid": True, "file": "b.txt"},
+            ],
+            errors=0,
+        )
 
-    kwargs = api.post_evaluation.call_args.kwargs
+    kwargs = api.post_run_evaluation.call_args.kwargs
+    assert kwargs["severity"] == "SUCCESS"
+    assert "processed=2" in kwargs["finding"]
+
+
+def test_task_post_run_evaluation_schema_invalid_warns() -> None:
+    api = MagicMock()
+
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=1,
+            skipped=0,
+            results=[{"schema_valid": False, "file": "a.txt"}],
+            errors=0,
+        )
+
+    assert api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+    assert "schema_invalid=1" in api.post_run_evaluation.call_args.kwargs["finding"]
+
+
+def test_task_post_run_evaluation_data_skip_warns() -> None:
+    api = MagicMock()
+
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=0,
+            skipped=1,
+            results=[{"skipped": True, "reason": "invalid_filename", "file": "x.txt"}],
+            errors=0,
+        )
+
+    kwargs = api.post_run_evaluation.call_args.kwargs
     assert kwargs["severity"] == "WARN"
+    assert "data_skips=1" in kwargs["finding"]
 
 
-def test_task_post_evaluation_swallows_errors() -> None:
-    """Evaluation posting failure must not bubble up — it's best-effort.
-
-    Asserts the api client was actually called (not short-circuited upstream)
-    and that the RuntimeError was caught rather than propagated. Reaching
-    this final assertion proves no exception was raised — satisfies TEST-011
-    mock verification and TEST-003 resilience.
-    """
+def test_task_post_run_evaluation_transcript_too_short_warns() -> None:
     api = MagicMock()
-    api.post_evaluation.side_effect = RuntimeError("API down")
 
-    task_post_evaluation.fn(
-        api,
-        transcript_id="t-1",
-        notes={"title": "X"},
-        schema_valid=True,
-        llm_model="claude-sonnet-4-6",
-        llm_provider="anthropic",
-    )
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=0,
+            skipped=1,
+            results=[
+                {"skipped": True, "reason": "transcript_too_short", "file": "x.txt"}
+            ],
+            errors=0,
+        )
 
-    api.post_evaluation.assert_called_once()
+    assert api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+
+
+def test_task_post_run_evaluation_already_processed_only_success() -> None:
+    api = MagicMock()
+
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=0,
+            skipped=1,
+            results=[{"skipped": True, "reason": "already_processed", "file": "a.txt"}],
+            errors=0,
+        )
+
+    kwargs = api.post_run_evaluation.call_args.kwargs
+    assert kwargs["severity"] == "SUCCESS"
+    assert "already_processed=1" in kwargs["finding"]
+
+
+def test_task_post_run_evaluation_errors_warn() -> None:
+    api = MagicMock()
+
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=0,
+            skipped=0,
+            results=[],
+            errors=2,
+        )
+
+    kwargs = api.post_run_evaluation.call_args.kwargs
+    assert kwargs["severity"] == "WARN"
+    assert "errors=2" in kwargs["finding"]
+
+
+def test_task_post_run_evaluation_swallows_post_errors() -> None:
+    """Run evaluation POST failure must not bubble up — it's best-effort."""
+    api = MagicMock()
+    api.post_run_evaluation.side_effect = RuntimeError("API down")
+
+    with patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()):
+        task_post_run_evaluation.fn(
+            api,
+            processed=1,
+            skipped=0,
+            results=[{"schema_valid": True}],
+            errors=0,
+        )
+
+    api.post_run_evaluation.assert_called_once()

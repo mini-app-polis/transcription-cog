@@ -49,25 +49,32 @@ class NotesApiClient:
         )
         return NoteResponse(**response["data"])
 
-    def post_evaluation(
+    def post_run_evaluation(
         self,
         *,
-        source: str,
-        source_ref: str,
-        severity: str,
+        repo: str,
         dimension: str,
-        detail: str,
-        meta: dict[str, Any],
+        severity: str,
+        finding: str,
+        source: str | None = None,
+        flow_name: str | None = None,
+        run_id: str | None = None,
     ) -> None:
-        """POST /v1/evaluations — pipeline quality signal (best-effort at call site)."""
-        self._client.post(
-            "/v1/evaluations",
-            {
-                "source": source,
-                "source_ref": source_ref,
-                "severity": severity,
-                "dimension": dimension,
-                "detail": detail,
-                "meta": meta,
-            },
-        )
+        """POST /v1/evaluations — one quality signal per processor run.
+
+        Matches the current pipeline_evaluations schema (PipelineEvaluationCreate,
+        extra="forbid"). One evaluation is emitted per flow run, not per record.
+        """
+        payload: dict[str, Any] = {
+            "repo": repo,
+            "dimension": dimension,
+            "severity": severity,
+            "finding": finding,
+        }
+        if source is not None:
+            payload["source"] = source
+        if flow_name is not None:
+            payload["flow_name"] = flow_name
+        if run_id is not None:
+            payload["run_id"] = run_id
+        self._client.post("/v1/evaluations", payload)
