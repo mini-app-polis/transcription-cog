@@ -354,7 +354,7 @@ def test_process_transcript_posts_run_evaluation(
 
     mock_api.post_run_evaluation.assert_called_once()
     call_kwargs = mock_api.post_run_evaluation.call_args.kwargs
-    assert call_kwargs["source"] == "notes-ingest-cog"
+    assert call_kwargs["source"] == "flow_inline"
     assert call_kwargs["repo"] == "notes-ingest-cog"
     assert call_kwargs["flow_name"] == "process-transcript"
     assert call_kwargs["dimension"] == "pipeline_consistency"

@@ -350,7 +350,7 @@ def task_post_run_evaluation(
             dimension="pipeline_consistency",
             severity=severity,
             finding=finding,
-            source="notes-ingest-cog",
+            source="flow_inline",
             flow_name="process-transcript",
             run_id=run_id,
         )
