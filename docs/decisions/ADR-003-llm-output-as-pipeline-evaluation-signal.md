@@ -1,4 +1,4 @@
-# 0003. Use LLM schema validity as the pipeline_evaluations signal
+# ADR-003: Use LLM schema validity as the pipeline_evaluations signal
 
 Date: 2026-04-20
 

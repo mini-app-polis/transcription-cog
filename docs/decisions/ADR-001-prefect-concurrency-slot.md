@@ -1,4 +1,4 @@
-# 0001. Guard folder scan and writes with a Prefect concurrency slot
+# ADR-001: Guard folder scan and writes with a Prefect concurrency slot
 
 Date: 2026-04-03
 

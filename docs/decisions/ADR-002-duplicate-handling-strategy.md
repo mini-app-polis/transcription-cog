@@ -1,4 +1,4 @@
-# 0002. Skip duplicates by unique constraint, defer possible_duplicate_ prefix
+# ADR-002: Skip duplicates by unique constraint, defer possible_duplicate_ prefix
 
 Date: 2026-04-03
 
