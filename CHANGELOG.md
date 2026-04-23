@@ -1,3 +1,11 @@
+## [1.7.3](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.2...v1.7.3) (2026-04-23)
+
+
+### Bug Fixes
+
+* **evaluations:** emit one run-level evaluation matching current API schema ([1f87ed9](https://github.com/mini-app-polis/notes-ingest-cog/commit/1f87ed9b617df00f160a5e957bc908cd385367a4))
+* **evaluations:** use canonical source="flow_inline" for bucket routing ([3b6368b](https://github.com/mini-app-polis/notes-ingest-cog/commit/3b6368b79bf57b69e42e66d39fe4fc5c7423d8f9))
+
 ## [1.7.2](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.1...v1.7.2) (2026-04-22)
 
 
