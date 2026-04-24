@@ -84,17 +84,28 @@ of all environment variables.
 Deployed as a Railway worker service (no HTTP port). Secrets managed via
 Doppler → Railway native sync.
 
+### Prerequisites
+
+These must be in place before the cog receives triggers. All are
+confirmed live as of the current deploy:
+
+1. **watcher-cog** — the `wcs-notes` `WatcherConfig` entry in
+   `watcher-cog/src/watcher_cog/config.py` watches
+   `NOTES_INPUT_FOLDER_ID` and fires the `process-transcript` Prefect
+   deployment.
+2. **Prefect Cloud** — the `process-transcript/notes-ingest-cog`
+   deployment is registered via `prefect.serve()` in `main.py` when
+   the Railway worker starts.
+
 ### Post-deploy setup
 
 After first deploy to Railway:
 
 1. **Healthchecks.io** — create a new check (period: 1 min, grace: 5 min),
-   set `HEALTHCHECKS_URL` in Doppler
-2. **Sentry** — create a Python project, set `SENTRY_DSN` in Doppler
-3. **Prefect Cloud** — verify the `process-transcript/notes-ingest-cog`
-   deployment appears in the dashboard; create a failure alert automation
-4. **watcher-cog** — add a `WatcherConfig` entry for `NOTES_INPUT_FOLDER_ID`
-   pointing to the `process-transcript` flow (tracked as a separate task)
+   set `HEALTHCHECKS_URL` in Doppler.
+2. **Sentry** — create a Python project, set `SENTRY_DSN` in Doppler.
+3. **Prefect Cloud** — create a failure alert automation for the
+   `process-transcript/notes-ingest-cog` deployment.
 
 ---
 
