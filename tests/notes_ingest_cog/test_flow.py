@@ -326,6 +326,114 @@ def test_process_transcript_continues_after_failure(
     assert result["errors"] == 1
 
 
+def test_process_transcript_mixed_batch_invalid_then_valid(
+    mock_env: None, mock_drive_text: str
+) -> None:
+    """TEST-003: a skip in one file does not prevent valid files later
+    in the same batch from processing end-to-end."""
+    with (
+        patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
+        patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("notes_ingest_cog.flow.build_llm") as mock_build_llm,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-bad", _INVALID_FILENAME),
+            _drive_item("file-good", _VALID_FILENAME),
+        ]
+        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
+        mock_api.create_transcript.return_value = MagicMock(id="t-1")
+        mock_api.create_note.return_value = MagicMock(id="n-1")
+
+        mock_llm = MagicMock()
+        mock_build_llm.return_value = mock_llm
+        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
+
+        result = process_transcript()
+
+    # The valid file completed the full pipeline.
+    mock_api.create_transcript.assert_called_once()
+    mock_api.create_note.assert_called_once()
+
+    # One skipped, one processed — not one-then-abort.
+    assert result["processed"] == 1
+    assert result["skipped"] == 1
+    assert result["errors"] == 0
+
+    # Run eval is WARN because one file was skipped for a data reason
+    # (invalid_filename).
+    mock_api.post_run_evaluation.assert_called_once()
+    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+
+    # Per-file result shape.
+    by_file = {r["file"]: r for r in result["files"]}
+    assert by_file[_INVALID_FILENAME]["reason"] == "invalid_filename"
+    assert "transcript_id" in by_file[_VALID_FILENAME]
+
+
+def test_process_transcript_mixed_batch_duplicate_then_valid(
+    mock_env: None, mock_drive_text: str
+) -> None:
+    """TEST-002: a dedup skip on one drive_file_id does not prevent a
+    subsequent new file in the same batch from processing end-to-end."""
+    with (
+        patch("notes_ingest_cog.flow.GoogleAPI") as mock_gapi,
+        patch("notes_ingest_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("notes_ingest_cog.flow.build_llm") as mock_build_llm,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-dup", _VALID_FILENAME),
+            _drive_item("file-new", _VALID_GROUP_FILENAME),
+        ]
+        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
+
+        # task_store_transcript has retries=2, so Prefect attempts the
+        # task three times before the exception reaches _process_one.
+        # Matches the pattern in test_process_transcript_skips_already_processed.
+        # First 3 calls (retries for file-dup) raise the unique-
+        # constraint error; the 4th (file-new) succeeds.
+        mock_api.create_transcript.side_effect = [
+            Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
+            Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
+            Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
+            MagicMock(id="t-new"),
+        ]
+        mock_api.create_note.return_value = MagicMock(id="n-new")
+
+        mock_llm = MagicMock()
+        mock_build_llm.return_value = mock_llm
+        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
+
+        result = process_transcript()
+
+    # file-new processed end-to-end.
+    mock_api.create_note.assert_called_once()
+
+    # One skipped, one processed.
+    assert result["processed"] == 1
+    assert result["skipped"] == 1
+    assert result["errors"] == 0
+
+    # Run eval is SUCCESS — already_processed is a benign skip that
+    # does NOT escalate severity (see task_post_run_evaluation rules).
+    mock_api.post_run_evaluation.assert_called_once()
+    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "SUCCESS"
+
+    # Per-file result shape.
+    by_file = {r["file"]: r for r in result["files"]}
+    assert by_file[_VALID_FILENAME]["reason"] == "already_processed"
+    assert "transcript_id" in by_file[_VALID_GROUP_FILENAME]
+
+
 def test_process_transcript_posts_run_evaluation(
     mock_env: None, mock_drive_text: str
 ) -> None:
