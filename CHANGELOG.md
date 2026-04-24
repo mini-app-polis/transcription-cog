@@ -1,3 +1,10 @@
+## [1.7.4](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.3...v1.7.4) (2026-04-24)
+
+
+### Bug Fixes
+
+* **drive:** make archive_file idempotent on already-archived input ([86f8d03](https://github.com/mini-app-polis/notes-ingest-cog/commit/86f8d037635e5c27c89af5f360e33d21479705a3))
+
 ## [1.7.3](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.2...v1.7.3) (2026-04-23)
 
 
