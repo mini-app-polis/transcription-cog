@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from notes_ingest_cog.drive import infer_source_type, read_transcript_text
+from notes_ingest_cog.drive import archive_file, infer_source_type, read_transcript_text
 
 DOC_MIME = "application/vnd.google-apps.document"
 TXT_MIME = "text/plain"
@@ -98,3 +98,47 @@ def test_read_transcript_txt_no_download_method_raises() -> None:
         TypeError, match="does not expose a supported bytes download method"
     ):
         read_transcript_text(g, "file-id", TXT_MIME)
+
+
+# ── archive_file ──────────────────────────────────────────────────────────────
+
+
+def test_archive_file_skips_when_already_in_processed_folder() -> None:
+    """Idempotency: if the file is already parented under the processed
+    folder, archive_file returns without calling move_file. Covers the
+    retry-after-partial-failure path."""
+    g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.return_value = {
+        "parents": ["processed-folder-id"],
+    }
+
+    archive_file(g, "file-1", "processed-folder-id", "test.docx")
+
+    g.drive.move_file.assert_not_called()
+
+
+def test_archive_file_moves_when_in_source_folder() -> None:
+    """Happy path: file is in the source folder, move_file is called."""
+    g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.return_value = {
+        "parents": ["source-folder-id"],
+    }
+
+    archive_file(g, "file-1", "processed-folder-id", "test.docx")
+
+    g.drive.move_file.assert_called_once_with(
+        "file-1", new_parent_id="processed-folder-id"
+    )
+
+
+def test_archive_file_proceeds_when_metadata_fetch_fails() -> None:
+    """If the Drive metadata call fails, fall through and attempt the
+    move — the move will surface any real error."""
+    g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.side_effect = (
+        RuntimeError("drive down")
+    )
+
+    archive_file(g, "file-1", "processed-folder-id", "test.docx")
+
+    g.drive.move_file.assert_called_once()

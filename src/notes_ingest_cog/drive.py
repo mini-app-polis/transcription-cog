@@ -70,12 +70,45 @@ def archive_file(
 
     Per PIPE-005: raw inputs are archived after processing, never deleted.
 
+    Idempotent: if the file is already parented under
+    processed_folder_id (i.e. a prior run archived it before a later
+    task failed and forced a retry), this is logged and treated as a
+    success. Without this guard, retries crash on "file missing from
+    source parent" after a partial-failure flow run.
+
     Args:
         g:                    Authenticated GoogleAPI instance.
         file_id:              Drive file ID to move.
         processed_folder_id:  Destination folder ID.
         name:                 File name (for logging only).
     """
+    try:
+        meta = g.drive.service.files().get(fileId=file_id, fields="parents").execute()
+        current_parents = meta.get("parents", []) or []
+    except Exception as exc:
+        # Metadata fetch is best-effort — if it fails, fall through
+        # and attempt the move. The move itself will surface any real
+        # auth/API errors.
+        LOG.warning(
+            log.with_log_prefix(
+                log.LOG_WARNING,
+                f"Could not read Drive parents for {name} "
+                f"(file_id={file_id}): {exc}. Proceeding with move.",
+            )
+        )
+        current_parents = []
+
+    if processed_folder_id in current_parents:
+        LOG.info(
+            log.with_log_prefix(
+                log.LOG_SUCCESS,
+                f"Already archived: {name} "
+                f"(file_id={file_id}, parent={processed_folder_id}). "
+                "Skipping move.",
+            )
+        )
+        return
+
     LOG.info(
         log.with_log_prefix(
             log.LOG_SUCCESS,

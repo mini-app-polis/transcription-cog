@@ -130,6 +130,9 @@ def test_task_store_notes_falls_back_to_notes_title() -> None:
 
 def test_task_archive_file_moves_to_processed_folder() -> None:
     g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.return_value = {
+        "parents": ["input-folder"],
+    }
 
     task_archive_file.fn(
         g,
