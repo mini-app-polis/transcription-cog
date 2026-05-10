@@ -1,3 +1,10 @@
+## [1.7.5](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.4...v1.7.5) (2026-05-10)
+
+
+### Bug Fixes
+
+* **notes-ingest:** add on_failure/on_crashed hook so flow crashes reach the dashboard ([6c3c9f5](https://github.com/mini-app-polis/notes-ingest-cog/commit/6c3c9f57d35460f1d0692cc2d1cf798ca9ed3e6f))
+
 ## [1.7.4](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.3...v1.7.4) (2026-04-24)
 
 
