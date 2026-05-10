@@ -277,6 +277,61 @@ def _process_one(
     }
 
 
+def _emit_terminal_failure(flow, flow_run, state) -> None:  # noqa: ARG001
+    """Prefect flow hook: emit one flow_hook finding on Failed / Crashed.
+
+    Wired as ``on_failure`` and ``on_crashed`` on the ``process-transcript``
+    flow. Covers the gap where the flow body never reaches
+    ``task_post_run_evaluation`` (e.g., worker SIGKILL, OOM, exception
+    escaping the ``with concurrency()`` block, or a Prefect-level
+    failure during task setup).
+
+    Severity:
+      WARN  — Prefect Failed state (a task raised; flow framework handled it).
+      ERROR — Prefect Crashed state (worker died, OOM, etc.).
+
+    The matching Pipeline Health UI "Run Type" facet groups
+    ``source="flow_hook"`` rows with the rest of "Pipeline Eval" (per
+    ecosystem-standards/standards/evaluation.yaml). Best-effort: any
+    exception in this hook is logged and swallowed — a hook that raises
+    can mask the underlying flow failure.
+    """
+    logger = _get_logger()
+    state_name = str(getattr(state, "name", "FAILED"))
+    state_type = str(getattr(state, "type", "")).upper()
+    severity = (
+        "ERROR" if (state_type == "CRASHED" or state_name == "Crashed") else "WARN"
+    )
+
+    run_id: str | None
+    try:
+        run_id = str(flow_run.id) if getattr(flow_run, "id", None) else None
+    except Exception:
+        run_id = None
+
+    state_message = str(getattr(state, "message", "") or state_name)
+    finding = f"Flow entered {state_name} unexpectedly: {state_message}"
+
+    try:
+        api = NotesApiClient()
+        api.post_run_evaluation(
+            repo="notes-ingest-cog",
+            dimension="pipeline_consistency",
+            severity=severity,
+            finding=finding,
+            source="flow_hook",
+            flow_name="process-transcript",
+            run_id=run_id,
+        )
+    except Exception as exc:
+        logger.warning(
+            log.with_log_prefix(
+                log.LOG_WARNING,
+                f"Failed to post flow_hook evaluation: {exc}",
+            )
+        )
+
+
 @task(retries=2)
 def task_post_run_evaluation(
     api: NotesApiClient,
@@ -371,6 +426,8 @@ def task_post_run_evaluation(
         "Files must follow the naming convention: "
         "'YYYY-MM-DD Instructor > Student/Org - Topic.ext'"
     ),
+    on_failure=[_emit_terminal_failure],
+    on_crashed=[_emit_terminal_failure],
 )
 def process_transcript() -> dict:
     """Main Prefect flow — scans input folder and processes all transcripts found.

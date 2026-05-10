@@ -13,6 +13,7 @@ import pytest
 
 from notes_ingest_cog.filename_parser import ParsedFilename
 from notes_ingest_cog.flow import (
+    _emit_terminal_failure,
     task_archive_file,
     task_post_run_evaluation,
     task_store_notes,
@@ -288,3 +289,118 @@ def test_task_post_run_evaluation_swallows_post_errors() -> None:
         )
 
     api.post_run_evaluation.assert_called_once()
+
+
+# ── _emit_terminal_failure (on_failure / on_crashed hook) ───────────────────
+
+
+def _state(name: str, type_: str, message: str = "boom") -> MagicMock:
+    """Build a Prefect-shape state object for hook assertions."""
+    s = MagicMock()
+    s.name = name
+    s.type = type_
+    s.message = message
+    return s
+
+
+def _flow_run(run_id: str | None = "fr-1") -> MagicMock:
+    fr = MagicMock()
+    fr.id = run_id
+    return fr
+
+
+def test_emit_terminal_failure_failed_state_posts_warn() -> None:
+    """Prefect Failed state → severity=WARN, source=flow_hook."""
+    api = MagicMock()
+    with (
+        patch("notes_ingest_cog.flow.NotesApiClient", return_value=api),
+        patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()),
+    ):
+        _emit_terminal_failure(
+            flow=MagicMock(),
+            flow_run=_flow_run(),
+            state=_state("Failed", "FAILED"),
+        )
+
+    api.post_run_evaluation.assert_called_once()
+    kwargs = api.post_run_evaluation.call_args.kwargs
+    assert kwargs["severity"] == "WARN"
+    assert kwargs["source"] == "flow_hook"
+    assert kwargs["repo"] == "notes-ingest-cog"
+    assert kwargs["dimension"] == "pipeline_consistency"
+    assert kwargs["flow_name"] == "process-transcript"
+    assert kwargs["run_id"] == "fr-1"
+    assert "Failed" in kwargs["finding"]
+
+
+def test_emit_terminal_failure_crashed_state_posts_error() -> None:
+    """Prefect Crashed state → severity=ERROR, source=flow_hook."""
+    api = MagicMock()
+    with (
+        patch("notes_ingest_cog.flow.NotesApiClient", return_value=api),
+        patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()),
+    ):
+        _emit_terminal_failure(
+            flow=MagicMock(),
+            flow_run=_flow_run(),
+            state=_state("Crashed", "CRASHED", message="worker SIGKILL"),
+        )
+
+    api.post_run_evaluation.assert_called_once()
+    kwargs = api.post_run_evaluation.call_args.kwargs
+    assert kwargs["severity"] == "ERROR"
+    assert kwargs["source"] == "flow_hook"
+    assert "Crashed" in kwargs["finding"]
+    assert "worker SIGKILL" in kwargs["finding"]
+
+
+def test_emit_terminal_failure_swallows_client_init_error() -> None:
+    """If the API client constructor raises, the hook must not bubble."""
+    with (
+        patch(
+            "notes_ingest_cog.flow.NotesApiClient",
+            side_effect=RuntimeError("missing clerk secret"),
+        ),
+        patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()),
+    ):
+        # Should not raise.
+        _emit_terminal_failure(
+            flow=MagicMock(),
+            flow_run=_flow_run(),
+            state=_state("Failed", "FAILED"),
+        )
+
+
+def test_emit_terminal_failure_swallows_post_error() -> None:
+    """If the POST raises, the hook must not bubble."""
+    api = MagicMock()
+    api.post_run_evaluation.side_effect = RuntimeError("API down")
+    with (
+        patch("notes_ingest_cog.flow.NotesApiClient", return_value=api),
+        patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()),
+    ):
+        # Should not raise.
+        _emit_terminal_failure(
+            flow=MagicMock(),
+            flow_run=_flow_run(),
+            state=_state("Failed", "FAILED"),
+        )
+
+    api.post_run_evaluation.assert_called_once()
+
+
+def test_emit_terminal_failure_handles_missing_flow_run_id() -> None:
+    """No flow_run.id → run_id falls back to None, hook still posts."""
+    api = MagicMock()
+    with (
+        patch("notes_ingest_cog.flow.NotesApiClient", return_value=api),
+        patch("notes_ingest_cog.flow._get_logger", return_value=MagicMock()),
+    ):
+        _emit_terminal_failure(
+            flow=MagicMock(),
+            flow_run=_flow_run(run_id=None),
+            state=_state("Failed", "FAILED"),
+        )
+
+    api.post_run_evaluation.assert_called_once()
+    assert api.post_run_evaluation.call_args.kwargs["run_id"] is None
