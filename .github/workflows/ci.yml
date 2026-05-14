@@ -50,18 +50,35 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # uv + Python are required by the @semantic-release/exec step,
+      # which runs `uv lock` after sed-bumping pyproject.toml so the
+      # lockfile's record of THIS package's own version stays in sync
+      # with the released version. Without this, every post-release
+      # `uv sync` produces a dirty lockfile diff and developers loop
+      # on "fix: lock" commits. Same fix as deejay-cog / voicenotes-cog.
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
+
       - name: Install semantic-release plugins
         run: |
           npm install --no-save \
             semantic-release \
             @semantic-release/changelog \
+            @semantic-release/commit-analyzer \
+            @semantic-release/exec \
             @semantic-release/git \
             @semantic-release/github \
-            @semantic-release/commit-analyzer \
             @semantic-release/release-notes-generator
+
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
