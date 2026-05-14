@@ -1669,63 +1669,6 @@ wheels = [
 ]
 
 [[package]]
-name = "notes-ingest-cog"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "anthropic" },
-    { name = "common-python-utils", extra = ["llm"] },
-    { name = "google-api-python-client" },
-    { name = "google-auth" },
-    { name = "httpx" },
-    { name = "openai" },
-    { name = "prefect" },
-    { name = "psycopg2-binary" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "sentry-sdk" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "respx" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", specifier = ">=0.40" },
-    { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=main" },
-    { name = "google-api-python-client", specifier = ">=2.0" },
-    { name = "google-auth", specifier = ">=2.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "openai", specifier = ">=1.50" },
-    { name = "prefect", specifier = ">=3.0.0,<4.0.0" },
-    { name = "psycopg2-binary", specifier = ">=2.9.0,<3.0.0" },
-    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.4.0,<3.0.0" },
-    { name = "python-dotenv", specifier = ">=1.0.1,<2.0.0" },
-    { name = "sentry-sdk", specifier = ">=2.0.0,<3.0.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "respx" },
-    { name = "ruff" },
-]
-
-[[package]]
 name = "oauthlib"
 version = "3.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3190,6 +3133,63 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/e1/3079a9ff9b8e11b846c6ac5c8b5bfb7ff225eee721825310c91b3b50304f/tqdm-4.67.3-py3-none-any.whl", hash = "sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf", size = 78374, upload-time = "2026-02-03T17:35:50.982Z" },
+]
+
+[[package]]
+name = "transcription-cog"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anthropic" },
+    { name = "common-python-utils", extra = ["llm"] },
+    { name = "google-api-python-client" },
+    { name = "google-auth" },
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "prefect" },
+    { name = "psycopg2-binary" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "sentry-sdk" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "respx" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.40" },
+    { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=main" },
+    { name = "google-api-python-client", specifier = ">=2.0" },
+    { name = "google-auth", specifier = ">=2.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "openai", specifier = ">=1.50" },
+    { name = "prefect", specifier = ">=3.0.0,<4.0.0" },
+    { name = "psycopg2-binary", specifier = ">=2.9.0,<3.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.4.0,<3.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1,<2.0.0" },
+    { name = "sentry-sdk", specifier = ">=2.0.0,<3.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "respx" },
+    { name = "ruff" },
 ]
 
 [[package]]
