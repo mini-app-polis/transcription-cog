@@ -1,0 +1,148 @@
+"""Tests for drive.py — normalization, failure paths, output shape."""
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from transcription_cog.drive import (
+    archive_file,
+    infer_source_type,
+    read_transcript_text,
+)
+
+DOC_MIME = "application/vnd.google-apps.document"
+TXT_MIME = "text/plain"
+
+
+# ── infer_source_type ─────────────────────────────────────────────────────────
+
+
+def test_infer_source_type_plaud() -> None:
+    assert infer_source_type("plaud_recording_2024.txt") == "plaud"
+
+
+def test_infer_source_type_otter() -> None:
+    assert infer_source_type("Otter_Session_Notes.txt") == "otter"
+
+
+def test_infer_source_type_zoom() -> None:
+    assert infer_source_type("zoom_transcript_001.txt") == "zoom"
+
+
+def test_infer_source_type_meet() -> None:
+    assert infer_source_type("google_meet_recording.txt") == "google_meet"
+
+
+def test_infer_source_type_unknown() -> None:
+    assert infer_source_type("my_random_file.txt") == "unknown"
+
+
+# ── read_transcript_text ──────────────────────────────────────────────────────
+
+
+def test_read_transcript_google_doc() -> None:
+    """Google Doc calls export_google_doc_as_text."""
+    g = MagicMock()
+    g.drive.export_google_doc_as_text.return_value = "lesson notes"
+
+    result = read_transcript_text(g, "file-id", DOC_MIME)
+
+    assert result == "lesson notes"
+    g.drive.export_google_doc_as_text.assert_called_once_with("file-id")
+
+
+def test_read_transcript_txt_via_download_bytes() -> None:
+    """Plain text file is read via download_bytes when available.
+
+    Asserts the Drive client's bytes-download method was invoked with the
+    correct file_id — satisfies TEST-011 mock verification.
+    """
+    g = MagicMock()
+    g.drive.download_bytes.return_value = b"raw transcript text"
+
+    result = read_transcript_text(g, "file-id", TXT_MIME)
+
+    assert result == "raw transcript text"
+    g.drive.download_bytes.assert_called_once_with("file-id")
+
+
+def test_read_transcript_txt_fallback_to_service() -> None:
+    """Falls back to raw Drive service when no download_bytes method exists.
+
+    Asserts the raw service's get_media(fileId=...) path was invoked with the
+    correct file_id — satisfies TEST-011 mock verification.
+    """
+    g = MagicMock()
+    g.drive = MagicMock(spec=["service"])
+    g.drive.service.files.return_value.get_media.return_value.execute.return_value = (
+        b"fallback content"
+    )
+    result = read_transcript_text(g, "file-id", TXT_MIME)
+    assert result == "fallback content"
+    g.drive.service.files.return_value.get_media.assert_called_once_with(
+        fileId="file-id"
+    )
+    g.drive.service.files.return_value.get_media.return_value.execute.assert_called_once()
+
+
+def test_read_transcript_unsupported_mime_raises() -> None:
+    """Unsupported MIME type raises ValueError."""
+    g = MagicMock()
+    with pytest.raises(ValueError, match="Unsupported mime type"):
+        read_transcript_text(g, "file-id", "application/pdf")
+
+
+def test_read_transcript_txt_no_download_method_raises() -> None:
+    """TypeError raised when no bytes download method is available."""
+    g = MagicMock()
+    g.drive = MagicMock(spec=[])
+    with pytest.raises(
+        TypeError, match="does not expose a supported bytes download method"
+    ):
+        read_transcript_text(g, "file-id", TXT_MIME)
+
+
+# ── archive_file ──────────────────────────────────────────────────────────────
+
+
+def test_archive_file_skips_when_already_in_processed_folder() -> None:
+    """Idempotency: if the file is already parented under the processed
+    folder, archive_file returns without calling move_file. Covers the
+    retry-after-partial-failure path."""
+    g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.return_value = {
+        "parents": ["processed-folder-id"],
+    }
+
+    archive_file(g, "file-1", "processed-folder-id", "test.docx")
+
+    g.drive.move_file.assert_not_called()
+
+
+def test_archive_file_moves_when_in_source_folder() -> None:
+    """Happy path: file is in the source folder, move_file is called."""
+    g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.return_value = {
+        "parents": ["source-folder-id"],
+    }
+
+    archive_file(g, "file-1", "processed-folder-id", "test.docx")
+
+    g.drive.move_file.assert_called_once_with(
+        "file-1", new_parent_id="processed-folder-id"
+    )
+
+
+def test_archive_file_proceeds_when_metadata_fetch_fails() -> None:
+    """If the Drive metadata call fails, fall through and attempt the
+    move — the move will surface any real error."""
+    g = MagicMock()
+    g.drive.service.files.return_value.get.return_value.execute.side_effect = (
+        RuntimeError("drive down")
+    )
+
+    archive_file(g, "file-1", "processed-folder-id", "test.docx")
+
+    g.drive.move_file.assert_called_once()

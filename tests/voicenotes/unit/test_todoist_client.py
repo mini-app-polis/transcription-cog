@@ -8,7 +8,7 @@ from datetime import date
 import httpx
 import pytest
 
-from notes_ingest_cog.voicenotes.clients.todoist_client import (
+from transcription_cog.voicenotes.clients.todoist_client import (
     TodoistAPIError,
     TodoistAuthError,
     TodoistClient,

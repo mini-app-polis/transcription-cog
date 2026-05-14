@@ -17,8 +17,8 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from notes_ingest_cog.voicenotes.clients.claude_client import ClaudeClient
-from notes_ingest_cog.voicenotes.models.extracted_task import ExtractedTask
+from transcription_cog.voicenotes.clients.claude_client import ClaudeClient
+from transcription_cog.voicenotes.models.extracted_task import ExtractedTask
 
 
 def _make_message(text: str, *, in_tokens: int = 100, out_tokens: int = 25):

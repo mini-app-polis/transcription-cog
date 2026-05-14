@@ -36,35 +36,35 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from notes_ingest_cog.voicenotes.clients import (
+from transcription_cog.voicenotes.clients import (
     claude_client as claude_mod,
 )
-from notes_ingest_cog.voicenotes.clients import (
+from transcription_cog.voicenotes.clients import (
     drive_client as drive_mod,
 )
-from notes_ingest_cog.voicenotes.clients import (
+from transcription_cog.voicenotes.clients import (
     todoist_client as todoist_mod,
 )
-from notes_ingest_cog.voicenotes.clients.whisper_client import TranscriptionResult
-from notes_ingest_cog.voicenotes.flows import cleanup as cleanup_mod
-from notes_ingest_cog.voicenotes.flows import ingest as ingest_mod
-from notes_ingest_cog.voicenotes.flows.ingest import voicenotes_ingest
-from notes_ingest_cog.voicenotes.tasks import (
+from transcription_cog.voicenotes.clients.whisper_client import TranscriptionResult
+from transcription_cog.voicenotes.flows import cleanup as cleanup_mod
+from transcription_cog.voicenotes.flows import ingest as ingest_mod
+from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest
+from transcription_cog.voicenotes.tasks import (
     archive as archive_mod,
 )
-from notes_ingest_cog.voicenotes.tasks import (
+from transcription_cog.voicenotes.tasks import (
     download as download_mod,
 )
-from notes_ingest_cog.voicenotes.tasks import (
+from transcription_cog.voicenotes.tasks import (
     emit_evaluation as eval_mod,
 )
-from notes_ingest_cog.voicenotes.tasks import (
+from transcription_cog.voicenotes.tasks import (
     extract as extract_mod,
 )
-from notes_ingest_cog.voicenotes.tasks import (
+from transcription_cog.voicenotes.tasks import (
     post_task as post_task_mod,
 )
-from notes_ingest_cog.voicenotes.tasks import (
+from transcription_cog.voicenotes.tasks import (
     transcribe as transcribe_mod,
 )
 
@@ -207,7 +207,7 @@ class TestIngestHappyPath:
         # opportunistic cleanup at the end (walking ``processed/``).
         # Assert the inbox scan happened by checking the inbox folder
         # id appears in the call args; the cleanup scan is incidental.
-        from notes_ingest_cog.voicenotes.config import settings as _settings
+        from transcription_cog.voicenotes.config import settings as _settings
 
         assert stub_clients.drive.list_files.call_count == 2
         stub_clients.drive.list_files.assert_any_call(

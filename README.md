@@ -1,4 +1,4 @@
-# notes-ingest-cog
+# transcription-cog
 
 [![CI](https://github.com/mini-app-polis/notes-ingest-cog/actions/workflows/ci.yml/badge.svg)](https://github.com/mini-app-polis/notes-ingest-cog/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/mini-app-polis/notes-ingest-cog?label=version)](https://github.com/mini-app-polis/notes-ingest-cog/releases)
@@ -26,7 +26,7 @@ See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 > in from the standalone [`voicenotes-cog`](https://github.com/mini-app-polis/voicenotes-cog)
 > repository in May 2026 so the two pipelines share one Prefect deployment
 > and one Railway service. The legacy repo is deprecated. Sub-package code
-> lives under `src/notes_ingest_cog/voicenotes/`.
+> lives under `src/transcription_cog/voicenotes/`.
 
 ---
 
@@ -44,7 +44,7 @@ See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
 ```bash
 git clone git@github.com:mini-app-polis/notes-ingest-cog.git
-cd notes-ingest-cog
+cd transcription-cog
 uv sync --all-extras
 uv run pre-commit install
 uv run pre-commit run --all-files
@@ -71,7 +71,7 @@ With Prefect Cloud credentials in your `.env`:
 
 ```bash
 # Start serving the router deployment locally
-uv run python -m notes_ingest_cog.main
+uv run python -m transcription_cog.main
 
 # Then trigger a specific mode via the Prefect UI's "Custom Run" dropdown,
 # or from the CLI:
@@ -141,7 +141,7 @@ Commit message format:
 ## Project structure
 
 ```
-src/notes_ingest_cog/
+src/transcription_cog/
   __init__.py       package init
   config.py         typed config from env vars (WCS pipeline)
   models.py         Pydantic models for all external data
@@ -163,7 +163,7 @@ src/notes_ingest_cog/
 
 tests/
   conftest.py                shared Prefect test harness
-  notes_ingest_cog/          WCS pipeline tests
+  transcription_cog/          WCS pipeline tests
   voicenotes/                voicenotes sub-pipeline tests
     conftest.py              env bootstrap, singletons, no-op concurrency
     unit/

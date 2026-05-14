@@ -1,4 +1,4 @@
-# ADR-004: Merge voicenotes-cog into notes-ingest-cog
+# ADR-004: Merge voicenotes-cog into transcription-cog
 
 **Status:** Accepted (May 2026)
 
@@ -7,7 +7,7 @@
 Two adjacent pipelines lived in separate repositories, each consuming
 one Prefect Cloud deployment slot:
 
-- `notes-ingest-cog` — WCS lesson transcripts → structured notes → Postgres
+- `transcription-cog` — WCS lesson transcripts → structured notes → Postgres
 - `voicenotes-cog` — voice sticky-notes → Whisper → Claude → Todoist
 
 Prefect Cloud's free tier caps the workspace at five deployments. Each
@@ -22,19 +22,19 @@ named `deejay-cog/deejay-cog`.
 
 ## Decision
 
-Move all voicenotes-cog functionality into notes-ingest-cog under a
-new sub-package `notes_ingest_cog.voicenotes`, and expose both
+Move all voicenotes-cog functionality into transcription-cog under a
+new sub-package `transcription_cog.voicenotes`, and expose both
 pipelines through a single Prefect deployment
 (`notes-ingest-cog/notes-ingest-cog`) backed by a router flow that
 dispatches on a `mode` parameter:
 
 | `mode`               | Underlying flow              | Source pipeline                            |
 | -------------------- | ---------------------------- | ------------------------------------------ |
-| `wcs-transcripts`    | `process_transcript`         | original notes-ingest-cog (WCS)            |
+| `wcs-transcripts`    | `process_transcript`         | original transcription-cog (WCS)            |
 | `voicenotes`         | `voicenotes_ingest`          | merged voicenotes-cog (Whisper → Todoist)  |
 | `voicenotes-cleanup` | `voicenotes_cleanup`         | merged voicenotes-cog (operator sweep)     |
 
-The router and dispatch table live in `src/notes_ingest_cog/main.py`.
+The router and dispatch table live in `src/transcription_cog/main.py`.
 Mirrors deejay-cog's pattern exactly.
 
 ## Consequences
@@ -63,7 +63,7 @@ Mirrors deejay-cog's pattern exactly.
 - Telemetry continuity: the voicenotes sub-pipeline still reports
   `repo="voicenotes-cog"` and `flow_name="voicenotes-ingest"` in
   `pipeline_evaluations` rows so the Pipeline Health dashboard
-  history is preserved. The `notes-ingest-cog` repo identifier
+  history is preserved. The `transcription-cog` repo identifier
   continues to be used for the WCS pipeline.
 - Test isolation: `tests/voicenotes/conftest.py` deliberately does
   NOT enter `prefect_test_harness` — that's provided session-wide
@@ -73,10 +73,10 @@ Mirrors deejay-cog's pattern exactly.
 ## Migration steps
 
 1. Source moved from `voicenotes-cog/src/voicenotes_cog/` to
-   `notes-ingest-cog/src/notes_ingest_cog/voicenotes/`. All imports
-   rewritten from `voicenotes_cog.*` to `notes_ingest_cog.voicenotes.*`.
+   `transcription-cog/src/transcription_cog/voicenotes/`. All imports
+   rewritten from `voicenotes_cog.*` to `transcription_cog.voicenotes.*`.
 2. New router flow + dispatch table added to
-   `notes_ingest_cog.main` (replacing the previous direct-serve of
+   `transcription_cog.main` (replacing the previous direct-serve of
    `process_transcript`).
 3. Dependencies merged into the root `pyproject.toml`: `anthropic`,
    `openai`, `httpx`, `google-api-python-client`, `google-auth`,

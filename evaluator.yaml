@@ -1,4 +1,4 @@
-# notes-ingest-cog / evaluator.yaml
+# transcription-cog / evaluator.yaml
 # Per-repo evaluation configuration — ecosystem-standards ADR-001, ADR-002
 
 type: pipeline-cog
@@ -7,7 +7,7 @@ deferrals:
   - rule: PY-013
     reason: >
       possible_duplicate_ prefixing is an archival-preservation pattern for
-      file-level deduplication. notes-ingest-cog does row-level dedup via the
+      file-level deduplication. transcription-cog does row-level dedup via the
       uq_wcs_transcripts_drive_file_id unique constraint in api-kaianolevine-com
       and skips (without renaming) on conflict — the raw file still archives
       normally on success. No duplicate file exists to prefix. Tracked as a
@@ -20,20 +20,20 @@ deferrals:
 exemptions:
   # The two exemptions below were carried over from voicenotes-cog when it
   # was merged into this repo (May 2026, ADR-004). They scope to the
-  # ``src/notes_ingest_cog/voicenotes/`` sub-package only.
+  # ``src/transcription_cog/voicenotes/`` sub-package only.
 
   - rule: CD-003
     reason: >
-      The two flagged print() sites inside src/notes_ingest_cog/voicenotes/
+      The two flagged print() sites inside src/transcription_cog/voicenotes/
       are intentional and not candidates for the structured logger:
 
-      1. src/notes_ingest_cog/voicenotes/scripts/setup_todoist.py — a
+      1. src/transcription_cog/voicenotes/scripts/setup_todoist.py — a
          one-time interactive operator-facing CLI script. The print() calls
          render the Doppler-bound output the operator needs to copy/paste;
          they are the script's user interface, not telemetry. Routing
          through the structured logger would emit JSON to stderr instead
          of human-readable terminal output.
-      2. src/notes_ingest_cog/voicenotes/_shared.py — the FallbackLogger's
+      2. src/transcription_cog/voicenotes/_shared.py — the FallbackLogger's
          _emit method. By design this is the local fallback when
          common-python-utils is not importable; emitting JSON lines to
          stderr via print() is its entire purpose. The site is gated by
@@ -42,7 +42,7 @@ exemptions:
 
   - rule: CD-009
     reason: >
-      ``src/notes_ingest_cog/voicenotes/_shared.py`` is the sub-package's
+      ``src/transcription_cog/voicenotes/_shared.py`` is the sub-package's
       bridge to the shared ``mini_app_polis`` (common-python-utils) logger.
       It cannot itself import from the shared logger because it IS the
       import-time adapter — defining the ``StructuredLogger`` Protocol

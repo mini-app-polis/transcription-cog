@@ -8,10 +8,10 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock
 
-from notes_ingest_cog.voicenotes.clients import todoist_client as todoist_mod
-from notes_ingest_cog.voicenotes.models.extracted_task import ExtractedTask
-from notes_ingest_cog.voicenotes.tasks import post_task as post_task_mod
-from notes_ingest_cog.voicenotes.tasks.post_task import (
+from transcription_cog.voicenotes.clients import todoist_client as todoist_mod
+from transcription_cog.voicenotes.models.extracted_task import ExtractedTask
+from transcription_cog.voicenotes.tasks import post_task as post_task_mod
+from transcription_cog.voicenotes.tasks.post_task import (
     DRIVE_FILE_VIEW_URL_TEMPLATE,
     compose_description,
     compose_task_input,

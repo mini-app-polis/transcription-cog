@@ -57,18 +57,20 @@ def _noop_concurrency(*args, **kwargs):
 # because the ``_noisy_logger`` loop and the ``_noop_concurrency``
 # definition above are deliberate module-scope statements; the imports
 # themselves are first-use-correct.
-from notes_ingest_cog.voicenotes.clients import (  # noqa: E402
+from transcription_cog.voicenotes.clients import (  # noqa: E402
     claude_client as _claude_mod,
 )
-from notes_ingest_cog.voicenotes.clients import drive_client as _drive_mod  # noqa: E402
-from notes_ingest_cog.voicenotes.clients import (  # noqa: E402
+from transcription_cog.voicenotes.clients import (  # noqa: E402
+    drive_client as _drive_mod,
+)
+from transcription_cog.voicenotes.clients import (  # noqa: E402
     todoist_client as _todoist_mod,
 )
-from notes_ingest_cog.voicenotes.clients import (  # noqa: E402
+from transcription_cog.voicenotes.clients import (  # noqa: E402
     whisper_client as _whisper_mod,
 )
-from notes_ingest_cog.voicenotes.flows import cleanup as _cleanup_mod  # noqa: E402
-from notes_ingest_cog.voicenotes.flows import ingest as _ingest_mod  # noqa: E402
+from transcription_cog.voicenotes.flows import cleanup as _cleanup_mod  # noqa: E402
+from transcription_cog.voicenotes.flows import ingest as _ingest_mod  # noqa: E402
 
 # Belt-and-braces: rebind concurrency in the flow modules' namespaces in
 # case they bound the symbol at import time before parent conftest's

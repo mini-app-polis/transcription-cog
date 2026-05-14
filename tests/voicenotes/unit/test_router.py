@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from notes_ingest_cog.voicenotes.flows import router as router_mod
-from notes_ingest_cog.voicenotes.flows.router import (
+from transcription_cog.voicenotes.flows import router as router_mod
+from transcription_cog.voicenotes.flows.router import (
     MODE_CLEANUP,
     MODE_INGEST,
     voicenotes_router,

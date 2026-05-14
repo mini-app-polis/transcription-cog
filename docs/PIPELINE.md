@@ -1,4 +1,4 @@
-# Pipeline — notes-ingest-cog
+# Pipeline — transcription-cog
 
 ## Where this cog fits in the ecosystem
 
@@ -12,7 +12,7 @@ Google Drive — input folder (NOTES_INPUT_FOLDER_ID)
 watcher-cog
         │
         ▼ (Prefect flow run: file_id, file_name, mime_type)
-notes-ingest-cog  ◄─── THIS COG
+transcription-cog  ◄─── THIS COG
         │
         ├─► api-kaianolevine-com  POST /v1/wcs/transcripts  →  wcs_transcripts table
         │
@@ -42,7 +42,7 @@ flow run with:
 - `mime_type` — MIME type of the file
 
 During development the flow can be triggered manually from the Prefect UI
-or via `uv run python -m notes_ingest_cog.flow` with env vars set.
+or via `uv run python -m transcription_cog.flow` with env vars set.
 
 ## watcher-cog configuration
 
@@ -52,7 +52,7 @@ This is tracked as a separate task on `watcher-cog`.
 Required config:
 - Input folder: `NOTES_INPUT_FOLDER_ID`
 - Flow name: `process-transcript`
-- Deployment name: `notes-ingest-cog`
+- Deployment name: `transcription-cog`
 
 ## Supported file types
 

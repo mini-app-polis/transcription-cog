@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from notes_ingest_cog.voicenotes import _shared
-from notes_ingest_cog.voicenotes.tasks import emit_evaluation as eval_mod
-from notes_ingest_cog.voicenotes.tasks.emit_evaluation import (
+from transcription_cog.voicenotes import _shared
+from transcription_cog.voicenotes.tasks import emit_evaluation as eval_mod
+from transcription_cog.voicenotes.tasks.emit_evaluation import (
     _build_finding_rows,
     emit_evaluation,
 )

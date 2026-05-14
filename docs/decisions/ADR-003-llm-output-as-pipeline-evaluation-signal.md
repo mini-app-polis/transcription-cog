@@ -12,7 +12,7 @@ PIPE-009 / PIPE-011 in `ecosystem-standards` require that every
 pipeline-cog emits at least one evaluation record to `pipeline_evaluations`
 per processed artifact, so ecosystem-wide quality can be tracked uniformly.
 
-`notes-ingest-cog` is not itself an evaluator — it's a data pipeline
+`transcription-cog` is not itself an evaluator — it's a data pipeline
 (transcript → notes). The question is what "evaluation" means here.
 
 ## Decision
@@ -24,7 +24,7 @@ evaluation finding:
 
 - `severity=SUCCESS` if the schema validated
 - `severity=WARN` if it did not
-- `source=notes-ingest-cog`, `source_ref=<transcript_id>`
+- `source=transcription-cog`, `source_ref=<transcript_id>`
 - `dimension=llm_output_quality`
 - `meta` includes `llm_provider`, `llm_model`, and structural flags
   (`has_title`, `has_summary`) for downstream dashboards

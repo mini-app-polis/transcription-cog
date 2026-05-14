@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-`notes-ingest-cog` is triggered by `watcher-cog` every time a new file lands
+`transcription-cog` is triggered by `watcher-cog` every time a new file lands
 in the WCS notes input Drive folder. Under bursty conditions (multiple files
 dropped close together, or a late-firing trigger while an earlier run is
 still archiving), two concurrent flow runs can race:

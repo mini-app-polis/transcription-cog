@@ -1,4 +1,4 @@
-# Configuration — notes-ingest-cog
+# Configuration — transcription-cog
 
 All configuration is via environment variables. Secrets are managed via
 Doppler → Railway. See `.env.example` for the full list of required keys.
@@ -48,7 +48,7 @@ manually via `wcs.kaianolevine.com` or directly via the API.
 
 ## Doppler project structure
 
-- Project: `notes-ingest-cog`
+- Project: `transcription-cog`
 - Environments: `development`, `production`
 - Syncs to: Railway (via Doppler → Railway native sync)
 

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from notes_ingest_cog.voicenotes.clients.claude_client import _enforce_due_date_keyword
-from notes_ingest_cog.voicenotes.models.extracted_task import ExtractedTask
+from transcription_cog.voicenotes.clients.claude_client import _enforce_due_date_keyword
+from transcription_cog.voicenotes.models.extracted_task import ExtractedTask
 
 
 class TestEnforceDueDateKeyword:

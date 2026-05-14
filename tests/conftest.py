@@ -1,4 +1,4 @@
-"""Shared pytest configuration for notes-ingest-cog.
+"""Shared pytest configuration for transcription-cog.
 
 Isolates every test from the real Prefect Cloud account and local
 ~/.prefect/storage by routing all flow/task execution through an
@@ -9,7 +9,7 @@ drive_file_id path in flow.py) don't dump tracebacks on every run.
 Project-wide test bootstrap (env vars + concurrency stub) lives at
 module scope below. It MUST run before any test file is collected,
 because pytest collects test modules alphabetically and any file that
-imports ``notes_ingest_cog.main`` or ``notes_ingest_cog.voicenotes``
+imports ``transcription_cog.main`` or ``transcription_cog.voicenotes``
 materialises ``@task(retries=settings.task_retries, ...)`` at import
 time — pinning the retry count for the rest of the session before the
 voicenotes sub-conftest's bootstrap has a chance to run.
@@ -21,12 +21,12 @@ import logging
 import os
 
 # ---------------------------------------------------------------------------
-# Env-var bootstrap — MUST run before any voicenotes/notes_ingest_cog import.
+# Env-var bootstrap — MUST run before any voicenotes/transcription_cog import.
 #
 # The voicenotes sub-package's ``Settings`` (pydantic-settings) and its
 # ``@task`` decorators read these at module load. Pytest collects tests
-# alphabetically, so ``tests/notes_ingest_cog/`` modules can trigger a
-# voicenotes import (via notes_ingest_cog.main → voicenotes.flows) BEFORE
+# alphabetically, so ``tests/transcription_cog/`` modules can trigger a
+# voicenotes import (via transcription_cog.main → voicenotes.flows) BEFORE
 # ``tests/voicenotes/conftest.py`` ever loads. Seeding defaults at the
 # top-level conftest module scope is the only place early enough.
 #

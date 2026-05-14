@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from notes_ingest_cog.voicenotes.models.extracted_task import ExtractedTask
+from transcription_cog.voicenotes.models.extracted_task import ExtractedTask
 
 
 class TestExtractedTask:

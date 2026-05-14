@@ -34,7 +34,7 @@ jobs:
           TODOIST_API_TOKEN: test
           TODOIST_INBOX_PROJECT_ID: test
           GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID: test
-        run: uv run pytest --cov=notes_ingest_cog --cov-report=term-missing
+        run: uv run pytest --cov=transcription_cog --cov-report=term-missing
 
   release:
     name: Release
