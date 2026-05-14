@@ -28,7 +28,7 @@ from prefect.concurrency.sync import concurrency
 
 from notes_ingest_cog.voicenotes._shared import get_logger
 from notes_ingest_cog.voicenotes.clients.drive_client import get_drive_client
-from notes_ingest_cog.voicenotes.config import settings
+from notes_ingest_cog.voicenotes.config import require_voicenotes_settings, settings
 
 _logger = get_logger("voicenotes-cog")
 _log = logging.getLogger(__name__)
@@ -62,6 +62,11 @@ def voicenotes_cleanup() -> dict[str, Any]:
     Returns a summary dict: ``{deleted, failed, retention_days,
     month_folders_scanned}``.
     """
+    # Fail fast and loud if voicenotes config is missing. Module import
+    # accepts empty defaults so the parent cog can boot without
+    # voicenotes secrets — see voicenotes.config docstring and ADR-004.
+    require_voicenotes_settings()
+
     flow_logger = _flow_logger()
     retention_days = settings.archive_retention_days
     flow_logger.info(f"voicenotes.cleanup.start retention_days={retention_days}")

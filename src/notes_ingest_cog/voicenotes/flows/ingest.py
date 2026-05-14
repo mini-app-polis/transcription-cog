@@ -42,7 +42,7 @@ from prefect.context import get_run_context
 
 from notes_ingest_cog.voicenotes._shared import get_logger
 from notes_ingest_cog.voicenotes.clients.drive_client import get_drive_client
-from notes_ingest_cog.voicenotes.config import settings
+from notes_ingest_cog.voicenotes.config import require_voicenotes_settings, settings
 from notes_ingest_cog.voicenotes.flows.cleanup import voicenotes_cleanup
 from notes_ingest_cog.voicenotes.tasks.archive import archive_audio
 from notes_ingest_cog.voicenotes.tasks.download import download_audio
@@ -197,6 +197,11 @@ def voicenotes_ingest() -> dict[str, Any]:
     batch. Failed files stay in ``voice-inbox/`` for the next watcher
     cycle to retry.
     """
+    # Fail fast and loud if voicenotes config is missing. Module import
+    # accepts empty defaults so the parent cog can boot without
+    # voicenotes secrets — see voicenotes.config docstring and ADR-004.
+    require_voicenotes_settings()
+
     flow_logger = _flow_logger()
     started_at = datetime.now(UTC)
     flow_run_id = _current_flow_run_id()

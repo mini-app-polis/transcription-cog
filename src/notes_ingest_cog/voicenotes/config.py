@@ -1,7 +1,26 @@
-"""Configuration for voicenotes-cog.
+"""Configuration for voicenotes sub-pipeline.
 
 All runtime config flows through pydantic-settings. Doppler injects env vars;
 this module just reads them. Defaults are deliberately conservative.
+
+Validation-deferral note
+------------------------
+The voicenotes-specific required fields (``openai_api_key``,
+``todoist_api_token``, ``todoist_inbox_project_id``,
+``google_drive_voice_inbox_folder_id``) are declared with empty-string
+defaults rather than ``Field(...)``-required. This is deliberate:
+notes-ingest-cog ships as a single Railway service hosting two
+unrelated pipelines, and Doppler may have voicenotes secrets configured
+only after the merge deploy. Hard-requiring them at module import would
+crash the entire deployment — including ``wcs-transcripts`` mode, which
+has nothing to do with voicenotes — every time someone forgot to
+populate one of these.
+
+Instead, callers (the voicenotes flows) MUST call
+``require_voicenotes_settings()`` at flow entry. That helper raises a
+clear ``RuntimeError`` enumerating any missing fields, so failure is
+loud and localised to the voicenotes mode rather than masking as a
+generic pydantic ValidationError at boot.
 
 Usage:
     from notes_ingest_cog.voicenotes.config import settings
@@ -17,7 +36,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime configuration. All fields are required unless they have a default."""
+    """Runtime configuration.
+
+    Voicenotes-required fields default to empty strings — see module
+    docstring. Call ``require_voicenotes_settings()`` at the entry of
+    any voicenotes flow before consuming these values.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -28,8 +52,25 @@ class Settings(BaseSettings):
     )
 
     # --- LLM providers ---
-    openai_api_key: str = Field(..., description="OpenAI API key for Whisper.")
-    anthropic_api_key: str = Field(..., description="Anthropic API key for Claude.")
+    # Empty-string defaults: see module docstring (validation deferred to
+    # ``require_voicenotes_settings()`` so wcs-transcripts mode can boot
+    # without voicenotes secrets in Doppler).
+    openai_api_key: str = Field(
+        default="",
+        description=(
+            "OpenAI API key for Whisper. Required for voicenotes mode; "
+            "boot is allowed to succeed without it so wcs-transcripts "
+            "mode can serve."
+        ),
+    )
+    anthropic_api_key: str = Field(
+        default="",
+        description=(
+            "Anthropic API key for Claude. Required for voicenotes mode; "
+            "the parent WCS pipeline also reads ANTHROPIC_API_KEY directly "
+            "for its own LLM config."
+        ),
+    )
     claude_model: str = Field(
         default="claude-sonnet-4-6",
         description="Claude model used for the extraction call. See docs/PROMPT.md.",
@@ -48,22 +89,28 @@ class Settings(BaseSettings):
     # the operator manually revokes it. On 401/403 the runtime
     # client raises TodoistAuthError; the fix is to mint a new
     # token and rotate TODOIST_API_TOKEN in Doppler.
+    # Empty-string defaults: see module docstring (validation deferred).
     todoist_api_token: str = Field(
-        ...,
+        default="",
         description=(
-            "Long-lived Todoist personal API token. Bootstrap via "
-            "scripts/setup_todoist.py."
+            "Long-lived Todoist personal API token. Required for voicenotes "
+            "mode. Bootstrap via scripts/setup_todoist.py."
         ),
     )
     todoist_inbox_project_id: str = Field(
-        ...,
-        description="Todoist project ID where voice notes are posted.",
+        default="",
+        description=(
+            "Todoist project ID where voice notes are posted. Required for "
+            "voicenotes mode."
+        ),
     )
 
     # --- Google Drive ---
     google_drive_voice_inbox_folder_id: str = Field(
-        ...,
-        description="Drive folder ID for the voice-inbox/ root.",
+        default="",
+        description=(
+            "Drive folder ID for the voice-inbox/ root. Required for voicenotes mode."
+        ),
     )
     # Drive auth itself is handled by common-python-utils, which sources its
     # own credentials. We don't duplicate that config here.
@@ -176,3 +223,61 @@ def get_settings() -> Settings:
 
 # Convenience alias for production code.
 settings = get_settings()
+
+
+# Fields that MUST be populated for voicenotes mode to run. The four
+# pieces of state the voicenotes pipeline can't fake: an OpenAI key for
+# Whisper, the two Todoist credentials needed to post a task, and the
+# Drive folder that's the source of audio. ``anthropic_api_key`` is
+# deliberately omitted — the parent WCS pipeline has its own
+# Claude-via-mini_app_polis path that reads ANTHROPIC_API_KEY too, so
+# its absence will already be caught upstream if it matters.
+_VOICENOTES_REQUIRED_FIELDS: tuple[str, ...] = (
+    "openai_api_key",
+    "anthropic_api_key",
+    "todoist_api_token",
+    "todoist_inbox_project_id",
+    "google_drive_voice_inbox_folder_id",
+)
+
+
+def require_voicenotes_settings(cfg: Settings | None = None) -> Settings:
+    """Validate that all voicenotes-mode required fields are populated.
+
+    Called at the entry of every voicenotes flow (``voicenotes_ingest``,
+    ``voicenotes_cleanup``). Module import deliberately accepts empty
+    defaults so the parent cog can boot and serve other modes without
+    voicenotes secrets — see module docstring. This guard moves the
+    failure from "opaque pydantic ValidationError at boot" to "loud
+    RuntimeError when voicenotes mode is invoked, listing every
+    missing env var."
+
+    Parameters
+    ----------
+    cfg:
+        Optional ``Settings`` instance. Defaults to the module-level
+        singleton; tests pass a fresh instance after clearing the
+        ``get_settings`` cache.
+
+    Returns
+    -------
+    The validated ``Settings`` instance (so callers can chain).
+
+    Raises
+    ------
+    RuntimeError
+        If one or more required fields are empty. Message enumerates
+        all missing fields plus the canonical env-var names so the
+        operator can fix Doppler in one pass.
+    """
+    cfg = cfg or settings
+    missing = [name for name in _VOICENOTES_REQUIRED_FIELDS if not getattr(cfg, name)]
+    if missing:
+        env_names = ", ".join(name.upper() for name in missing)
+        raise RuntimeError(
+            "voicenotes mode invoked but required configuration is missing. "
+            f"Populate the following env vars in Doppler / Railway: {env_names}. "
+            "See .env.example for descriptions, or "
+            "docs/decisions/ADR-004-voicenotes-merge.md for the merge context."
+        )
+    return cfg
