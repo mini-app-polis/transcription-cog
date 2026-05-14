@@ -1673,10 +1673,16 @@ name = "notes-ingest-cog"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anthropic" },
     { name = "common-python-utils", extra = ["llm"] },
+    { name = "google-api-python-client" },
+    { name = "google-auth" },
+    { name = "httpx" },
+    { name = "openai" },
     { name = "prefect" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "sentry-sdk" },
 ]
@@ -1694,10 +1700,16 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", specifier = ">=0.40" },
     { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=main" },
+    { name = "google-api-python-client", specifier = ">=2.0" },
+    { name = "google-auth", specifier = ">=2.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "openai", specifier = ">=1.50" },
     { name = "prefect", specifier = ">=3.0.0,<4.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0,<3.0.0" },
     { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.4.0,<3.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.1,<2.0.0" },
     { name = "sentry-sdk", specifier = ">=2.0.0,<3.0.0" },
 ]
