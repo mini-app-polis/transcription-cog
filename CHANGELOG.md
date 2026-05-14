@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.8.0...v1.8.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* build ([d9c800f](https://github.com/mini-app-polis/notes-ingest-cog/commit/d9c800ff79175e977f221b175091e2bbf6d8fd7f))
+
 # [1.8.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.5...v1.8.0) (2026-05-14)
 
 
