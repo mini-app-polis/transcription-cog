@@ -1,3 +1,16 @@
+# [1.8.0](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.5...v1.8.0) (2026-05-14)
+
+
+### Bug Fixes
+
+* build ([f319ba4](https://github.com/mini-app-polis/notes-ingest-cog/commit/f319ba4866c628a7e362b821d3f1b83b024229cc))
+* lock ([11a3cd9](https://github.com/mini-app-polis/notes-ingest-cog/commit/11a3cd9638612216dac0d762714eeb73e13ca185))
+
+
+### Features
+
+* migration of voicenotes into this repo ([d7d3ddb](https://github.com/mini-app-polis/notes-ingest-cog/commit/d7d3ddb13377c3721667a1b760ff809e0935def8))
+
 ## [1.7.5](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.7.4...v1.7.5) (2026-05-10)
 
 
