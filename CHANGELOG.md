@@ -1,3 +1,17 @@
+# [1.9.0](https://github.com/mini-app-polis/transcription-cog/compare/v1.8.1...v1.9.0) (2026-05-14)
+
+
+### Bug Fixes
+
+* lock ([6e13fdb](https://github.com/mini-app-polis/transcription-cog/commit/6e13fdb4e887d5739148d056752f0655316ccf74))
+* lock ([a37b27a](https://github.com/mini-app-polis/transcription-cog/commit/a37b27a82ee2ba47cb94cfa77c0c30bcecfb1d5f))
+* release ([7aa8dbd](https://github.com/mini-app-polis/transcription-cog/commit/7aa8dbdae1633fef0e590ab636f19d79135e6ac8))
+
+
+### Features
+
+* migrate to transcription cog ([c4a3df1](https://github.com/mini-app-polis/transcription-cog/commit/c4a3df1c2efadae9b81aff18e0236689530eec92))
+
 ## [1.8.1](https://github.com/mini-app-polis/notes-ingest-cog/compare/v1.8.0...v1.8.1) (2026-05-14)
 
 
