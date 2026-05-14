@@ -41,6 +41,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/notes_ingest_cog"]
 
+# Hatch ships non-Python files inside the package tree by default, but the
+# voicenotes extraction prompt is load-bearing — it's read at runtime by
+# notes_ingest_cog.voicenotes.clients.claude_client via importlib.resources.
+# Pin it explicitly so the wheel can't accidentally drop it if hatch's
+# default-include rules change.
+[tool.hatch.build.targets.wheel.force-include]
+"src/notes_ingest_cog/voicenotes/prompts/extract.md" = "notes_ingest_cog/voicenotes/prompts/extract.md"
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"

@@ -1,37 +1,32 @@
-"""Shared pytest fixtures for voicenotes-cog.
+"""Voicenotes sub-package test fixtures.
 
-Patterns:
-  - Test env vars seeded BEFORE the cog imports so pydantic-settings
-    validation succeeds without Doppler.
-  - Retry counts forced to ZERO and retry delays to [] so failure-path
-    tests don't sleep through Prefect's exponential backoff.
-  - Prefect's ``concurrency()`` context manager replaced with a no-op
-    so tests don't try to acquire a slot from a real Prefect server.
-  - ``time.sleep`` is patched per-test as defense in depth — unit
-    tests have no business waiting on the wall clock.
-  - prefect_test_harness gives us in-memory Prefect.
-  - Singletons reset between tests so injected mocks take effect.
+Per-test concerns only — singleton resets between tests, the
+deterministic transcript fixtures, and a defense-in-depth no-sleep
+patch. The project-wide setup (env-var bootstrap, Prefect concurrency
+stub, test harness) lives in the parent ``tests/conftest.py`` so it
+fires before pytest collects ANY test module, regardless of which
+subdirectory pytest enters first. See parent conftest for rationale.
+
+The only thing this conftest still does at module scope is quiet a few
+chatty third-party loggers — kept here (rather than in the parent)
+because they're a voicenotes-test concern (the Prefect test harness's
+connect chatter and graphviz's banners drown out cog log lines on
+failure-path tests in this sub-package specifically).
 """
 
 from __future__ import annotations
 
 import logging
-import os
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import date
 
-# ---------------------------------------------------------------------------
-# Silence chatty third-party DEBUG logs in test output.
-#
-# The Prefect test harness spins up a temporary local server, which
-# triggers a lot of httpcore/httpx/websockets/asyncio DEBUG chatter on
-# every connect attempt before the server is ready. Graphviz emits a
-# bank of deprecation banners on import. None of it is signal for cog
-# test failures, and the noise drowns out actual cog log lines when a
-# test does fail. Cap each of these libraries at WARNING so genuine
-# misbehavior still surfaces.
-#
-# Lives at module scope (rather than in ``pytest_configure``) so the
-# levels are applied as soon as conftest is imported — before any
-# fixture or test triggers the noisy library imports.
+import pytest
+
+# Silence chatty third-party DEBUG logs in test output. Capped at module
+# scope so the levels are applied as soon as this conftest is imported,
+# before any fixture or test triggers the noisy library imports.
 for _noisy_logger in (
     "httpcore",
     "httpcore.connection",
@@ -45,65 +40,23 @@ for _noisy_logger in (
 ):
     logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
-# ---------------------------------------------------------------------------
-# Env-var bootstrap — MUST run before notes_ingest_cog.voicenotes is imported.
-# pydantic-settings validates required fields at module load.
-# Test mode also forces retry counts to 0 + delays to [] so failing
-# tasks don't introduce real wall-clock waits.
-# ---------------------------------------------------------------------------
 
-_TEST_ENV_DEFAULTS = {
-    "OPENAI_API_KEY": "test-openai-key",
-    "ANTHROPIC_API_KEY": "test-anthropic-key",
-    "TODOIST_API_TOKEN": "test-todoist-token",
-    "TODOIST_INBOX_PROJECT_ID": "test-project-id",
-    "GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID": "test-folder-id",
-    "KAIANO_API_BASE_URL": "https://api.test.invalid",
-    "KAIANO_API_CLERK_MACHINE_SECRET": "test-machine-secret",
-    "ENVIRONMENT": "test",
-    # Defense-in-depth against slow tests:
-    "TASK_RETRIES": "0",
-    "TASK_RETRY_DELAYS_SECONDS": "[]",
-    "EXTRACT_TASK_RETRIES": "0",
-    "EXTRACT_TASK_RETRY_DELAYS_SECONDS": "[]",
-}
-
-for _key, _default in _TEST_ENV_DEFAULTS.items():
-    os.environ.setdefault(_key, _default)
-
-
-# ---------------------------------------------------------------------------
-# Patch Prefect's runtime concurrency slot acquisition with a no-op
-# BEFORE any cog module imports it. Otherwise the flow body would try
-# to call out to a Prefect server (or block on the test harness's
-# in-memory implementation, which is slower than skipping it entirely).
-# ---------------------------------------------------------------------------
-
-from contextlib import contextmanager  # noqa: E402
-
-
+# Local no-op concurrency context — bound into the flow modules below as
+# defense in depth in case they captured the original ``concurrency``
+# symbol before the parent conftest's monkeypatch landed. (Today the
+# parent conftest patches before any voicenotes import, but the
+# belt-and-braces local rebinding is cheap.)
 @contextmanager
 def _noop_concurrency(*args, **kwargs):
     yield
 
 
-# Patch both the source and the import site used by our flows.
-import prefect.concurrency.sync as _prefect_conc  # noqa: E402
-
-_prefect_conc.concurrency = _noop_concurrency  # type: ignore[assignment]
-
-
-# ---------------------------------------------------------------------------
-# Imports below this line are safe — env vars set, concurrency neutered.
-# ---------------------------------------------------------------------------
-
-import time  # noqa: E402
-from collections.abc import Iterator  # noqa: E402
-from datetime import date  # noqa: E402
-
-import pytest  # noqa: E402
-
-# Re-import flows AFTER patching so they bind to the no-op.
+# Imports below pull in voicenotes modules — safe at this point because
+# the parent ``tests/conftest.py`` has already seeded env vars and
+# patched Prefect's concurrency slot acquisition. E402 fires only
+# because the ``_noisy_logger`` loop and the ``_noop_concurrency``
+# definition above are deliberate module-scope statements; the imports
+# themselves are first-use-correct.
 from notes_ingest_cog.voicenotes.clients import (  # noqa: E402
     claude_client as _claude_mod,
 )
@@ -117,9 +70,9 @@ from notes_ingest_cog.voicenotes.clients import (  # noqa: E402
 from notes_ingest_cog.voicenotes.flows import cleanup as _cleanup_mod  # noqa: E402
 from notes_ingest_cog.voicenotes.flows import ingest as _ingest_mod  # noqa: E402
 
-# Force the patched concurrency into the flow modules' namespaces too,
-# in case they captured the original symbol before this conftest ran
-# (e.g., when pytest collects from a different starting point).
+# Belt-and-braces: rebind concurrency in the flow modules' namespaces in
+# case they bound the symbol at import time before parent conftest's
+# monkeypatch landed.
 _ingest_mod.concurrency = _noop_concurrency  # type: ignore[assignment]
 _cleanup_mod.concurrency = _noop_concurrency  # type: ignore[assignment]
 

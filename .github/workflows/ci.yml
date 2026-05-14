@@ -21,7 +21,20 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run mypy src/
-      - run: uv run pytest --cov=notes_ingest_cog --cov-report=term-missing
+      - name: Run tests
+        # The voicenotes sub-pipeline imports a pydantic-settings ``Settings``
+        # model at module import time (see voicenotes/config.py). Tests seed
+        # defaults in tests/voicenotes/conftest.py via os.environ.setdefault
+        # before any voicenotes module loads, but seeding them here as well
+        # is defense-in-depth against import-order changes. No real secrets:
+        # tests use mocks, respx, and the in-memory Prefect harness.
+        env:
+          OPENAI_API_KEY: test
+          ANTHROPIC_API_KEY: test
+          TODOIST_API_TOKEN: test
+          TODOIST_INBOX_PROJECT_ID: test
+          GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID: test
+        run: uv run pytest --cov=notes_ingest_cog --cov-report=term-missing
 
   release:
     name: Release

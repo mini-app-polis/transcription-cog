@@ -127,8 +127,14 @@ class Settings(BaseSettings):
         ge=0,
         description="Default Prefect task retry count for ingest tasks.",
     )
-    task_retry_delays_seconds: list[int] = Field(
-        default=[5, 15, 30],
+    # ``list[float]`` (not ``list[int]``) because Prefect's
+    # ``@task(retry_delay_seconds=...)`` typing is ``list[float] | ...``
+    # and ``list[int]`` is invariant in PEP-484 — mypy refuses the
+    # assignment. Pydantic coerces ``[5, 15, 30]`` from env into floats
+    # transparently, and Prefect treats integer-valued floats the same
+    # as ints at runtime, so this is a zero-cost type fix.
+    task_retry_delays_seconds: list[float] = Field(
+        default=[5.0, 15.0, 30.0],
         description=(
             "Per-attempt retry delay (seconds) for ingest tasks. "
             "Length should match task_retries."
@@ -139,8 +145,8 @@ class Settings(BaseSettings):
         ge=0,
         description="Retry count for the Claude extraction task.",
     )
-    extract_task_retry_delays_seconds: list[int] = Field(
-        default=[5, 15],
+    extract_task_retry_delays_seconds: list[float] = Field(
+        default=[5.0, 15.0],
         description="Retry delays for the Claude extraction task.",
     )
 
