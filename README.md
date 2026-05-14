@@ -3,19 +3,30 @@
 [![CI](https://github.com/mini-app-polis/notes-ingest-cog/actions/workflows/ci.yml/badge.svg)](https://github.com/mini-app-polis/notes-ingest-cog/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/mini-app-polis/notes-ingest-cog?label=version)](https://github.com/mini-app-polis/notes-ingest-cog/releases)
 
-Prefect pipeline cog that processes WCS lesson transcripts into structured
-notes stored in Postgres.
+Prefect pipeline cog that hosts two related pipelines under a **single
+router-style deployment** (`notes-ingest-cog/notes-ingest-cog`):
 
-Triggered by `watcher-cog` when a new transcript file lands in the configured
-Google Drive folder. Reads the transcript, calls an LLM to extract structured
-notes, stores both the raw transcript and the structured notes via
-`api-kaianolevine-com`, and archives the original file.
+| Mode (`mode=…`)         | What it does                                                       | Source folder | Sink                                  |
+| ----------------------- | ------------------------------------------------------------------ | ------------- | ------------------------------------- |
+| `wcs-transcripts`       | WCS lesson transcripts → structured notes (LLM) → Postgres        | `NOTES_INPUT_FOLDER_ID`            | `api-kaianolevine-com` (`/v1/wcs/notes`) |
+| `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → Todoist | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | Todoist Inbox project                 |
+| `voicenotes-cleanup`    | Manual operator sweep: delete archived audio older than retention  | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID/processed/` | (deletes from Drive)                  |
 
-**Inputs:** `.txt` or Google Doc transcripts in a watched Drive folder  
-**Outputs:** `wcs_transcripts` + `wcs_notes` rows in `api-kaianolevine-com` Postgres  
-**Presentation:** `wcs.kaianolevine.com` reads notes via `/v1/wcs/notes`
+Triggered by `watcher-cog` with `mode` set to one of the modes above (default
+behavior in `voicenotes` already runs cleanup inline, so the explicit
+cleanup mode is for operator-driven manual sweeps only). Mirrors
+`deejay-cog`'s single-router-deployment pattern.
+
+**WCS pipeline** — `wcs.kaianolevine.com` reads notes via `/v1/wcs/notes`.  
+**Voicenotes pipeline** — output lands in the user's Todoist Inbox project; original audio is archived to `voice-inbox/processed/YYYY-MM/`.
 
 See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
+
+> **History:** The `voicenotes` and `voicenotes-cleanup` modes were merged
+> in from the standalone [`voicenotes-cog`](https://github.com/mini-app-polis/voicenotes-cog)
+> repository in May 2026 so the two pipelines share one Prefect deployment
+> and one Railway service. The legacy repo is deprecated. Sub-package code
+> lives under `src/notes_ingest_cog/voicenotes/`.
 
 ---
 
@@ -59,15 +70,19 @@ uv run ruff format src tests
 With Prefect Cloud credentials in your `.env`:
 
 ```bash
-# Start serving the flow locally
+# Start serving the router deployment locally
 uv run python -m notes_ingest_cog.main
 
-# Then from the Prefect UI: trigger process-transcript with a file_id
-# Or via Prefect CLI:
-uv run prefect deployment run process-transcript/notes-ingest-cog \
-  --param file_id=YOUR_DRIVE_FILE_ID \
-  --param file_name=your_transcript.txt \
-  --param mime_type=text/plain
+# Then trigger a specific mode via the Prefect UI's "Custom Run" dropdown,
+# or from the CLI:
+uv run prefect deployment run notes-ingest-cog/notes-ingest-cog \
+  --param mode=wcs-transcripts
+
+uv run prefect deployment run notes-ingest-cog/notes-ingest-cog \
+  --param mode=voicenotes
+
+uv run prefect deployment run notes-ingest-cog/notes-ingest-cog \
+  --param mode=voicenotes-cleanup
 ```
 
 ---
@@ -86,14 +101,14 @@ Doppler → Railway native sync.
 
 ### Prerequisites
 
-These must be in place before the cog receives triggers. All are
-confirmed live as of the current deploy:
+These must be in place before the cog receives triggers:
 
-1. **watcher-cog** — the `wcs-notes` `WatcherConfig` entry in
-   `watcher-cog/src/watcher_cog/config.py` watches
-   `NOTES_INPUT_FOLDER_ID` and fires the `process-transcript` Prefect
-   deployment.
-2. **Prefect Cloud** — the `process-transcript/notes-ingest-cog`
+1. **watcher-cog** — two `WatcherConfig` entries fire the single
+   `notes-ingest-cog/notes-ingest-cog` deployment with the appropriate
+   `mode` parameter:
+   - `wcs-notes` watcher (`NOTES_INPUT_FOLDER_ID`) → `mode=wcs-transcripts`
+   - `voicenotes` watcher (`GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID`) → `mode=voicenotes`
+2. **Prefect Cloud** — the `notes-ingest-cog/notes-ingest-cog` router
    deployment is registered via `prefect.serve()` in `main.py` when
    the Railway worker starts.
 
@@ -103,9 +118,11 @@ After first deploy to Railway:
 
 1. **Healthchecks.io** — create a new check (period: 1 min, grace: 5 min),
    set `HEALTHCHECKS_URL` in Doppler.
-2. **Sentry** — create a Python project, set `SENTRY_DSN` in Doppler.
+2. **Sentry** — create a Python project, set `SENTRY_DSN_NOTES_INGEST_COG`
+   in Doppler. Voicenotes errors flow through the same DSN now that the
+   two pipelines share a deployment.
 3. **Prefect Cloud** — create a failure alert automation for the
-   `process-transcript/notes-ingest-cog` deployment.
+   `notes-ingest-cog/notes-ingest-cog` deployment (covers both modes).
 
 ---
 
@@ -126,20 +143,31 @@ Commit message format:
 ```
 src/notes_ingest_cog/
   __init__.py       package init
-  config.py         typed config from env vars
+  config.py         typed config from env vars (WCS pipeline)
   models.py         Pydantic models for all external data
   schema.py         LLM JSON schema for structured notes output
   prompt.py         LLM system + user message builder
-  drive.py          Google Drive read + archive helpers
+  drive.py          Google Drive read + archive helpers (WCS pipeline)
   api_client.py     typed client for api-kaianolevine-com
-  flow.py           Prefect @flow — main pipeline logic
-  main.py           service entry point (Sentry, Healthchecks, prefect.serve)
+  flow.py           Prefect @flow — process_transcript (WCS pipeline)
+  main.py           service entry point: router flow + prefect.serve()
+  voicenotes/       voice sticky-note sub-pipeline (merged from voicenotes-cog)
+    _shared.py
+    config.py       pydantic-settings Settings (voicenotes-specific env)
+    clients/        whisper, claude, todoist, drive
+    flows/          ingest, cleanup, router
+    models/         ExtractedTask
+    prompts/        extract.md (Claude extraction prompt)
+    tasks/          download, transcribe, extract, post_task, archive, emit_evaluation
+    scripts/        setup_todoist.py (one-time operator helper)
 
-tests/notes_ingest_cog/
-  test_config.py    config normalization and failure paths
-  test_prompt.py    prompt output shape
-  test_drive.py     Drive helpers — normalization, failure, output shape
-  test_flow.py      flow critical path — skip guards, happy path, output shape
+tests/
+  conftest.py                shared Prefect test harness
+  notes_ingest_cog/          WCS pipeline tests
+  voicenotes/                voicenotes sub-pipeline tests
+    conftest.py              env bootstrap, singletons, no-op concurrency
+    unit/
+    integration/
 
 docs/
   PIPELINE.md       ecosystem flow diagram and storage schema
