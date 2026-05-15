@@ -49,10 +49,10 @@ from dotenv import load_dotenv
 from mini_app_polis import logger as log
 from prefect import flow, serve
 
-from .config import load_config
-from .flow import process_transcript
-from .voicenotes.flows.cleanup import voicenotes_cleanup
-from .voicenotes.flows.ingest import voicenotes_ingest
+from transcription_cog.config import load_config
+from transcription_cog.flow import process_transcript
+from transcription_cog.voicenotes.flows.cleanup import voicenotes_cleanup
+from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest
 
 load_dotenv()
 
