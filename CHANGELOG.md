@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.0...v1.9.1) (2026-05-15)
+
+
+### Bug Fixes
+
+* import path ([44d97ff](https://github.com/mini-app-polis/transcription-cog/commit/44d97ff8b86a986cc9339b230a577537edc1ff69))
+
 # [1.9.0](https://github.com/mini-app-polis/transcription-cog/compare/v1.8.1...v1.9.0) (2026-05-14)
 
 
