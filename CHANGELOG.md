@@ -1,3 +1,10 @@
+## [1.9.2](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.1...v1.9.2) (2026-05-15)
+
+
+### Bug Fixes
+
+* updated retry timing ([34474ee](https://github.com/mini-app-polis/transcription-cog/commit/34474eef890bdfc5a37cf2490fee665c60e46f58))
+
 ## [1.9.1](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.0...v1.9.1) (2026-05-15)
 
 
