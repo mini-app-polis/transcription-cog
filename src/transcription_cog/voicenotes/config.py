@@ -188,13 +188,24 @@ class Settings(BaseSettings):
         ),
     )
     extract_task_retries: int = Field(
-        default=2,
+        default=5,
         ge=0,
-        description="Retry count for the Claude extraction task.",
+        description=(
+            "Retry count for the Claude extraction task. "
+            "Sized to ride out Anthropic 529 'overloaded' capacity "
+            "blips, which can persist for several minutes — short "
+            "retry budgets here drop voice notes on the floor."
+        ),
     )
     extract_task_retry_delays_seconds: list[float] = Field(
-        default=[5.0, 15.0],
-        description="Retry delays for the Claude extraction task.",
+        default=[30.0, 60.0, 120.0, 300.0, 600.0],
+        description=(
+            "Retry delays (seconds) for the Claude extraction task. "
+            "Exponential-ish backoff from 30s up to 10 minutes, "
+            "totaling ~18min across 5 retries. Length matches "
+            "extract_task_retries; Prefect reuses the last delay if "
+            "the list is shorter than retries."
+        ),
     )
 
     # HTTP client default timeout for outbound API calls (Todoist,
