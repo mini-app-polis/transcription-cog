@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.1...v1.10.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* updating cog report name ([4b97b99](https://github.com/mini-app-polis/transcription-cog/commit/4b97b99d12ababf9c14fdd38c23575e5aeee7da5))
+
 ## [1.10.1](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.0...v1.10.1) (2026-05-17)
 
 
