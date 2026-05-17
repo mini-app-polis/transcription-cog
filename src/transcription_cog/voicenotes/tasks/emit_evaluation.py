@@ -35,7 +35,16 @@ _logger = get_logger("voicenotes-cog")
 
 # Repo identifier written into every finding row. Single source of
 # truth so it can't drift between findings.
-_REPO_NAME = "voicenotes-cog"
+#
+# Both pipelines in this repo (WCS transcripts via flow.py and
+# voicenotes via voicenotes/flows/) self-report under the same
+# ``transcription-cog`` repo label since the May-2026 merge from the
+# old ``notes-ingest-cog`` and ``voicenotes-cog`` standalone repos
+# (docs/decisions/ADR-004-voicenotes-merge.md). The two pipelines stay
+# distinguishable in the Pipeline Health UI via ``flow_name`` —
+# ``process-transcript`` for WCS transcripts, ``voicenotes-ingest``
+# for voicenotes — not via a per-pipeline repo facet.
+_REPO_NAME = "transcription-cog"
 
 # Flow name written into every finding row. Matches the ``@flow``
 # decorator name in flows/ingest.py — keep these in sync.

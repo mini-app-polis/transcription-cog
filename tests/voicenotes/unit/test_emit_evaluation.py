@@ -175,7 +175,11 @@ class TestEmitEvaluationTask:
             )
         mock_post.assert_called_once()
         kwargs = mock_post.call_args.kwargs
-        assert kwargs["repo"] == "voicenotes-cog"
+        # Post-merge (ADR-004): both pipelines self-report under the
+        # unified transcription-cog repo identifier; flow_name is the
+        # only discriminator between the WCS-transcripts flow and the
+        # voicenotes flow.
+        assert kwargs["repo"] == "transcription-cog"
         assert kwargs["flow_name"] == "voicenotes-ingest"
         assert kwargs["source"] == "flow_inline"
 
