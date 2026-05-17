@@ -47,12 +47,38 @@ title
   Only populate if there is a clear, specific topic name for the session.
   If the session covers multiple topics or the topic is vague, leave blank.
 
+key_concepts
+  Each item is `{concept, detail}`.
+  - `concept` is a SHORT NOUN-PHRASE name for the idea (2-8 words, no
+    sentence punctuation). Examples of valid `concept` values: "anchor step",
+    "frame quality", "directional intent", "bow-and-snap mechanic",
+    "weight commitment".
+  - `detail` is the prose elaboration — one or more sentences explaining
+    how the teacher framed this concept in this lesson.
+  NEVER put a full sentence into `concept`. Sentences belong in `detail`.
+  If an idea cannot be reduced to a noun-phrase, omit it from `key_concepts`
+  rather than emitting a sentence-shaped `concept`.
+
 vocabulary_terms
   Capture any term the instructor defines, coins, or uses in a specialised way.
+  Each item is `{term, definition}`.
+  - `term` is the word or short phrase being defined (1-4 words, no punctuation).
+  - `definition` is the prose definition.
+  Same rule as `key_concepts`: NEVER put a sentence into `term`.
 
 drills
   Only include if the transcript describes an exercise with clear intent and method.
   A passing mention of a concept is NOT a drill.
+
+common_mistakes
+  Each item is `{mistake, correction}`. `mistake` describes the observed error
+  in a sentence; `correction` describes the fix. Both are full sentences here —
+  unlike `key_concepts.concept`, no noun-phrase constraint applies.
+
+patterns_and_sequences
+  Each item is `{name, description}`. `name` is the established WCS pattern name
+  (1-5 words: "sugar push", "left side pass", "basket whip"). `description` is
+  the prose. NEVER put a sentence into `name`.
 
 student_observations
   Direct instructor assessments of a specific student's current dancing.
@@ -60,6 +86,21 @@ student_observations
 
 quotes
   Prefer verbatim instructor quotes. Paraphrase only if the original is too fragmented.
+
+references
+  ONLY include named INDIVIDUAL PEOPLE who are dancers, instructors, judges, or
+  competitors. EXCLUDE: events ("Boogie by the Bay"), competitions
+  ("Jack & Jill"), schools ("Juilliard"), organizations ("ASDC"), objects,
+  abstract concepts.
+  - `name` must be a person's name, ideally full name. Use the most complete
+    form available in the transcript. If only a first name is mentioned, use
+    the first name.
+  - If two people are referenced together ("Ben and Cameo"), emit TWO SEPARATE
+    items — never combine into one entry.
+  - `type` must be one of: instructor, dancer, judge, competitor, coach, pro.
+    If the transcript doesn't make this clear, omit `type` rather than guessing.
+  - If a name is mentioned but you cannot identify whether it's a person vs.
+    event/org, OMIT it rather than guessing.
 
 suggested_new_sections
   If you encounter content that doesn't fit any known section and seems like it

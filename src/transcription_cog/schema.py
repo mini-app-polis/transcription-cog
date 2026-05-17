@@ -22,12 +22,14 @@ NOTES_SCHEMA: dict = {
             "description": "High-level principles or ideas discussed.",
             "items": {
                 "oneOf": [
-                    {"type": "string"},
+                    {"type": "string", "maxLength": 80},
                     {
                         "type": "object",
                         "additionalProperties": True,
                         "properties": {
-                            "concept": {"type": "string"},
+                            # Cap: 8 words at ~10 chars each. Forces the
+                            # LLM to use noun-phrase names, not sentences.
+                            "concept": {"type": "string", "maxLength": 80},
                             "detail": {"type": "string"},
                         },
                     },
@@ -41,7 +43,8 @@ NOTES_SCHEMA: dict = {
                 "type": "object",
                 "additionalProperties": True,
                 "properties": {
-                    "term": {"type": "string"},
+                    # Cap: 4 words at ~12 chars. Term, not sentence.
+                    "term": {"type": "string", "maxLength": 50},
                     "definition": {"type": "string"},
                 },
             },
@@ -76,12 +79,14 @@ NOTES_SCHEMA: dict = {
             "description": "Named patterns, move sequences, or combinations taught or referenced.",
             "items": {
                 "oneOf": [
-                    {"type": "string"},
+                    {"type": "string", "maxLength": 60},
                     {
                         "type": "object",
                         "additionalProperties": True,
                         "properties": {
-                            "name": {"type": "string"},
+                            # Pattern names like "sugar push" or "basket whip"
+                            # — short by convention; never a sentence.
+                            "name": {"type": "string", "maxLength": 60},
                             "description": {"type": "string"},
                         },
                     },
@@ -156,16 +161,36 @@ NOTES_SCHEMA: dict = {
         },
         "references": {
             "type": "array",
-            "description": "Named instructors, dancers, systems, or resources cited.",
+            "description": (
+                "Named INDIVIDUAL PEOPLE cited as instructors, dancers, judges, "
+                "competitors, or coaches. Exclude events, schools, organizations, "
+                "objects, and abstract systems."
+            ),
             "items": {
                 "oneOf": [
-                    {"type": "string"},
+                    {"type": "string", "maxLength": 60},
                     {
                         "type": "object",
                         "additionalProperties": True,
                         "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string"},
+                            # Person name; cap protects against
+                            # paragraph-shaped or multi-person entries.
+                            "name": {"type": "string", "maxLength": 60},
+                            # Enum forces the LLM to either pick a valid
+                            # person-type or omit the field, eliminating
+                            # leakage of "event" / "school" / etc.
+                            "type": {
+                                "type": "string",
+                                "enum": [
+                                    "instructor",
+                                    "teacher",
+                                    "dancer",
+                                    "judge",
+                                    "competitor",
+                                    "coach",
+                                    "pro",
+                                ],
+                            },
                             "context": {"type": "string"},
                         },
                     },
