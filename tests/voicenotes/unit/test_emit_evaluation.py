@@ -134,8 +134,7 @@ class TestBuildLibraryFindings:
         )
         for row in rows:
             assert set(row.keys()) <= _ALLOWED_ROW_KEYS, (
-                f"Row introduced unexpected keys: "
-                f"{set(row.keys()) - _ALLOWED_ROW_KEYS}"
+                f"Row introduced unexpected keys: {set(row.keys()) - _ALLOWED_ROW_KEYS}"
             )
 
     def test_severity_is_uppercased(self):

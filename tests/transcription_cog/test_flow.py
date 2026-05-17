@@ -392,7 +392,15 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
     mock_env: None, mock_drive_text: str
 ) -> None:
     """TEST-002: a dedup skip on one drive_file_id does not prevent a
-    subsequent new file in the same batch from processing end-to-end."""
+    subsequent new file in the same batch from processing end-to-end.
+
+    Relies on Prefect's task-level retry behaviour: ``task_store_transcript``
+    has ``retries=2``, so the unique-constraint exception fires three
+    times for file-dup before the flow handler converts it into a benign
+    'already_processed' skip. The fourth ``create_transcript`` return
+    value (a real MagicMock id) is consumed by file-new, which proceeds
+    end-to-end.
+    """
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,

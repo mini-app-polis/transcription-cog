@@ -75,6 +75,20 @@ import prefect.concurrency.sync as _prefect_conc  # noqa: E402
 _prefect_conc.concurrency = _noop_concurrency  # type: ignore[assignment]
 
 
+# Also patch the consumer's local binding. ``flow.py`` does
+# ``from prefect.concurrency.sync import concurrency``, which captures
+# the original function into its own namespace at import time. Patching
+# only the source module ``prefect.concurrency.sync`` is too late for
+# code that has already executed that ``from ... import ...`` line —
+# each test invocation would still call the real concurrency primitive,
+# which round-trips to the harness's in-memory slot table and costs
+# ~1 second per call. Replace flow.py's bound symbol directly so the
+# no-op takes effect regardless of import order.
+import transcription_cog.flow as _tcflow_mod  # noqa: E402
+
+_tcflow_mod.concurrency = _noop_concurrency  # type: ignore[assignment]
+
+
 # ---------------------------------------------------------------------------
 # Imports below this line are safe — env vars set, concurrency neutered.
 # ---------------------------------------------------------------------------
