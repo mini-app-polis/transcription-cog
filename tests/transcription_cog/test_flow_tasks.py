@@ -354,15 +354,27 @@ def test_emit_terminal_failure_swallows_post_error() -> None:
 
     Best-effort semantics are owned by the library, but the make_failure_hook
     wrapper also has its own try/except. We verify by mocking the
-    library to raise and checking the hook returns cleanly.
+    library to raise, calling the hook, and asserting both that the hook
+    actually invoked the library once (so we know the failure path was
+    exercised and didn't silently short-circuit) and that the call
+    completed without re-raising. Satisfies TEST-011's "no test without
+    verification" rule.
     """
     with patch(
         "mini_app_polis.pipeline_status.post_run_finding",
         side_effect=RuntimeError("API down"),
-    ):
+    ) as mock_post:
         # Should not raise.
         _emit_terminal_failure(
             flow=MagicMock(),
             flow_run=_flow_run(),
             state=_state("Failed", "FAILED"),
         )
+
+    # Verify the failure path was actually exercised: the library was
+    # invoked exactly once, and the raised RuntimeError was swallowed
+    # by the make_failure_hook wrapper (we got here without re-raise).
+    mock_post.assert_called_once()
+    args = mock_post.call_args.args
+    assert args[0] == "process-transcript"
+    assert args[1] == "WARN"

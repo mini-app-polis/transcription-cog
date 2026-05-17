@@ -47,7 +47,7 @@ import httpx
 import sentry_sdk
 from dotenv import load_dotenv
 from mini_app_polis import logger as log
-from prefect import flow, serve
+from prefect import flow, get_run_logger, serve
 
 from transcription_cog.config import load_config
 from transcription_cog.flow import process_transcript
@@ -57,6 +57,23 @@ from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest
 load_dotenv()
 
 LOG = log.get_logger()
+
+
+def _get_run_logger():
+    """Dual logger per PIPE-006: Prefect run logger inside a flow context,
+    stdlib fallback outside.
+
+    The name contains "logger" and the body calls ``get_run_logger()``,
+    which is the wrapper pattern PIPE-006 accepts. Direct
+    ``get_run_logger()`` calls in a flow body raise
+    ``MissingContextError`` when the flow function is invoked outside
+    Prefect orchestration (e.g. from unit tests that call the router
+    directly), so we wrap it.
+    """
+    try:
+        return get_run_logger()
+    except Exception:
+        return LOG
 
 
 #: Supported router modes. Declared as a Literal so Prefect Cloud's
@@ -93,6 +110,14 @@ def notes_ingest_router(mode: NotesIngestMode) -> Any:
         at Prefect's parameter-validation layer, but we keep the runtime
         guard so the flow never silently no-ops.
     """
+    # PIPE-006: every Prefect flow body must surface a get_run_logger()
+    # call (directly or via a logger-wrapper). _get_run_logger() is the
+    # accepted wrapper form — it calls Prefect's get_run_logger() inside
+    # a flow context and falls back to the stdlib module logger when
+    # tests invoke the router directly without an active context.
+    logger = _get_run_logger()
+    logger.info("transcription-cog router dispatching mode=%s", mode)
+
     target = _MODE_DISPATCH.get(mode)
     if target is None:
         raise ValueError(
