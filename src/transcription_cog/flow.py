@@ -40,6 +40,7 @@ from mini_app_polis.llm import LLMMessage, build_llm
 from prefect import flow, get_run_logger, task
 from prefect.concurrency.sync import concurrency
 
+from ._pipeline_eval import make_failure_hook, post_run_finding
 from .api_client import NotesApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
@@ -277,64 +278,16 @@ def _process_one(
     }
 
 
-def _emit_terminal_failure(flow, flow_run, state) -> None:  # noqa: ARG001
-    """Prefect flow hook: emit one flow_hook finding on Failed / Crashed.
-
-    Wired as ``on_failure`` and ``on_crashed`` on the ``process-transcript``
-    flow. Covers the gap where the flow body never reaches
-    ``task_post_run_evaluation`` (e.g., worker SIGKILL, OOM, exception
-    escaping the ``with concurrency()`` block, or a Prefect-level
-    failure during task setup).
-
-    Severity:
-      WARN  — Prefect Failed state (a task raised; flow framework handled it).
-      ERROR — Prefect Crashed state (worker died, OOM, etc.).
-
-    The matching Pipeline Health UI "Run Type" facet groups
-    ``source="flow_hook"`` rows with the rest of "Pipeline Eval" (per
-    ecosystem-standards/standards/evaluation.yaml). Best-effort: any
-    exception in this hook is logged and swallowed — a hook that raises
-    can mask the underlying flow failure.
-    """
-    logger = _get_logger()
-    state_name = str(getattr(state, "name", "FAILED"))
-    state_type = str(getattr(state, "type", "")).upper()
-    severity = (
-        "ERROR" if (state_type == "CRASHED" or state_name == "Crashed") else "WARN"
-    )
-
-    run_id: str | None
-    try:
-        run_id = str(flow_run.id) if getattr(flow_run, "id", None) else None
-    except Exception:
-        run_id = None
-
-    state_message = str(getattr(state, "message", "") or state_name)
-    finding = f"Flow entered {state_name} unexpectedly: {state_message}"
-
-    try:
-        api = NotesApiClient()
-        api.post_run_evaluation(
-            repo="transcription-cog",
-            dimension="pipeline_consistency",
-            severity=severity,
-            finding=finding,
-            source="flow_hook",
-            flow_name="process-transcript",
-            run_id=run_id,
-        )
-    except Exception as exc:
-        logger.warning(
-            log.with_log_prefix(
-                log.LOG_WARNING,
-                f"Failed to post flow_hook evaluation: {exc}",
-            )
-        )
+# Pre-built Prefect on_failure / on_crashed hook that posts a single
+# flow_hook finding (WARN for Failed, ERROR for Crashed). The body lives
+# in mini_app_polis.pipeline_status; this cog just supplies its name and
+# repo identity. Replaces the old hand-rolled _emit_terminal_failure
+# which talked to NotesApiClient.post_run_evaluation directly.
+_emit_terminal_failure = make_failure_hook("process-transcript")
 
 
 @task(retries=2)
 def task_post_run_evaluation(
-    api: NotesApiClient,
     *,
     processed: int,
     skipped: int,
@@ -356,10 +309,11 @@ def task_post_run_evaluation(
                least one unhandled exception.
       already_processed skips are benign and do not affect severity.
 
-    Best-effort: failure to POST must never fail the pipeline.
+    The actual POST is delegated to ``post_run_finding`` (from the
+    transcription-cog shim around ``mini_app_polis.pipeline_status``);
+    that helper is itself best-effort, so failure to POST never raises
+    out of this task.
     """
-    logger = _get_logger()
-
     schema_invalid = sum(
         1 for r in results if not r.get("skipped") and r.get("schema_valid") is False
     )
@@ -392,30 +346,12 @@ def task_post_run_evaluation(
             parts.append(f"already_processed={benign_skips}")
         finding = "Run complete — " + ", ".join(parts) + "."
 
-    try:
-        from prefect.runtime import flow_run as _flow_run
-
-        run_id = _flow_run.id
-    except Exception:
-        run_id = None
-
-    try:
-        api.post_run_evaluation(
-            repo="transcription-cog",
-            dimension="pipeline_consistency",
-            severity=severity,
-            finding=finding,
-            source="flow_inline",
-            flow_name="process-transcript",
-            run_id=run_id,
-        )
-    except Exception as exc:
-        logger.warning(
-            log.with_log_prefix(
-                log.LOG_WARNING,
-                f"Failed to post run evaluation: {exc}",
-            )
-        )
+    post_run_finding(
+        "process-transcript",
+        severity,
+        text=finding,
+        source="flow_inline",
+    )
 
 
 @flow(
@@ -463,7 +399,6 @@ def process_transcript() -> dict:
             task_post_run_evaluation.with_options(
                 retry_delay_seconds=cfg.task_retry_delay_short
             )(
-                api,
                 processed=0,
                 skipped=0,
                 results=[],
@@ -509,7 +444,6 @@ def process_transcript() -> dict:
         task_post_run_evaluation.with_options(
             retry_delay_seconds=cfg.task_retry_delay_short
         )(
-            api,
             processed=processed,
             skipped=skipped,
             results=results,

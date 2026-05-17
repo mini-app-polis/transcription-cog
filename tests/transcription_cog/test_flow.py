@@ -54,6 +54,7 @@ def test_process_transcript_empty_folder(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -65,10 +66,11 @@ def test_process_transcript_empty_folder(mock_env: None) -> None:
 
     mock_gapi.from_env.assert_called_once()
     mock_g.drive.get_files_in_folder.assert_called_once()
-    mock_api.post_run_evaluation.assert_called_once()
-    eval_kwargs = mock_api.post_run_evaluation.call_args.kwargs
-    assert eval_kwargs["severity"] == "SUCCESS"
-    assert "no files to process" in eval_kwargs["finding"].lower()
+    mock_post_eval.assert_called_once()
+    eval_args = mock_post_eval.call_args.args
+    eval_kwargs = mock_post_eval.call_args.kwargs
+    assert eval_args[1] == "SUCCESS"
+    assert "no files to process" in eval_kwargs["text"].lower()
     assert result["processed"] == 0
     assert result["skipped"] == 0
     assert result["files"] == []
@@ -78,6 +80,7 @@ def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -91,8 +94,8 @@ def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
 
     mock_g.drive.get_files_in_folder.assert_called_once()
     mock_api.create_transcript.assert_not_called()
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
     assert result["skipped"] == 1
     assert result["processed"] == 0
     assert result["files"][0]["reason"] == "invalid_filename"
@@ -102,6 +105,7 @@ def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -115,8 +119,8 @@ def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
 
     mock_g.drive.get_files_in_folder.assert_called_once()
     mock_api.create_transcript.assert_not_called()
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
     assert result["skipped"] == 1
     assert result["files"][0]["reason"] == "invalid_filename"
 
@@ -125,6 +129,7 @@ def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -139,8 +144,8 @@ def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
 
     mock_g.drive.get_files_in_folder.assert_called_once()
     mock_api.create_transcript.assert_not_called()
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
     assert result["skipped"] == 1
     assert result["files"][0]["reason"] == "transcript_too_short"
 
@@ -149,6 +154,7 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -172,11 +178,13 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
     mock_api.create_transcript.assert_called_once()
     mock_api.create_note.assert_called_once()
     mock_llm.generate_json.assert_called_once()
-    mock_api.post_run_evaluation.assert_called_once()
-    eval_kwargs = mock_api.post_run_evaluation.call_args.kwargs
-    assert eval_kwargs["severity"] == "SUCCESS"
-    assert eval_kwargs["repo"] == "transcription-cog"
-    assert eval_kwargs["dimension"] == "pipeline_consistency"
+    mock_post_eval.assert_called_once()
+    eval_args = mock_post_eval.call_args.args
+    assert eval_args[0] == "process-transcript"
+    assert eval_args[1] == "SUCCESS"
+    # repo + dimension are now bound by the transcription-cog shim, not
+    # passed as kwargs from flow.py — assertions on them belong in the
+    # library / shim test suite, not here.
     assert result["processed"] == 1
     assert result["skipped"] == 0
     assert result["errors"] == 0
@@ -191,6 +199,7 @@ def test_process_transcript_passes_parsed_metadata_to_note(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -212,7 +221,7 @@ def test_process_transcript_passes_parsed_metadata_to_note(
         process_transcript()
 
     mock_api.create_note.assert_called_once()
-    mock_api.post_run_evaluation.assert_called_once()
+    mock_post_eval.assert_called_once()
     call_kwargs = mock_api.create_note.call_args[0][0]
     assert call_kwargs.session_type == "private_lesson"
     assert call_kwargs.instructors == ["Kaiano"]
@@ -225,6 +234,7 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -247,7 +257,7 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
 
     mock_api.create_transcript.assert_called_once()
     mock_api.create_note.assert_called_once()
-    mock_api.post_run_evaluation.assert_called_once()
+    mock_post_eval.assert_called_once()
     assert "processed" in result
     assert "skipped" in result
     assert "errors" in result
@@ -260,6 +270,7 @@ def test_process_transcript_skips_already_processed(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -276,8 +287,8 @@ def test_process_transcript_skips_already_processed(
 
         result = process_transcript()
 
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "SUCCESS"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "SUCCESS"
     # task_store_transcript sets retries=2, so Prefect attempts the task three times
     # before the exception reaches the flow handler (session env defaults do not
     # override an explicit retries= on the decorator).
@@ -292,6 +303,7 @@ def test_process_transcript_continues_after_failure(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -319,8 +331,8 @@ def test_process_transcript_continues_after_failure(
     mock_api.create_transcript.assert_called_once()
     mock_api.create_note.assert_called_once()
     mock_llm.generate_json.assert_called_once()
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
     assert result["processed"] == 1
     assert result["skipped"] == 0
     assert result["errors"] == 1
@@ -334,6 +346,7 @@ def test_process_transcript_mixed_batch_invalid_then_valid(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -366,8 +379,8 @@ def test_process_transcript_mixed_batch_invalid_then_valid(
 
     # Run eval is WARN because one file was skipped for a data reason
     # (invalid_filename).
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "WARN"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
 
     # Per-file result shape.
     by_file = {r["file"]: r for r in result["files"]}
@@ -383,6 +396,7 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -425,8 +439,8 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
 
     # Run eval is SUCCESS — already_processed is a benign skip that
     # does NOT escalate severity (see task_post_run_evaluation rules).
-    mock_api.post_run_evaluation.assert_called_once()
-    assert mock_api.post_run_evaluation.call_args.kwargs["severity"] == "SUCCESS"
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "SUCCESS"
 
     # Per-file result shape.
     by_file = {r["file"]: r for r in result["files"]}
@@ -440,6 +454,7 @@ def test_process_transcript_posts_run_evaluation(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -460,11 +475,11 @@ def test_process_transcript_posts_run_evaluation(
 
         process_transcript()
 
-    mock_api.post_run_evaluation.assert_called_once()
-    call_kwargs = mock_api.post_run_evaluation.call_args.kwargs
-    assert call_kwargs["source"] == "flow_inline"
-    assert call_kwargs["repo"] == "transcription-cog"
-    assert call_kwargs["flow_name"] == "process-transcript"
-    assert call_kwargs["dimension"] == "pipeline_consistency"
-    assert call_kwargs["severity"] == "SUCCESS"
-    assert "finding" in call_kwargs
+    mock_post_eval.assert_called_once()
+    call_args = mock_post_eval.call_args.args
+    call_kwargs = mock_post_eval.call_args.kwargs
+    assert call_args[0] == "process-transcript"
+    assert call_args[1] == "SUCCESS"
+    assert call_kwargs.get("source") == "flow_inline"
+    assert "text" in call_kwargs
+    # repo + dimension are bound by the transcription-cog shim.

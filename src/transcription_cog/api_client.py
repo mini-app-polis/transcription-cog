@@ -1,8 +1,13 @@
 """Internal API client for transcription-cog.
 
 Wraps KaianoApiClient from common-python-utils to provide typed methods
-for the wcs_transcripts, wcs_notes, and pipeline_evaluations endpoints on
-api-kaianolevine-com.
+for the wcs_transcripts and wcs_notes endpoints on api-kaianolevine-com.
+
+For posting pipeline evaluations to ``/v1/evaluations``, use the
+transcription-cog shim around :mod:`mini_app_polis.pipeline_status`
+(see :mod:`transcription_cog._pipeline_eval`). The shim owns the
+payload shape and best-effort semantics for evaluation findings; this
+client stays focused on the cog's domain endpoints.
 
 Auth: Clerk M2M JWT via KaianoApiClient (Project Keystone). Machine secret
 is read from KAIANO_API_CLERK_MACHINE_SECRET at client construction time;
@@ -11,8 +16,6 @@ Bearer header injection.
 """
 
 from __future__ import annotations
-
-from typing import Any
 
 from mini_app_polis.api import KaianoApiClient
 
@@ -48,33 +51,3 @@ class NotesApiClient:
             payload.model_dump(),
         )
         return NoteResponse(**response["data"])
-
-    def post_run_evaluation(
-        self,
-        *,
-        repo: str,
-        dimension: str,
-        severity: str,
-        finding: str,
-        source: str | None = None,
-        flow_name: str | None = None,
-        run_id: str | None = None,
-    ) -> None:
-        """POST /v1/evaluations — one quality signal per processor run.
-
-        Matches the current pipeline_evaluations schema (PipelineEvaluationCreate,
-        extra="forbid"). One evaluation is emitted per flow run, not per record.
-        """
-        payload: dict[str, Any] = {
-            "repo": repo,
-            "dimension": dimension,
-            "severity": severity,
-            "finding": finding,
-        }
-        if source is not None:
-            payload["source"] = source
-        if flow_name is not None:
-            payload["flow_name"] = flow_name
-        if run_id is not None:
-            payload["run_id"] = run_id
-        self._client.post("/v1/evaluations", payload)

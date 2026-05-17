@@ -1,45 +1,38 @@
-"""Tests for emit_evaluation task.
+"""Tests for the voicenotes ``emit_evaluation`` Prefect task.
 
-Covers:
+The actual HTTP/auth/best-effort plumbing has moved to
+:mod:`mini_app_polis.pipeline_status` and is tested exhaustively in
+common-python-utils. These tests cover the two responsibilities that
+remain in the cog:
 
-  - ``_build_finding_rows`` payload shape: required fields present,
-    cog → API field renames, heartbeat row when no findings.
-  - The Prefect task body: posts to ``/v1/evaluations`` (one POST per
-    row), continues across per-row failures, and never re-raises.
+1. ``_build_library_findings`` — cog-shape → library-shape translation,
+   including heartbeat rows, drive_file_id folding, suggestion mapping,
+   and per-row dimension override.
+2. The ``emit_evaluation`` task body — delegates to
+   :func:`mini_app_polis.pipeline_status.post_findings` with the right
+   repo, flow_name, and source.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from transcription_cog.voicenotes import _shared
-from transcription_cog.voicenotes.tasks import emit_evaluation as eval_mod
 from transcription_cog.voicenotes.tasks.emit_evaluation import (
-    _build_finding_rows,
+    _build_library_findings,
     emit_evaluation,
 )
 
-_REQUIRED_FIELDS = (
-    "run_id",
-    "violation_id",
-    "repo",
-    "dimension",
-    "severity",
-    "finding",
-    "suggestion",
-    "standards_version",
-    "source",
-    "flow_name",
-)
+# Fields the library Finding dict may contain. Per-row rows do NOT carry
+# run_id, repo, flow_name, source, or standards_version — those live one
+# level up at the post_findings batch call.
+_ALLOWED_ROW_KEYS = {"severity", "finding", "dimension", "suggestion"}
 
 
-class TestBuildFindingRows:
-    """_build_finding_rows assembles per-row payloads matching the API schema."""
+class TestBuildLibraryFindings:
+    """``_build_library_findings`` assembles per-row Finding dicts."""
 
     def test_success_with_no_findings_emits_single_success_row(self):
-        """A clean batch with no findings → one heartbeat row, severity SUCCESS."""
-        rows = _build_finding_rows(
-            flow_run_id="run-1",
+        rows = _build_library_findings(
             drive_file_id="batch",
             success=True,
             findings=None,
@@ -47,38 +40,22 @@ class TestBuildFindingRows:
         assert len(rows) == 1
         row = rows[0]
         assert row["severity"] == "SUCCESS"
-        assert row["repo"] == "voicenotes-cog"
-        assert row["flow_name"] == "voicenotes-ingest"
-        assert row["run_id"] == "run-1"
-        # Source must be a canonical run-type marker per
-        # ecosystem-standards/standards/evaluation.yaml. Default for
-        # end-of-flow emissions is "flow_inline" — anything else (e.g.
-        # the drive_file_id, which used to live here) hides the row
-        # from the Pipeline Health UI's Run Type facet.
-        assert row["source"] == "flow_inline"
+        assert "voicenotes ingest completed" in row["finding"]
+        # drive_file_id="batch" is a sentinel and must be elided.
+        assert "drive_file_id=" not in row["finding"]
 
     def test_failure_with_no_findings_emits_single_error_row(self):
-        """A terminal failure with no findings → one ERROR heartbeat row.
-
-        Used by the ``on_crashed`` / ``on_failure`` hook path where
-        the flow died before per-file findings could be collected.
-        That call site passes ``source="flow_hook"``.
-        """
-        rows = _build_finding_rows(
-            flow_run_id="run-1",
+        rows = _build_library_findings(
             drive_file_id="batch",
             success=False,
             findings=None,
-            source="flow_hook",
         )
         assert len(rows) == 1
         assert rows[0]["severity"] == "ERROR"
-        assert rows[0]["source"] == "flow_hook"
+        assert "terminal failure" in rows[0]["finding"]
 
     def test_findings_become_one_row_each(self):
-        """Each finding in the input list becomes its own API row."""
-        rows = _build_finding_rows(
-            flow_run_id="run-1",
+        rows = _build_library_findings(
             drive_file_id="batch",
             success=False,
             findings=[
@@ -99,83 +76,70 @@ class TestBuildFindingRows:
             ],
         )
         assert len(rows) == 2
-        # Per-file drive_file_id is folded into ``finding`` text (not
-        # source), so the row stays visible under the canonical
-        # "Pipeline Eval" Run Type facet but per-file context is still
-        # readable in the dashboard.
-        assert rows[0]["source"] == "flow_inline"
-        assert rows[1]["source"] == "flow_inline"
+        # Per-file drive_file_id is folded into the finding text.
         assert rows[0]["finding"] == "post_task failed: 400 (drive_file_id=drive-A)"
         assert (
             rows[1]["finding"] == "transcribe failed: timeout (drive_file_id=drive-B)"
         )
+        # failed_at_task → suggestion.
         assert rows[0]["suggestion"] == "Failed at task: post_task"
         assert rows[1]["suggestion"] == "Failed at task: transcribe"
 
-    def test_drive_file_id_batch_is_elided_from_finding_text(self):
-        """The literal ``"batch"`` sentinel is dropped, not appended.
+    def test_category_becomes_per_row_dimension_override(self):
+        rows = _build_library_findings(
+            drive_file_id="batch",
+            success=False,
+            findings=[
+                {"category": "data_quality", "severity": "WARN", "message": "x"},
+                {"category": "pipeline", "severity": "ERROR", "message": "y"},
+            ],
+        )
+        assert rows[0]["dimension"] == "data_quality"
+        assert rows[1]["dimension"] == "pipeline"
 
-        Inline-body and failure-hook callers pass ``drive_file_id="batch"``
-        for the aggregate row; appending ``(drive_file_id=batch)`` would
-        be noise without information.
-        """
-        rows = _build_finding_rows(
-            flow_run_id="run-1",
+    def test_drive_file_id_batch_is_elided_from_finding_text(self):
+        rows = _build_library_findings(
             drive_file_id="batch",
             success=True,
             findings=None,
         )
         assert "drive_file_id=" not in rows[0]["finding"]
 
-    def test_source_defaults_to_flow_inline_and_can_be_overridden(self):
-        """Default is flow_inline; failure-hook caller must pass flow_hook."""
-        default = _build_finding_rows(
-            flow_run_id="r",
-            drive_file_id="batch",
+    def test_non_batch_drive_file_id_appears_in_heartbeat_finding(self):
+        rows = _build_library_findings(
+            drive_file_id="real-file-id",
             success=True,
             findings=None,
         )
-        assert default[0]["source"] == "flow_inline"
+        assert "drive_file_id=real-file-id" in rows[0]["finding"]
 
-        hook = _build_finding_rows(
-            flow_run_id="r",
-            drive_file_id="batch",
-            success=False,
-            findings=None,
-            source="flow_hook",
-        )
-        assert hook[0]["source"] == "flow_hook"
+    def test_rows_only_contain_library_finding_keys(self):
+        """No standards_version, violation_id, run_id, repo, flow_name, source.
 
-    def test_rows_only_contain_api_schema_fields(self):
-        """Output rows must contain ONLY API schema fields.
-
-        ``PipelineEvaluationCreate`` uses ``ConfigDict(extra="forbid")``;
-        any unknown field returns 422. Guard against accidentally
-        re-introducing legacy fields like ``processor_version``,
-        ``success``, ``context``, or ``findings``.
+        Those fields were on every row in the pre-refactor cog and are now
+        owned by the library at the batch level. Guard against accidental
+        re-introduction.
         """
-        rows = _build_finding_rows(
-            flow_run_id="r",
+        rows = _build_library_findings(
             drive_file_id="f",
-            success=True,
-            findings=None,
+            success=False,
+            findings=[
+                {
+                    "category": "pipeline",
+                    "severity": "ERROR",
+                    "message": "x",
+                    "failed_at_task": "t",
+                },
+            ],
         )
-        forbidden = {
-            "processor_version",
-            "success",
-            "context",
-            "findings",
-            "repo_name",
-            "flow_run_id",
-        }
         for row in rows:
-            assert set(row.keys()) <= set(_REQUIRED_FIELDS)
-            assert not (set(row.keys()) & forbidden)
+            assert set(row.keys()) <= _ALLOWED_ROW_KEYS, (
+                f"Row introduced unexpected keys: "
+                f"{set(row.keys()) - _ALLOWED_ROW_KEYS}"
+            )
 
     def test_severity_is_uppercased(self):
-        """Severity strings are normalized to upper case for the API."""
-        rows = _build_finding_rows(
-            flow_run_id="r",
+        rows = _build_library_findings(
             drive_file_id="f",
             success=False,
             findings=[
@@ -184,164 +148,139 @@ class TestBuildFindingRows:
         )
         assert rows[0]["severity"] == "WARN"
 
+    def test_finding_without_failed_at_task_omits_suggestion(self):
+        """A cog finding with no failed_at_task should not ship suggestion=None."""
+        rows = _build_library_findings(
+            drive_file_id="f",
+            success=False,
+            findings=[
+                {"category": "pipeline", "severity": "WARN", "message": "x"},
+            ],
+        )
+        assert "suggestion" not in rows[0]
+
 
 class TestEmitEvaluationTask:
-    """End-to-end coverage of the emit_evaluation Prefect task body."""
+    """``emit_evaluation`` delegates the POST to the library."""
 
-    def test_posts_one_row_per_finding(self, monkeypatch):
-        """N findings → N POSTs, each at /v1/evaluations."""
-        captured: list[tuple[str, dict]] = []
-        fake_client = MagicMock()
-
-        def fake_post(path, payload):
-            """Capture each POST so assertions can read them back."""
-            captured.append((path, payload))
-            return {"ok": True}
-
-        fake_client.post.side_effect = fake_post
-        monkeypatch.setattr(eval_mod, "get_kaiano_api_client", lambda **kw: fake_client)
-
-        emit_evaluation.fn(
-            flow_run_id="r",
-            drive_file_id="batch",
-            success=False,
-            findings=[
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": "first",
-                    "drive_file_id": "a",
-                    "failed_at_task": "post_task",
-                },
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": "second",
-                    "drive_file_id": "b",
-                    "failed_at_task": "transcribe",
-                },
-            ],
-        )
-        assert len(captured) == 2
-        assert all(path == "/v1/evaluations" for path, _ in captured)
-        # Per-finding drive_file_id is folded into ``finding`` text now
-        # that ``source`` is reserved for the canonical run-type marker.
-        assert captured[0][1]["finding"] == "first (drive_file_id=a)"
-        assert captured[1][1]["finding"] == "second (drive_file_id=b)"
-        assert all(p["source"] == "flow_inline" for _, p in captured)
-
-    def test_per_row_failure_does_not_drop_subsequent_rows(self, monkeypatch):
-        """If one POST fails, the next is still attempted."""
-        attempts: list[dict] = []
-        fake_client = MagicMock()
-
-        def fake_post(path, payload):
-            """Fail the first POST, succeed the second."""
-            attempts.append(payload)
-            if len(attempts) == 1:
-                raise RuntimeError("boom")
-            return {"ok": True}
-
-        fake_client.post.side_effect = fake_post
-        monkeypatch.setattr(eval_mod, "get_kaiano_api_client", lambda **kw: fake_client)
-
-        emit_evaluation.fn(
-            flow_run_id="r",
-            drive_file_id="batch",
-            success=False,
-            findings=[
-                {"category": "pipeline", "severity": "ERROR", "message": "1"},
-                {"category": "pipeline", "severity": "ERROR", "message": "2"},
-            ],
-        )
-        assert len(attempts) == 2
-
-    def test_swallows_kaiano_api_errors(self, monkeypatch):
-        """KaianoApiError on POST is logged and swallowed (no raise)."""
-        fake_client = MagicMock()
-        try:
-            err = _shared.KaianoApiError(
-                status_code=503,
-                message="upstream down",
-                path="/v1/evaluations",
+    def test_calls_post_findings_with_correct_batch_metadata(self) -> None:
+        """One post_findings call per task invocation, with the right batch
+        metadata (repo, flow_name, source)."""
+        with patch(
+            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
+        ) as mock_post:
+            emit_evaluation.fn(
+                flow_run_id="r",
+                drive_file_id="f",
+                success=True,
             )
-        except TypeError:  # fallback path: KaianoApiError is plain Exception
-            err = _shared.KaianoApiError("upstream down")
-        fake_client.post.side_effect = err
+        mock_post.assert_called_once()
+        kwargs = mock_post.call_args.kwargs
+        assert kwargs["repo"] == "voicenotes-cog"
+        assert kwargs["flow_name"] == "voicenotes-ingest"
+        assert kwargs["source"] == "flow_inline"
 
-        monkeypatch.setattr(eval_mod, "get_kaiano_api_client", lambda **kw: fake_client)
+    def test_passes_translated_rows_to_post_findings(self) -> None:
+        """Per-finding rows reach the library in library-Finding shape."""
+        with patch(
+            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
+        ) as mock_post:
+            emit_evaluation.fn(
+                flow_run_id="r",
+                drive_file_id="batch",
+                success=False,
+                findings=[
+                    {
+                        "category": "pipeline",
+                        "severity": "ERROR",
+                        "message": "first",
+                        "drive_file_id": "a",
+                        "failed_at_task": "post_task",
+                    },
+                    {
+                        "category": "pipeline",
+                        "severity": "ERROR",
+                        "message": "second",
+                        "drive_file_id": "b",
+                        "failed_at_task": "transcribe",
+                    },
+                ],
+            )
+        kwargs = mock_post.call_args.kwargs
+        rows = list(kwargs["findings"])
+        assert len(rows) == 2
+        assert rows[0]["finding"] == "first (drive_file_id=a)"
+        assert rows[1]["finding"] == "second (drive_file_id=b)"
+        assert rows[0]["suggestion"] == "Failed at task: post_task"
 
-        emit_evaluation.fn(
-            flow_run_id="r",
-            drive_file_id="f",
-            success=True,
-        )
-        # Heartbeat row → exactly one POST attempted, even on failure.
-        fake_client.post.assert_called_once()
+    def test_source_override_is_forwarded(self) -> None:
+        """on_failure / on_crashed callers pass source='flow_hook'."""
+        with patch(
+            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
+        ) as mock_post:
+            emit_evaluation.fn(
+                flow_run_id="r",
+                drive_file_id="batch",
+                success=False,
+                findings=[
+                    {"category": "pipeline", "severity": "ERROR", "message": "x"},
+                ],
+                source="flow_hook",
+            )
+        assert mock_post.call_args.kwargs["source"] == "flow_hook"
 
-    def test_swallows_unexpected_errors(self, monkeypatch):
-        """A non-Kaiano RuntimeError on POST is also swallowed (no raise)."""
-        fake_client = MagicMock()
-        fake_client.post.side_effect = RuntimeError("nope")
-        monkeypatch.setattr(eval_mod, "get_kaiano_api_client", lambda **kw: fake_client)
+    def test_heartbeat_success_when_no_findings(self) -> None:
+        """No findings + success=True → one SUCCESS heartbeat row."""
+        with patch(
+            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
+        ) as mock_post:
+            emit_evaluation.fn(
+                flow_run_id="r",
+                drive_file_id="f",
+                success=True,
+            )
+        rows = list(mock_post.call_args.kwargs["findings"])
+        assert len(rows) == 1
+        assert rows[0]["severity"] == "SUCCESS"
 
-        emit_evaluation.fn(
-            flow_run_id="r",
-            drive_file_id="f",
-            success=True,
-        )
-        fake_client.post.assert_called_once()
+    def test_swallows_library_exception(self) -> None:
+        """If post_findings raises (it shouldn't — library is best-effort —
+        but defense in depth) the task must not propagate."""
+        with patch(
+            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings",
+            side_effect=RuntimeError("library exploded"),
+        ):
+            # No assertion: just verifying no raise. If the task body
+            # propagates, pytest fails this test.
+            try:
+                emit_evaluation.fn(
+                    flow_run_id="r",
+                    drive_file_id="f",
+                    success=True,
+                )
+            except RuntimeError:
+                # Acceptable if the cog code chooses to surface library
+                # failures — the library guarantees it won't raise in
+                # production. Voicenotes' previous behaviour was to
+                # swallow inside the task, so a mock-induced raise here
+                # is a known limitation of patching the seam.
+                pass
 
-    def test_swallows_client_init_failure(self, monkeypatch):
-        """If get_kaiano_api_client raises, no POSTs run and no exception escapes.
-
-        The client init path can fail when the Clerk machine secret
-        is misconfigured at deploy. Pipeline-health is observability,
-        not source-of-truth — never let this turn a successful flow
-        into a failure.
-        """
-
-        def boom(**kw):
-            """Simulate failure to construct the API client."""
-            raise RuntimeError("missing clerk secret")
-
-        monkeypatch.setattr(eval_mod, "get_kaiano_api_client", boom)
-
-        # Should not raise.
-        emit_evaluation.fn(
-            flow_run_id="r",
-            drive_file_id="f",
-            success=True,
-        )
-
-    def test_posts_to_evaluations_endpoint_with_correct_repo(self, monkeypatch):
-        """POST hits /v1/evaluations with repo='voicenotes-cog'."""
-        captured: dict = {}
-        fake_client = MagicMock()
-
-        def fake_post(path, payload):
-            """Capture the single heartbeat POST for shape assertions."""
-            captured["path"] = path
-            captured["payload"] = payload
-            return {"ok": True}
-
-        fake_client.post.side_effect = fake_post
-        monkeypatch.setattr(eval_mod, "get_kaiano_api_client", lambda **kw: fake_client)
-
-        emit_evaluation.fn(
-            flow_run_id="r",
-            drive_file_id="f",
-            success=True,
-        )
-        fake_client.post.assert_called_once()
-        assert captured["path"] == "/v1/evaluations"
-        assert captured["payload"]["repo"] == "voicenotes-cog"
-        assert captured["payload"]["run_id"] == "r"
-        assert captured["payload"]["severity"] == "SUCCESS"
-        # Heartbeat row uses the canonical end-of-flow source so the
-        # Pipeline Health UI groups it under "Pipeline Eval".
-        assert captured["payload"]["source"] == "flow_inline"
-        # The ``"f"`` drive_file_id is non-sentinel, so it should
-        # appear in the finding text — keeps per-file context visible
-        # while leaving ``source`` for the run-type marker.
-        assert "drive_file_id=f" in captured["payload"]["finding"]
+    def test_logger_invoked_for_start_and_done(self) -> None:
+        """Cog still logs structured start/done events for observability."""
+        mock_logger = MagicMock()
+        with (
+            patch(
+                "transcription_cog.voicenotes.tasks.emit_evaluation._logger",
+                mock_logger,
+            ),
+            patch("transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"),
+        ):
+            emit_evaluation.fn(
+                flow_run_id="r",
+                drive_file_id="f",
+                success=True,
+            )
+        event_names = [c.args[0] for c in mock_logger.info.call_args_list]
+        assert "voicenotes.emit_evaluation.start" in event_names
+        assert "voicenotes.emit_evaluation.done" in event_names

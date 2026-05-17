@@ -56,9 +56,6 @@ from transcription_cog.voicenotes.tasks import (
     download as download_mod,
 )
 from transcription_cog.voicenotes.tasks import (
-    emit_evaluation as eval_mod,
-)
-from transcription_cog.voicenotes.tasks import (
     extract as extract_mod,
 )
 from transcription_cog.voicenotes.tasks import (
@@ -156,10 +153,26 @@ def stub_clients(monkeypatch, claude_message):
     monkeypatch.setattr(archive_mod, "get_drive_client", lambda: drive)
     monkeypatch.setattr(cleanup_mod, "get_drive_client", lambda: drive)
 
-    # ---- KaianoApiClient (used by emit_evaluation) ----
+    # ---- Pipeline-status sink (used by emit_evaluation) ----
+    # emit_evaluation now delegates to
+    # ``mini_app_polis.pipeline_status.post_findings``, which in turn
+    # calls a private ``_post_evaluation`` helper that owns the actual
+    # HTTP call. We patch the library's helper directly so the test
+    # captures every evaluations POST without standing up a real
+    # KaianoApiClient. A MagicMock ``.post`` attribute mimics the old
+    # ``kaiano_client.post`` surface so existing assertions still work.
+    import mini_app_polis.pipeline_status as _pipeline_status_mod
+
     kaiano_client = MagicMock()
     kaiano_client.post.return_value = {"ok": True}
-    monkeypatch.setattr(eval_mod, "get_kaiano_api_client", lambda **_kw: kaiano_client)
+
+    def _fake_post_evaluation(payload):
+        kaiano_client.post("/v1/evaluations", payload)
+
+    monkeypatch.setattr(_pipeline_status_mod, "_post_evaluation", _fake_post_evaluation)
+    # The library checks for KAIANO_API_BASE_URL before posting; tests
+    # set this to a non-empty string so the gating doesn't short-circuit.
+    monkeypatch.setenv("KAIANO_API_BASE_URL", "https://api.test.local")
 
     return SimpleNamespace(
         whisper=whisper,

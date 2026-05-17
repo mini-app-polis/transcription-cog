@@ -4,56 +4,34 @@ Per ecosystem-standards, every flow run emits one or more evaluation
 records. evaluator-cog runs separately on a schedule and reads these
 records to populate the pipeline-health dashboard.
 
-Auth (CD-012): we use ``mini_app_polis.api.KaianoApiClient`` from the
-shared library, which exchanges our machine-secret-key for a
-short-lived Clerk M2M opaque token, caches it until ~60s before
-expiry, and refreshes automatically. No long-lived bearer token
-lives in env.
+This task is a **thin cog-specific adapter** on top of
+:func:`mini_app_polis.pipeline_status.post_findings`. The shared library
+owns the payload shape, the Clerk M2M auth, the per-row error isolation,
+and the best-effort semantics. The voicenotes flow's only job in this
+file is to translate the cog's batch-shape input (a list of dicts with
+``category``, ``severity``, ``message``, ``drive_file_id``,
+``failed_at_task``) into the shape ``post_findings`` accepts.
 
-Schema and route reference:
-
-  - Route: ``POST /v1/evaluations`` (router prefix ``/v1`` +
-    in-router path ``/evaluations``). The endpoint accepts a single
-    ``PipelineEvaluationCreate`` payload per request, NOT a batch
-    of findings, so a flow run with N findings makes N POSTs.
-  - Schema: ``PipelineEvaluationCreate`` uses
-    ``model_config = ConfigDict(extra="forbid")`` — any unknown
-    field returns 422. The cog's payload must be exactly:
-    ``run_id``, ``violation_id``, ``repo``, ``dimension``,
-    ``severity``, ``finding``, ``suggestion``,
-    ``standards_version``, ``source``, ``flow_name``.
-
-Failure semantics: each per-row POST is swallowed independently.
-Pipeline-health is observability, not the source of truth — a flaky
-api-kaianolevine-com must not turn a successful voice-note ingest
-into a failure, and one failed finding-POST must not drop the
-others.
+Failure semantics: posting failures are swallowed by the library (with
+per-row isolation — one failed POST does not drop the others). Pipeline-
+health is observability, not the source of truth — a flaky
+api-kaianolevine-com must not turn a successful voice-note ingest into
+a failure.
 """
 
 from __future__ import annotations
 
-import json
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path
 from typing import Any
 
+from mini_app_polis.pipeline_status import post_findings
 from prefect import task
 
-from transcription_cog.voicenotes._shared import (
-    KaianoApiError,
-    get_kaiano_api_client,
-    get_logger,
-)
+from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.config import settings
 
 _logger = get_logger("voicenotes-cog")
 
-
-# Route on api-kaianolevine-com. The router is mounted at prefix
-# ``/v1`` in main.py and the in-router path is ``/evaluations`` —
-# NOT ``/pipeline_evaluations``. ``pipeline_evaluations`` is the
-# underlying SQL table name; the HTTP path is shorter.
-_EVALUATIONS_PATH = "/v1/evaluations"
 
 # Repo identifier written into every finding row. Single source of
 # truth so it can't drift between findings.
@@ -74,17 +52,11 @@ _DIMENSION_PIPELINE = "pipeline_consistency"
 # "Run Type" facet from this field — rows with non-canonical source
 # values are silently hidden from every Run Type bucket (only visible
 # under "All"). The previous practice of stuffing drive_file_id into
-# ``source`` (so that the API's latest-per-(repo, source) dedup gave
-# per-file freshness) had exactly that symptom. Per-file context now
-# lives in the ``finding`` text; ``source`` is reserved for the
-# canonical run-type marker.
+# ``source`` had exactly that symptom. Per-file context now lives in
+# the ``finding`` text; ``source`` is reserved for the canonical
+# run-type marker.
 _SOURCE_FLOW_INLINE = "flow_inline"  # end-of-flow emissions
 _SOURCE_FLOW_HOOK = "flow_hook"  # on_failure / on_crashed emissions
-
-# Fallback standards_version when package.json isn't on disk at
-# runtime (e.g., installed wheel without it). The API schema
-# defaults to "6.0" but accepts any string.
-_STANDARDS_VERSION_FALLBACK = "6.0"
 
 
 def _processor_version() -> str:
@@ -93,30 +65,6 @@ def _processor_version() -> str:
         return version("voicenotes-cog")
     except PackageNotFoundError:  # editable install / not installed
         return "0.0.0+local"
-
-
-def _standards_version() -> str:
-    """Read standards_version from package.json with a safe fallback.
-
-    Walks parents of this file until it finds a package.json,
-    returns its ``standards_version`` field. Falls back to
-    ``_STANDARDS_VERSION_FALLBACK`` if the file is missing,
-    unparseable, or lacks the field — the API schema accepts any
-    string here so this is best-effort by design.
-    """
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        candidate = parent / "package.json"
-        if candidate.is_file():
-            try:
-                data = json.loads(candidate.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                return _STANDARDS_VERSION_FALLBACK
-            value = data.get("standards_version")
-            if isinstance(value, str) and value:
-                return value
-            return _STANDARDS_VERSION_FALLBACK
-    return _STANDARDS_VERSION_FALLBACK
 
 
 def _append_drive_file_id(text: str, drive_file_id: str | None) -> str:
@@ -131,15 +79,13 @@ def _append_drive_file_id(text: str, drive_file_id: str | None) -> str:
     return f"{text} (drive_file_id={drive_file_id})"
 
 
-def _build_finding_rows(
+def _build_library_findings(
     *,
-    flow_run_id: str,
     drive_file_id: str,
     success: bool,
     findings: list[dict[str, Any]] | None,
-    source: str = _SOURCE_FLOW_INLINE,
 ) -> list[dict[str, Any]]:
-    """Translate the cog's batch-shape input into per-row API payloads.
+    """Translate the cog's batch-shape input into library Finding rows.
 
     Cog input:
 
@@ -147,15 +93,14 @@ def _build_finding_rows(
       ``category``, ``severity``, ``message``, ``drive_file_id``,
       ``failed_at_task``.
 
-    API output:
+    Library output:
 
-      One ``PipelineEvaluationCreate``-shaped dict per finding,
-      with the cog's fields mapped onto the API schema fields
+      One :class:`mini_app_polis.pipeline_status.Finding` per cog finding,
+      with the cog's fields mapped onto the library schema
       (``message`` → ``finding`` with the per-finding drive_file_id
       appended for visibility, ``failed_at_task`` → ``suggestion``).
-      Every row carries a canonical ``source`` value
-      (``flow_inline`` or ``flow_hook``) so the Pipeline Health UI
-      can group it under the correct "Run Type" facet.
+      Per-row ``category`` overrides the default ``pipeline_consistency``
+      dimension.
 
     Edge cases:
 
@@ -164,35 +109,22 @@ def _build_finding_rows(
         flow run.
       - ``findings`` is empty/None and ``success`` is False → one
         ERROR row (terminal-failure path; on_crashed/on_failure
-        hooks land here, and pass ``source="flow_hook"``).
-
-    Standards version is stamped onto every row.
+        hooks land here).
     """
-    standards_version = _standards_version()
     rows: list[dict[str, Any]] = []
 
     if findings:
         for f in findings:
             base_message = str(f.get("message") or f.get("finding") or "no message")
             file_id_for_finding = str(f.get("drive_file_id") or drive_file_id or "")
-            rows.append(
-                {
-                    "run_id": flow_run_id,
-                    "violation_id": None,
-                    "repo": _REPO_NAME,
-                    "dimension": str(f.get("category") or _DIMENSION_PIPELINE),
-                    "severity": str(f.get("severity") or "ERROR").upper(),
-                    "finding": _append_drive_file_id(base_message, file_id_for_finding),
-                    "suggestion": (
-                        f"Failed at task: {f['failed_at_task']}"
-                        if f.get("failed_at_task")
-                        else None
-                    ),
-                    "standards_version": standards_version,
-                    "source": source,
-                    "flow_name": _FLOW_NAME,
-                }
-            )
+            row: dict[str, Any] = {
+                "severity": str(f.get("severity") or "ERROR").upper(),
+                "finding": _append_drive_file_id(base_message, file_id_for_finding),
+                "dimension": str(f.get("category") or _DIMENSION_PIPELINE),
+            }
+            if f.get("failed_at_task"):
+                row["suggestion"] = f"Failed at task: {f['failed_at_task']}"
+            rows.append(row)
         return rows
 
     # No findings: emit a single heartbeat row capturing batch outcome.
@@ -204,16 +136,9 @@ def _build_finding_rows(
     )
     rows.append(
         {
-            "run_id": flow_run_id,
-            "violation_id": None,
-            "repo": _REPO_NAME,
-            "dimension": _DIMENSION_PIPELINE,
             "severity": severity,
             "finding": _append_drive_file_id(base_text, drive_file_id),
-            "suggestion": None,
-            "standards_version": standards_version,
-            "source": source,
-            "flow_name": _FLOW_NAME,
+            "dimension": _DIMENSION_PIPELINE,
         }
     )
     return rows
@@ -233,9 +158,16 @@ def emit_evaluation(
 ) -> None:
     """POST one or more evaluation rows to api-kaianolevine-com.
 
+    Delegates the actual HTTP/auth/best-effort plumbing to
+    :func:`mini_app_polis.pipeline_status.post_findings`; this task
+    owns only the cog-specific translation from the cog's finding
+    dict shape to the library's :class:`Finding` shape.
+
     Args:
-        flow_run_id: Prefect flow run identifier — written to the
-            ``run_id`` field of each row for cross-system correlation.
+        flow_run_id: Prefect flow run identifier. Forwarded to the
+            library, which still resolves its own run_id from the
+            Prefect runtime context but accepts this for callers that
+            already have it in hand.
         drive_file_id: The voice-note source file id (or ``"batch"``
             for aggregate emissions). Folded into each row's
             ``finding`` text so per-file context stays visible in the
@@ -243,25 +175,24 @@ def emit_evaluation(
         success: Aggregate batch success — controls severity of the
             heartbeat row when ``findings`` is empty.
         findings: Optional list of cog-shaped finding dicts. Each
-            element becomes one POST row.
+            element becomes one library Finding row.
         source: Canonical run-type marker per ecosystem-standards
             ``standards/evaluation.yaml``. Defaults to ``"flow_inline"``
             for end-of-flow emissions; the ``on_failure`` /
-            ``on_crashed`` hooks must pass ``"flow_hook"``. The
-            Pipeline Health UI's "Run Type" facet groups by this
-            field — non-canonical values render as untyped and are
-            hidden from every Run Type filter.
+            ``on_crashed`` hooks must pass ``"flow_hook"``.
 
-    Posting failures are logged at WARN and swallowed, per the
-    "observability not source-of-truth" semantic. Per-row errors
-    are isolated; one failed POST does not drop the others.
+    Posting failures are logged at WARN by the library and swallowed,
+    per the "observability not source-of-truth" semantic. Per-row
+    errors are isolated; one failed POST does not drop the others.
     """
-    rows = _build_finding_rows(
-        flow_run_id=flow_run_id,
+    # The flow_run_id arg is kept on the public signature for
+    # backwards compatibility with existing call sites. The library
+    # resolves run_id itself from the Prefect runtime / env, so we
+    # only need to log it locally for observability.
+    rows = _build_library_findings(
         drive_file_id=drive_file_id,
         success=success,
         findings=findings,
-        source=source,
     )
 
     _logger.info(
@@ -274,63 +205,18 @@ def emit_evaluation(
         },
     )
 
-    try:
-        client = get_kaiano_api_client(
-            base_url=settings.kaiano_api_base_url,
-            machine_secret=settings.kaiano_api_clerk_machine_secret,
-        )
-    except Exception as exc:
-        _logger.warning(
-            "voicenotes.emit_evaluation.client_init_failed",
-            category="api",
-            context={
-                "flow_run_id": flow_run_id,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            },
-        )
-        return
-
-    posted = 0
-    failed = 0
-    for row in rows:
-        try:
-            client.post(_EVALUATIONS_PATH, row)
-            posted += 1
-        except KaianoApiError as exc:
-            failed += 1
-            _logger.warning(
-                "voicenotes.emit_evaluation.failure",
-                category="api",
-                context={
-                    "flow_run_id": flow_run_id,
-                    "error": str(exc),
-                    "status_code": getattr(exc, "status_code", None),
-                    "row_severity": row.get("severity"),
-                    "row_source": row.get("source"),
-                },
-            )
-        except Exception as exc:
-            failed += 1
-            _logger.warning(
-                "voicenotes.emit_evaluation.failure",
-                category="api",
-                context={
-                    "flow_run_id": flow_run_id,
-                    "error": str(exc),
-                    "error_type": type(exc).__name__,
-                    "row_severity": row.get("severity"),
-                    "row_source": row.get("source"),
-                },
-            )
+    post_findings(
+        repo=_REPO_NAME,
+        flow_name=_FLOW_NAME,
+        findings=rows,
+        source=source,
+    )
 
     _logger.info(
         "voicenotes.emit_evaluation.done",
         category="api",
         context={
             "flow_run_id": flow_run_id,
-            "rows_posted": posted,
-            "rows_failed": failed,
-            "rows_total": len(rows),
+            "row_count": len(rows),
         },
     )
