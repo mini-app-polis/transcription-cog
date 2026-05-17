@@ -48,7 +48,7 @@ title
   If the session covers multiple topics or the topic is vague, leave blank.
 
 key_concepts
-  Each item is `{concept, detail}`.
+  Each item is `{{concept, detail}}`.
   - `concept` is a SHORT NOUN-PHRASE name for the idea (2-8 words, no
     sentence punctuation). Examples of valid `concept` values: "anchor step",
     "frame quality", "directional intent", "bow-and-snap mechanic",
@@ -61,7 +61,7 @@ key_concepts
 
 vocabulary_terms
   Capture any term the instructor defines, coins, or uses in a specialised way.
-  Each item is `{term, definition}`.
+  Each item is `{{term, definition}}`.
   - `term` is the word or short phrase being defined (1-4 words, no punctuation).
   - `definition` is the prose definition.
   Same rule as `key_concepts`: NEVER put a sentence into `term`.
@@ -71,12 +71,12 @@ drills
   A passing mention of a concept is NOT a drill.
 
 common_mistakes
-  Each item is `{mistake, correction}`. `mistake` describes the observed error
+  Each item is `{{mistake, correction}}`. `mistake` describes the observed error
   in a sentence; `correction` describes the fix. Both are full sentences here —
   unlike `key_concepts.concept`, no noun-phrase constraint applies.
 
 patterns_and_sequences
-  Each item is `{name, description}`. `name` is the established WCS pattern name
+  Each item is `{{name, description}}`. `name` is the established WCS pattern name
   (1-5 words: "sugar push", "left side pass", "basket whip"). `description` is
   the prose. NEVER put a sentence into `name`.
 
