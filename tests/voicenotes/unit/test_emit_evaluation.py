@@ -248,13 +248,17 @@ class TestEmitEvaluationTask:
 
     def test_swallows_library_exception(self) -> None:
         """If post_findings raises (it shouldn't — library is best-effort —
-        but defense in depth) the task must not propagate."""
+        but defense in depth) the task must not propagate.
+
+        Satisfies TEST-011: we use the mocked post_findings to inject the
+        failure AND verify it was actually invoked, so the test fails
+        loudly if the task short-circuits before reaching the library
+        instead of silently passing.
+        """
         with patch(
             "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings",
             side_effect=RuntimeError("library exploded"),
-        ):
-            # No assertion: just verifying no raise. If the task body
-            # propagates, pytest fails this test.
+        ) as mock_post:
             try:
                 emit_evaluation.fn(
                     flow_run_id="r",
@@ -268,6 +272,16 @@ class TestEmitEvaluationTask:
                 # swallow inside the task, so a mock-induced raise here
                 # is a known limitation of patching the seam.
                 pass
+
+        # Verify the failure path was actually exercised: the task did
+        # reach the library's post_findings call (which is where the
+        # mock injected the RuntimeError). Without this assertion, a
+        # regression that caused the task to no-op before calling the
+        # library would pass silently.
+        mock_post.assert_called_once()
+        kwargs = mock_post.call_args.kwargs
+        assert kwargs["repo"] == "transcription-cog"
+        assert kwargs["flow_name"] == "voicenotes-ingest"
 
     def test_logger_invoked_for_start_and_done(self) -> None:
         """Cog still logs structured start/done events for observability."""
