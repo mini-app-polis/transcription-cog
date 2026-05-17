@@ -1,3 +1,10 @@
+## [1.10.3](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.2...v1.10.3) (2026-05-17)
+
+
+### Bug Fixes
+
+* addressing findings ([fd15e7e](https://github.com/mini-app-polis/transcription-cog/commit/fd15e7e1f8ad030da9e4a592137b5f7f44acc5ca))
+
 ## [1.10.2](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.1...v1.10.2) (2026-05-17)
 
 
