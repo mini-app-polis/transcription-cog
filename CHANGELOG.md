@@ -1,3 +1,15 @@
+# [1.10.0](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.3...v1.10.0) (2026-05-17)
+
+
+### Bug Fixes
+
+* updated tests and precommit ([23e1805](https://github.com/mini-app-polis/transcription-cog/commit/23e18053217613012ba6ba8b228117e5dfdb5a2b))
+
+
+### Features
+
+* updated pipeline eval ([3ab87c4](https://github.com/mini-app-polis/transcription-cog/commit/3ab87c4722aeee30996e6bfa076d9c38dea90fbf))
+
 ## [1.9.3](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.2...v1.9.3) (2026-05-17)
 
 
