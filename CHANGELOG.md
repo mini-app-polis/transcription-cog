@@ -1,3 +1,11 @@
+## [1.9.3](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.2...v1.9.3) (2026-05-17)
+
+
+### Bug Fixes
+
+* escape literal {field, field} examples in system prompt template ([2409c48](https://github.com/mini-app-polis/transcription-cog/commit/2409c48b4f3f09e95932f0fe0f58192247c2f317))
+* prompt tighten ([c144681](https://github.com/mini-app-polis/transcription-cog/commit/c1446816d4d3e76ad0c3029deed83912042e4f2f))
+
 ## [1.9.2](https://github.com/mini-app-polis/transcription-cog/compare/v1.9.1...v1.9.2) (2026-05-15)
 
 
