@@ -3137,7 +3137,7 @@ wheels = [
 
 [[package]]
 name = "transcription-cog"
-version = "1.10.3"
+version = "1.10.4"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
