@@ -68,12 +68,24 @@ _SOURCE_FLOW_INLINE = "flow_inline"  # end-of-flow emissions
 _SOURCE_FLOW_HOOK = "flow_hook"  # on_failure / on_crashed emissions
 
 
-def _processor_version() -> str:
-    """Return the cog's installed package version, or a marker."""
+def _processor_version() -> str | None:
+    """Return the cog's installed package version, or ``None``.
+
+    Returns ``None`` (rather than a marker like ``"0.0.0+local"``) when
+    the package isn't installed under the expected distribution name so
+    the caller can elide the suffix entirely. Pipeline Health rows
+    previously displayed ``(processor=0.0.0+local)`` on every emission
+    because this lookup used the pre-merge distribution name
+    ``"voicenotes-cog"`` after the May-2026 merge into
+    ``transcription-cog`` (ADR-004) — every prod call fell through to
+    the fallback and stamped the marker onto otherwise-clean findings.
+    Query the post-merge distribution name and treat absence as
+    "don't append anything", not "append a marker".
+    """
     try:
-        return version("voicenotes-cog")
+        return version("transcription-cog")
     except PackageNotFoundError:  # editable install / not installed
-        return "0.0.0+local"
+        return None
 
 
 def _append_drive_file_id(text: str, drive_file_id: str | None) -> str:
@@ -137,12 +149,26 @@ def _build_library_findings(
         return rows
 
     # No findings: emit a single heartbeat row capturing batch outcome.
+    #
+    # SUCCESS heartbeats include the resolved processor version when
+    # ``importlib.metadata`` can find the installed ``transcription-cog``
+    # distribution, so the Pipeline Health UI shows e.g.
+    # ``voicenotes ingest completed (processor=1.10.2)`` and operators
+    # can correlate a heartbeat with the build that emitted it. When the
+    # package isn't installed (editable dev checkouts, ad-hoc
+    # invocations) ``_processor_version`` returns ``None`` and the
+    # suffix is omitted — better silence than the old
+    # ``(processor=0.0.0+local)`` marker noise.
     severity = "SUCCESS" if success else "ERROR"
-    base_text = (
-        f"voicenotes ingest completed (processor={_processor_version()})"
-        if success
-        else "voicenotes ingest terminal failure"
-    )
+    if success:
+        processor = _processor_version()
+        base_text = (
+            f"voicenotes ingest completed (processor={processor})"
+            if processor
+            else "voicenotes ingest completed"
+        )
+    else:
+        base_text = "voicenotes ingest terminal failure"
     rows.append(
         {
             "severity": severity,
