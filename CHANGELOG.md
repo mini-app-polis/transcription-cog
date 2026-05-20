@@ -1,3 +1,40 @@
+# [2.0.0](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.4...v2.0.0) (2026-05-20)
+
+
+* feat!: cut over write path from /v1/wcs/notes to /v1/wcs/sources ([c1239cd](https://github.com/mini-app-polis/transcription-cog/commit/c1239cd0f9d1403dc72a7f8367af6a2a7d062c57))
+
+
+### Features
+
+* updating prompt and schema based on new design requirements as documented ([0734329](https://github.com/mini-app-polis/transcription-cog/commit/07343292ebcb0a904902454e13e54b1d41838dc0))
+
+
+### BREAKING CHANGES
+
+* The cog no longer writes to the legacy /v1/wcs/notes
+endpoint. All extractions now write to /v1/wcs/sources on the new WCS
+entity substrate. The legacy notes table is preserved on the API side
+as _legacy_wcs_notes for the rebuild window per api-kaianolevine-com
+ADR-0004, but the cog stops feeding it.
+
+- Replace NoteCreatePayload / NoteResponse / NotesOutput with
+  SourceCreatePayload / SourceResponse in models.py.
+- Rename NotesApiClient to SubstrateApiClient; replace create_note()
+  with create_source().
+- Rewrite flow.py's task_store_notes as task_store_source, building
+  the SourceCreatePayload from filename metadata + EXTRACTION_SCHEMA-
+  shaped raw_output + extractor/prompt version metadata.
+- Replace NOTES_SCHEMA references with EXTRACTION_SCHEMA throughout
+  the LLM call path and validation.
+- Update flow.py module docstring and step 7 description.
+- Tests updated to mock the new endpoint and assert the new payload
+  shape including extractor metadata.
+
+Refs: docs/decisions/ADR-005-new-extraction-prompt-and-write-path.md,
+      api-kaianolevine-com docs/decisions/ADR-0002-wcs-entity-substrate.md,
+      api-kaianolevine-com docs/decisions/ADR-0004-rebuild-wcs-corpus.md
+Co-authored-by: Cursor <cursoragent@cursor.com>
+
 ## [1.10.4](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.3...v1.10.4) (2026-05-19)
 
 
