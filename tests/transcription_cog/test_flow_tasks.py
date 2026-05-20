@@ -1,6 +1,6 @@
 """Direct unit tests for flow.py tasks — persistence and archival paths.
 
-Resolves TEST-GAP-001: task_store_transcript, task_store_notes, and
+Resolves TEST-GAP-001: task_store_transcript, task_store_source, and
 task_archive_file had no direct coverage. These tests bypass Prefect's
 task engine by calling the undecorated `.fn` attribute directly.
 """
@@ -16,7 +16,7 @@ from transcription_cog.flow import (
     _emit_terminal_failure,
     task_archive_file,
     task_post_run_evaluation,
-    task_store_notes,
+    task_store_source,
     task_store_transcript,
 )
 
@@ -77,33 +77,37 @@ def test_task_store_transcript_raises_on_duplicate() -> None:
         )
 
 
-# ── task_store_notes ──────────────────────────────────────────────────────────
+# ── task_store_source ─────────────────────────────────────────────────────────
 
 
-def test_task_store_notes_uses_topic_as_title() -> None:
+def test_task_store_source_uses_topic_as_title() -> None:
     api = MagicMock()
-    api.create_note.return_value = MagicMock(id="n-1")
+    api.create_source.return_value = MagicMock(id="src-1")
 
-    result = task_store_notes.fn(
+    result = task_store_source.fn(
         api,
         transcript_id="t-1",
-        notes={"summary": "A lesson"},
+        extraction={"summary": "A lesson"},
         parsed=_parsed(),
         cfg=_cfg(),
     )
 
-    assert result == "n-1"
-    payload = api.create_note.call_args[0][0]
+    assert result == "src-1"
+    payload = api.create_source.call_args[0][0]
     assert payload.title == "Connection"
     assert payload.transcript_id == "t-1"
-    assert payload.instructors == ["Kaiano"]
-    assert payload.students == ["Sarah"]
+    assert payload.instructors_raw == ["Kaiano"]
+    assert payload.students_raw == ["Sarah"]
     assert payload.session_type == "private_lesson"
+    assert payload.extractor_model == "claude-sonnet-4-6"
+    assert payload.extractor_provider == "anthropic"
+    assert payload.prompt_version == "2.3.1"
+    assert payload.raw_output == {"summary": "A lesson"}
 
 
-def test_task_store_notes_falls_back_to_notes_title() -> None:
+def test_task_store_source_falls_back_to_extraction_title() -> None:
     api = MagicMock()
-    api.create_note.return_value = MagicMock(id="n-1")
+    api.create_source.return_value = MagicMock(id="src-1")
     parsed = ParsedFilename(
         recording_date="2026-04-01",
         instructors=["Kaiano"],
@@ -114,15 +118,15 @@ def test_task_store_notes_falls_back_to_notes_title() -> None:
         raw_filename="2026-04-01 Kaiano > Sarah.txt",
     )
 
-    task_store_notes.fn(
+    task_store_source.fn(
         api,
         transcript_id="t-1",
-        notes={"title": "Extracted Title", "summary": "A lesson"},
+        extraction={"title": "Extracted Title", "summary": "A lesson"},
         parsed=parsed,
         cfg=_cfg(),
     )
 
-    payload = api.create_note.call_args[0][0]
+    payload = api.create_source.call_args[0][0]
     assert payload.title == "Extracted Title"
 
 
@@ -149,7 +153,7 @@ def test_task_archive_file_moves_to_processed_folder() -> None:
 
 # ── task_post_run_evaluation ───────────────────────────────────────────────────
 #
-# task_post_run_evaluation no longer talks to NotesApiClient. It delegates to
+# task_post_run_evaluation no longer talks to SubstrateApiClient. It delegates to
 # the transcription-cog shim's ``post_run_finding`` (which in turn calls into
 # ``mini_app_polis.pipeline_status``). Tests patch the shim at the flow.py
 # import site so we can assert on the call without instantiating the shim's

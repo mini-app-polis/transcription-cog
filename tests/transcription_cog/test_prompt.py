@@ -68,7 +68,7 @@ def test_system_contains_known_sections() -> None:
     parsed = parse_filename("2026-04-01 Kaiano > Sarah.txt")
     messages = build_messages("transcript", parsed=parsed)
     system = messages[0]["content"]
-    for section in ("key_concepts", "vocabulary_terms", "drills", "action_items"):
+    for section in ("entities", "entity_definitions", "drill_purposes", "action_items"):
         assert section in system
 
 

@@ -26,106 +26,106 @@ Visibility = Literal["private", "public"]
 
 
 class DriveFileRecord(BaseModel):
-    """TODO: describe this class."""
+    """A file row returned from the Google Drive API."""
 
-    id: str = Field(..., description="TODO: describe this field.")
-    name: str = Field(..., description="TODO: describe this field.")
-    mime_type: str = Field(alias="mimeType", description="TODO: describe this field.")
+    id: str = Field(..., description="Google Drive file ID.")
+    name: str = Field(..., description="Display name of the file.")
+    mime_type: str = Field(alias="mimeType", description="MIME type of the file.")
     model_config = {"populate_by_name": True}
 
 
 class FilenameMetadata(BaseModel):
-    """TODO: describe this class."""
+    """Metadata parsed from a transcript filename."""
 
-    recording_date: str = Field(..., description="TODO: describe this field.")
-    instructors: list[str] = Field(..., description="TODO: describe this field.")
-    students: list[str] = Field(..., description="TODO: describe this field.")
-    organization: str = Field(..., description="TODO: describe this field.")
-    session_type: SessionType = Field(..., description="TODO: describe this field.")
-    topic: str | None = Field(..., description="TODO: describe this field.")
-
-
-class NotesOutput(BaseModel):
-    """TODO: describe this class."""
-
-    title: str | None = Field(default=None, description="TODO: describe this field.")
-    session_type: str | None = Field(
-        default=None, description="TODO: describe this field."
+    recording_date: str = Field(..., description="ISO date string YYYY-MM-DD.")
+    instructors: list[str] = Field(..., description="Instructor names from filename.")
+    students: list[str] = Field(..., description="Student names from filename.")
+    organization: str = Field(
+        ..., description="Organization name from filename, if any."
     )
-    summary: str | None = Field(default=None, description="TODO: describe this field.")
-    key_concepts: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
+    session_type: SessionType = Field(
+        ..., description="Lesson type inferred from filename."
     )
-    vocabulary_terms: list[dict[str, Any]] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    drills: list[dict[str, Any]] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    common_mistakes: list[dict[str, Any]] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    patterns_and_sequences: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    student_observations: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    action_items: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    competition_notes: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    quotes: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    references: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    off_topic_notes: list[Any] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    suggested_new_sections: list[dict[str, Any]] = Field(
-        default_factory=list, description="TODO: describe this field."
-    )
-    model_config = {"extra": "allow"}
+    topic: str | None = Field(..., description="Optional topic suffix from filename.")
 
 
 class TranscriptCreatePayload(BaseModel):
-    """TODO: describe this class."""
+    """Payload for POST /v1/wcs/transcripts."""
 
-    raw_text: str = Field(..., description="TODO: describe this field.")
-    source_type: SourceType = Field(..., description="TODO: describe this field.")
-    source_filename: str = Field(..., description="TODO: describe this field.")
-    drive_file_id: str = Field(..., description="TODO: describe this field.")
+    raw_text: str = Field(..., description="Full transcript text.")
+    source_type: SourceType = Field(..., description="Origin of the transcript file.")
+    source_filename: str = Field(..., description="Original filename in Drive.")
+    drive_file_id: str = Field(
+        ..., description="Google Drive file ID for deduplication."
+    )
 
 
-class NoteCreatePayload(BaseModel):
-    """TODO: describe this class."""
+class SourceCreatePayload(BaseModel):
+    """Payload for POST /v1/wcs/sources.
 
-    transcript_id: str = Field(..., description="TODO: describe this field.")
-    title: str | None = Field(..., description="TODO: describe this field.")
-    session_date: str | None = Field(..., description="TODO: describe this field.")
-    session_type: SessionType = Field(..., description="TODO: describe this field.")
-    instructors: list[str] = Field(..., description="TODO: describe this field.")
-    students: list[str] = Field(..., description="TODO: describe this field.")
-    organization: str = Field(..., description="TODO: describe this field.")
-    visibility: Visibility = Field(..., description="TODO: describe this field.")
-    model: str = Field(..., description="TODO: describe this field.")
-    provider: str = Field(..., description="TODO: describe this field.")
-    notes_json: dict[str, Any] = Field(..., description="TODO: describe this field.")
+    Mirrors WcsSourceCreate in api-kaianolevine-com/schemas.py.
+    """
+
+    transcript_id: str = Field(
+        ..., description="UUID of the wcs_transcripts row this lesson is derived from."
+    )
+    title: str | None = Field(
+        default=None, description="Lesson title (from filename topic or extraction)."
+    )
+    session_date: str | None = Field(
+        default=None, description="ISO date string YYYY-MM-DD."
+    )
+    session_type: SessionType = Field(
+        ..., description="private_lesson | group_class | other."
+    )
+    instructors_raw: list[str] = Field(
+        default_factory=list,
+        description="Filename-parsed instructor names; authoritative.",
+    )
+    students_raw: list[str] = Field(
+        default_factory=list, description="Filename-parsed student names."
+    )
+    organization: str = Field(
+        default="", description="Filename-parsed organization, if any."
+    )
+    visibility: Visibility = Field(default="private", description="private | public.")
+    is_default_visible: bool = Field(
+        default=False, description="If True, any signed-in user can see this source."
+    )
+
+    # Extraction metadata
+    extractor_version: str = Field(
+        ..., description="semver of the cog producing this extraction."
+    )
+    extractor_model: str = Field(
+        ..., description="LLM model identifier (e.g. claude-sonnet-4-5-20250929)."
+    )
+    extractor_provider: str = Field(..., description="LLM provider (e.g. anthropic).")
+    prompt_version: str = Field(..., description="PROMPT_VERSION from prompt.py.")
+
+    raw_output: dict[str, Any] = Field(
+        ..., description="The full extraction shape per EXTRACTION_SCHEMA."
+    )
 
 
 class TranscriptResponse(BaseModel):
-    """TODO: describe this class."""
+    """Response shape for POST /v1/wcs/transcripts."""
 
-    id: str = Field(..., description="TODO: describe this field.")
-    created_at: datetime = Field(..., description="TODO: describe this field.")
+    id: str = Field(..., description="UUID of the created transcript row.")
+    created_at: datetime = Field(..., description="Timestamp when the row was created.")
 
 
-class NoteResponse(BaseModel):
-    """TODO: describe this class."""
+class SourceResponse(BaseModel):
+    """Response shape for POST /v1/wcs/sources."""
 
-    id: str = Field(..., description="TODO: describe this field.")
-    created_at: datetime = Field(..., description="TODO: describe this field.")
+    id: str
+    transcript_id: str
+    title: str | None = None
+    session_date: str | None = None
+    session_type: str
+    instructors_raw: list[str] = Field(default_factory=list)
+    students_raw: list[str] = Field(default_factory=list)
+    organization: str = ""
+    visibility: str
+    is_default_visible: bool
+    created_at: datetime

@@ -53,7 +53,7 @@ def mock_drive_text() -> str:
 def test_process_transcript_empty_folder(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
@@ -79,7 +79,7 @@ def test_process_transcript_empty_folder(mock_env: None) -> None:
 def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
@@ -104,7 +104,7 @@ def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
 def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
@@ -128,7 +128,7 @@ def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
 def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
@@ -153,7 +153,7 @@ def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
 def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -167,7 +167,7 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
         mock_api.create_transcript.return_value = MagicMock(id="transcript-abc")
-        mock_api.create_note.return_value = MagicMock(id="note-xyz")
+        mock_api.create_source.return_value = MagicMock(id="source-xyz")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
@@ -176,7 +176,7 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
         result = process_transcript()
 
     mock_api.create_transcript.assert_called_once()
-    mock_api.create_note.assert_called_once()
+    mock_api.create_source.assert_called_once()
     mock_llm.generate_json.assert_called_once()
     mock_post_eval.assert_called_once()
     eval_args = mock_post_eval.call_args.args
@@ -189,16 +189,16 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
     assert result["skipped"] == 0
     assert result["errors"] == 0
     assert result["files"][0]["transcript_id"] == "transcript-abc"
-    assert result["files"][0]["note_id"] == "note-xyz"
+    assert result["files"][0]["source_id"] == "source-xyz"
     assert result["files"][0]["schema_valid"] is True
 
 
-def test_process_transcript_passes_parsed_metadata_to_note(
+def test_process_transcript_passes_parsed_metadata_to_source(
     mock_env: None, mock_drive_text: str
 ) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -212,7 +212,7 @@ def test_process_transcript_passes_parsed_metadata_to_note(
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
         mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_note.return_value = MagicMock(id="n-1")
+        mock_api.create_source.return_value = MagicMock(id="n-1")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
@@ -220,20 +220,23 @@ def test_process_transcript_passes_parsed_metadata_to_note(
 
         process_transcript()
 
-    mock_api.create_note.assert_called_once()
+    mock_api.create_source.assert_called_once()
     mock_post_eval.assert_called_once()
-    call_kwargs = mock_api.create_note.call_args[0][0]
+    call_kwargs = mock_api.create_source.call_args[0][0]
     assert call_kwargs.session_type == "private_lesson"
-    assert call_kwargs.instructors == ["Kaiano"]
-    assert call_kwargs.students == ["Sarah"]
+    assert call_kwargs.instructors_raw == ["Kaiano"]
+    assert call_kwargs.students_raw == ["Sarah"]
     assert call_kwargs.session_date == "2026-04-01"
     assert call_kwargs.title == "Connection"
+    assert call_kwargs.prompt_version == "2.3.1"
+    assert call_kwargs.extractor_provider == "anthropic"
+    assert call_kwargs.raw_output == _MINIMAL_NOTES
 
 
 def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -247,7 +250,7 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
         mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_note.return_value = MagicMock(id="n-1")
+        mock_api.create_source.return_value = MagicMock(id="n-1")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
@@ -256,7 +259,7 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
         result = process_transcript()
 
     mock_api.create_transcript.assert_called_once()
-    mock_api.create_note.assert_called_once()
+    mock_api.create_source.assert_called_once()
     mock_post_eval.assert_called_once()
     assert "processed" in result
     assert "skipped" in result
@@ -269,7 +272,7 @@ def test_process_transcript_skips_already_processed(
 ) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
@@ -302,7 +305,7 @@ def test_process_transcript_continues_after_failure(
 ) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -320,7 +323,7 @@ def test_process_transcript_continues_after_failure(
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
         mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_note.return_value = MagicMock(id="n-1")
+        mock_api.create_source.return_value = MagicMock(id="n-1")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
@@ -329,7 +332,7 @@ def test_process_transcript_continues_after_failure(
         result = process_transcript()
 
     mock_api.create_transcript.assert_called_once()
-    mock_api.create_note.assert_called_once()
+    mock_api.create_source.assert_called_once()
     mock_llm.generate_json.assert_called_once()
     mock_post_eval.assert_called_once()
     assert mock_post_eval.call_args.args[1] == "WARN"
@@ -345,7 +348,7 @@ def test_process_transcript_mixed_batch_invalid_then_valid(
     in the same batch from processing end-to-end."""
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -360,7 +363,7 @@ def test_process_transcript_mixed_batch_invalid_then_valid(
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
         mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_note.return_value = MagicMock(id="n-1")
+        mock_api.create_source.return_value = MagicMock(id="n-1")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
@@ -370,7 +373,7 @@ def test_process_transcript_mixed_batch_invalid_then_valid(
 
     # The valid file completed the full pipeline.
     mock_api.create_transcript.assert_called_once()
-    mock_api.create_note.assert_called_once()
+    mock_api.create_source.assert_called_once()
 
     # One skipped, one processed — not one-then-abort.
     assert result["processed"] == 1
@@ -403,7 +406,7 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
     """
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -429,7 +432,7 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
             Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
             MagicMock(id="t-new"),
         ]
-        mock_api.create_note.return_value = MagicMock(id="n-new")
+        mock_api.create_source.return_value = MagicMock(id="n-new")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm
@@ -438,7 +441,7 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
         result = process_transcript()
 
     # file-new processed end-to-end.
-    mock_api.create_note.assert_called_once()
+    mock_api.create_source.assert_called_once()
 
     # One skipped, one processed.
     assert result["processed"] == 1
@@ -461,7 +464,7 @@ def test_process_transcript_posts_run_evaluation(
 ) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.NotesApiClient") as mock_api_cls,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
         patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
@@ -475,7 +478,7 @@ def test_process_transcript_posts_run_evaluation(
         mock_api = MagicMock()
         mock_api_cls.return_value = mock_api
         mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_note.return_value = MagicMock(id="n-1")
+        mock_api.create_source.return_value = MagicMock(id="n-1")
 
         mock_llm = MagicMock()
         mock_build_llm.return_value = mock_llm

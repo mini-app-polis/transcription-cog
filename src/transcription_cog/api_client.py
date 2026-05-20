@@ -1,7 +1,7 @@
 """Internal API client for transcription-cog.
 
 Wraps KaianoApiClient from common-python-utils to provide typed methods
-for the wcs_transcripts and wcs_notes endpoints on api-kaianolevine-com.
+for the wcs_transcripts and wcs_sources endpoints on api-kaianolevine-com.
 
 For posting pipeline evaluations to ``/v1/evaluations``, use the
 transcription-cog shim around :mod:`mini_app_polis.pipeline_status`
@@ -20,15 +20,15 @@ from __future__ import annotations
 from mini_app_polis.api import KaianoApiClient
 
 from .models import (
-    NoteCreatePayload,
-    NoteResponse,
+    SourceCreatePayload,
+    SourceResponse,
     TranscriptCreatePayload,
     TranscriptResponse,
 )
 
 
-class NotesApiClient:
-    """Typed client for the /v1/wcs/* endpoints on api-kaianolevine-com."""
+class SubstrateApiClient:
+    """Typed client for the /v1/wcs/* substrate endpoints on api-kaianolevine-com."""
 
     def __init__(self) -> None:
         # KaianoApiClient.from_env() reads KAIANO_API_BASE_URL and
@@ -44,10 +44,19 @@ class NotesApiClient:
         )
         return TranscriptResponse(**response["data"])
 
-    def create_note(self, payload: NoteCreatePayload) -> NoteResponse:
-        """POST /v1/wcs/notes — store processed notes, return record."""
+    def create_source(self, payload: SourceCreatePayload) -> SourceResponse:
+        """POST /v1/wcs/sources — ingest a source with its extraction.
+
+        Creates a wcs_sources row (or updates an existing one for the same
+        transcript_id), writes a new active wcs_source_extractions row, and
+        triggers compose_source on the API side. Returns the source record.
+
+        See api-kaianolevine-com/routers/wcs_sources.py for the write
+        endpoint's idempotency contract: one source per transcript, multiple
+        extractions over time.
+        """
         response = self._client.post(
-            "/v1/wcs/notes",
+            "/v1/wcs/sources",
             payload.model_dump(),
         )
-        return NoteResponse(**response["data"])
+        return SourceResponse(**response["data"])

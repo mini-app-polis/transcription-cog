@@ -21,8 +21,11 @@ Flow steps:
     3. Read transcript text from Drive
     4. Guard: validate length
     5. Store raw transcript via api-kaianolevine-com → wcs_transcripts
-    6. Call LLM — transcript → structured notes JSON
-    7. Validate and store notes via api-kaianolevine-com → wcs_notes
+    6. Call LLM — transcript → structured extraction JSON
+    7. Validate the extraction against EXTRACTION_SCHEMA and POST to
+       api-kaianolevine-com → wcs_sources. The API writes wcs_sources +
+       wcs_source_extractions and runs compose_source synchronously to
+       populate the canonical entity layer.
     8. Archive original file to processed folder
   Per run (once, after all files):
     9. Post one pipeline evaluation to pipeline_evaluations summarizing
@@ -30,6 +33,8 @@ Flow steps:
 """
 
 from __future__ import annotations
+
+from importlib.metadata import PackageNotFoundError, version
 
 import sentry_sdk
 from dotenv import load_dotenv
@@ -41,16 +46,25 @@ from prefect import flow, get_run_logger, task
 from prefect.concurrency.sync import concurrency
 
 from ._pipeline_eval import make_failure_hook, post_run_finding
-from .api_client import NotesApiClient
+from .api_client import SubstrateApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
 from .filename_parser import FilenameParseError, ParsedFilename, parse_filename
 from .models import (
-    NoteCreatePayload,
+    SourceCreatePayload,
     TranscriptCreatePayload,
 )
-from .prompt import build_messages
-from .schema import NOTES_SCHEMA
+from .prompt import PROMPT_VERSION, build_messages
+from .schema import EXTRACTION_SCHEMA
+
+
+def _extractor_version() -> str:
+    """Return the cog's installed package version, or 'dev' if not installed."""
+    try:
+        return version("transcription_cog")
+    except PackageNotFoundError:
+        return "dev"
+
 
 load_dotenv()
 
@@ -92,7 +106,7 @@ def task_read_transcript(g: GoogleAPI, file_id: str, mime_type: str) -> str:
 
 @task(retries=2)
 def task_store_transcript(
-    api: NotesApiClient,
+    api: SubstrateApiClient,
     raw_text: str,
     source_filename: str,
     drive_file_id: str,
@@ -120,7 +134,7 @@ def task_call_llm(
     transcript_text: str,
     parsed: ParsedFilename,
 ) -> tuple[dict, bool]:
-    """Call the LLM and return (notes_json, schema_valid)."""
+    """Call the LLM and return (extraction, schema_valid)."""
     logger = _get_logger()
     logger.info(
         log.with_log_prefix(
@@ -134,53 +148,65 @@ def task_call_llm(
 
     result = llm.generate_json(
         messages=messages,
-        json_schema=NOTES_SCHEMA,
-        schema_name="notes",
+        json_schema=EXTRACTION_SCHEMA,
+        schema_name="extraction",
     )
-    notes = result.output_json
+    extraction = result.output_json
 
     schema_valid = True
     try:
-        validate(instance=notes, schema=NOTES_SCHEMA)
+        validate(instance=extraction, schema=EXTRACTION_SCHEMA)
     except ValidationError as exc:
         schema_valid = False
         logger.warning(
             log.with_log_prefix(
                 log.LOG_WARNING,
-                f"Notes JSON failed schema validation: {exc.message}",
+                f"Extraction JSON failed schema validation: {exc.message}",
             )
         )
 
     logger.info(log.with_log_prefix(log.LOG_SUCCESS, "LLM call complete"))
-    return notes, schema_valid
+    return extraction, schema_valid
 
 
 @task(retries=2)
-def task_store_notes(
-    api: NotesApiClient,
+def task_store_source(
+    api: SubstrateApiClient,
     transcript_id: str,
-    notes: dict,
+    extraction: dict,
     parsed: ParsedFilename,
     cfg: Config,
 ) -> str:
-    """Store structured notes and return note_id."""
+    """Store the extracted source via POST /v1/wcs/sources.
+
+    Builds the WcsSourceCreate payload from filename metadata + extraction
+    raw_output + cog/prompt version metadata, POSTs to the substrate write
+    endpoint, returns the source_id.
+
+    The API runs compose_source synchronously inside the endpoint, so on
+    successful return the canonical layer (wcs_source_attributions, etc.)
+    is populated for this source.
+    """
     logger = _get_logger()
-    title = parsed.topic or notes.get("title") or None
-    payload = NoteCreatePayload(
+    title = parsed.topic or extraction.get("title") or None
+    payload = SourceCreatePayload(
         transcript_id=transcript_id,
         title=title,
         session_date=parsed.recording_date,
         session_type=parsed.session_type,  # type: ignore[arg-type]
-        instructors=parsed.instructors,
-        students=parsed.students,
+        instructors_raw=parsed.instructors,
+        students_raw=parsed.students,
         organization=parsed.organization,
         visibility="private",
-        model=cfg.llm_model,
-        provider=cfg.llm_provider,
-        notes_json=notes,
+        is_default_visible=False,
+        extractor_version=_extractor_version(),
+        extractor_model=cfg.llm_model,
+        extractor_provider=cfg.llm_provider,
+        prompt_version=PROMPT_VERSION,
+        raw_output=extraction,
     )
-    response = api.create_note(payload)
-    logger.info(log.with_log_prefix(log.LOG_SUCCESS, f"Notes stored: {response.id}"))
+    response = api.create_source(payload)
+    logger.info(log.with_log_prefix(log.LOG_SUCCESS, f"Source stored: {response.id}"))
     return response.id
 
 
@@ -197,7 +223,7 @@ def task_archive_file(
 
 def _process_one(
     g: GoogleAPI,
-    api: NotesApiClient,
+    api: SubstrateApiClient,
     cfg: Config,
     file_id: str,
     file_name: str,
@@ -258,21 +284,22 @@ def _process_one(
         raise
 
     # Step 5: call LLM
-    notes, schema_valid = task_call_llm.with_options(
+    extraction, schema_valid = task_call_llm.with_options(
         retry_delay_seconds=cfg.task_retry_delay_long
     )(cfg, raw_text, parsed)
 
-    # Step 6: store notes
-    note_id = task_store_notes.with_options(
+    # Step 6: store source (creates/updates wcs_sources, writes active extraction,
+    # runs compose_source on the API side)
+    source_id = task_store_source.with_options(
         retry_delay_seconds=cfg.task_retry_delay_short
-    )(api, transcript_id, notes, parsed, cfg)
+    )(api, transcript_id, extraction, parsed, cfg)
 
     # Step 7: archive
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
 
     return {
         "transcript_id": transcript_id,
-        "note_id": note_id,
+        "source_id": source_id,
         "file": file_name,
         "schema_valid": schema_valid,
     }
@@ -282,7 +309,7 @@ def _process_one(
 # flow_hook finding (WARN for Failed, ERROR for Crashed). The body lives
 # in mini_app_polis.pipeline_status; this cog just supplies its name and
 # repo identity. Replaces the old hand-rolled _emit_terminal_failure
-# which talked to NotesApiClient.post_run_evaluation directly.
+# which talked to SubstrateApiClient.post_run_evaluation directly.
 _emit_terminal_failure = make_failure_hook("process-transcript")
 
 
@@ -390,7 +417,7 @@ def process_transcript() -> dict:
 
         cfg = load_config()
         g = GoogleAPI.from_env()
-        api = NotesApiClient()
+        api = SubstrateApiClient()
 
         files = list(_iter_files(g, cfg.notes_input_folder_id))
 
