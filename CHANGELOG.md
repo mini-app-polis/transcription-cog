@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.0.1...v2.0.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* pick up common-python-utils with configurable LLM max_tokens ([372a014](https://github.com/mini-app-polis/transcription-cog/commit/372a0145e55add883b3871427c12f6aec477f541))
+
 ## [2.0.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.0.0...v2.0.1) (2026-05-27)
 
 
