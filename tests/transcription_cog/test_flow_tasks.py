@@ -10,11 +10,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from mini_app_polis.llm.errors import LLMTruncationError
 
 from transcription_cog.filename_parser import ParsedFilename
 from transcription_cog.flow import (
     _emit_terminal_failure,
     task_archive_file,
+    task_call_llm,
     task_post_run_evaluation,
     task_store_source,
     task_store_transcript,
@@ -75,6 +77,37 @@ def test_task_store_transcript_raises_on_duplicate() -> None:
             source_filename="2026-04-01 Kaiano > Sarah.txt",
             drive_file_id="drive-abc",
         )
+
+
+# ── task_call_llm ─────────────────────────────────────────────────────────────
+
+
+def test_task_call_llm_truncation_error_is_propagated_with_clear_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    cfg = _cfg()
+    parsed = _parsed()
+    truncation_error = LLMTruncationError(
+        "Response truncated at max_tokens=16384 (stop_reason=max_tokens)"
+    )
+
+    with (
+        patch("transcription_cog.flow.build_llm") as mock_build_llm,
+        caplog.at_level("ERROR"),
+    ):
+        mock_llm = MagicMock()
+        mock_build_llm.return_value = mock_llm
+        mock_llm.generate_json.side_effect = truncation_error
+
+        with pytest.raises(LLMTruncationError, match="truncated at max_tokens"):
+            task_call_llm.fn(
+                cfg,
+                transcript_text="dense workshop transcript " * 200,
+                parsed=parsed,
+            )
+
+    assert any("truncated" in record.message.lower() for record in caplog.records)
+    mock_llm.generate_json.assert_called_once()
 
 
 # ── task_store_source ─────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ from jsonschema import ValidationError, validate
 from mini_app_polis import logger as log
 from mini_app_polis.google import GoogleAPI
 from mini_app_polis.llm import LLMMessage, build_llm
+from mini_app_polis.llm.errors import LLMTruncationError
 from prefect import flow, get_run_logger, task
 from prefect.concurrency.sync import concurrency
 
@@ -146,11 +147,23 @@ def task_call_llm(
     msg_dicts = build_messages(transcript_text, parsed=parsed)
     messages = [LLMMessage(role=m["role"], content=m["content"]) for m in msg_dicts]
 
-    result = llm.generate_json(
-        messages=messages,
-        json_schema=EXTRACTION_SCHEMA,
-        schema_name="extraction",
-    )
+    try:
+        result = llm.generate_json(
+            messages=messages,
+            json_schema=EXTRACTION_SCHEMA,
+            schema_name="extraction",
+        )
+    except LLMTruncationError as exc:
+        logger.error(
+            log.with_log_prefix(
+                log.LOG_FAILURE,
+                "LLM response truncated at max_tokens cap. Retries are pointless "
+                f"for this error; failing fast. Increase max_tokens in flow.py "
+                f"if this becomes systematic. {exc}",
+            )
+        )
+        raise
+
     extraction = result.output_json
 
     schema_valid = True

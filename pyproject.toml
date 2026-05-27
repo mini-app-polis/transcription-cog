@@ -32,7 +32,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-common-python-utils = { git = "https://github.com/mini-app-polis/common-python-utils.git", rev = "main" }
+common-python-utils = { git = "https://github.com/mini-app-polis/common-python-utils.git", rev = "v3.0.0" }
 
 [build-system]
 requires = ["hatchling"]

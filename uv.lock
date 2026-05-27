@@ -480,8 +480,8 @@ wheels = [
 
 [[package]]
 name = "common-python-utils"
-version = "2.6.0"
-source = { git = "https://github.com/mini-app-polis/common-python-utils.git?rev=main#b04e024ce49014937612d100d698490c6ed6fbfc" }
+version = "3.0.0"
+source = { git = "https://github.com/mini-app-polis/common-python-utils.git?rev=v3.0.0#ebabc4934d2c25f12f96f7a37c422bee13779218" }
 dependencies = [
     { name = "google-api-python-client" },
     { name = "google-auth" },
@@ -3168,7 +3168,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
-    { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=main" },
+    { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=v3.0.0" },
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
