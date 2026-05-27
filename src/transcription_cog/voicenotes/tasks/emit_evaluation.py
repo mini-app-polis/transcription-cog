@@ -21,7 +21,6 @@ a failure.
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 from mini_app_polis.pipeline_status import post_findings
@@ -66,26 +65,6 @@ _DIMENSION_PIPELINE = "pipeline_consistency"
 # run-type marker.
 _SOURCE_FLOW_INLINE = "flow_inline"  # end-of-flow emissions
 _SOURCE_FLOW_HOOK = "flow_hook"  # on_failure / on_crashed emissions
-
-
-def _processor_version() -> str | None:
-    """Return the cog's installed package version, or ``None``.
-
-    Returns ``None`` (rather than a marker like ``"0.0.0+local"``) when
-    the package isn't installed under the expected distribution name so
-    the caller can elide the suffix entirely. Pipeline Health rows
-    previously displayed ``(processor=0.0.0+local)`` on every emission
-    because this lookup used the pre-merge distribution name
-    ``"voicenotes-cog"`` after the May-2026 merge into
-    ``transcription-cog`` (ADR-004) — every prod call fell through to
-    the fallback and stamped the marker onto otherwise-clean findings.
-    Query the post-merge distribution name and treat absence as
-    "don't append anything", not "append a marker".
-    """
-    try:
-        return version("transcription-cog")
-    except PackageNotFoundError:  # editable install / not installed
-        return None
 
 
 def _append_drive_file_id(text: str, drive_file_id: str | None) -> str:
@@ -150,25 +129,20 @@ def _build_library_findings(
 
     # No findings: emit a single heartbeat row capturing batch outcome.
     #
-    # SUCCESS heartbeats include the resolved processor version when
-    # ``importlib.metadata`` can find the installed ``transcription-cog``
-    # distribution, so the Pipeline Health UI shows e.g.
-    # ``voicenotes ingest completed (processor=1.10.2)`` and operators
-    # can correlate a heartbeat with the build that emitted it. When the
-    # package isn't installed (editable dev checkouts, ad-hoc
-    # invocations) ``_processor_version`` returns ``None`` and the
-    # suffix is omitted — better silence than the old
-    # ``(processor=0.0.0+local)`` marker noise.
+    # Heartbeat text is plain — the processor=X.Y.Z suffix is stamped
+    # uniformly by ``mini_app_polis.pipeline_status.post_findings`` so
+    # every cog routing through the library gets it, not just this one.
+    # Don't pre-stamp here; the library's double-stamp guard would skip
+    # the real version and we'd be back to the pre-merge regression
+    # that displayed ``(processor=0.0.0+local)`` on every Pipeline Health
+    # row (a per-cog helper queried the wrong distribution name after
+    # ADR-004's voicenotes-cog → transcription-cog merge).
     severity = "SUCCESS" if success else "ERROR"
-    if success:
-        processor = _processor_version()
-        base_text = (
-            f"voicenotes ingest completed (processor={processor})"
-            if processor
-            else "voicenotes ingest completed"
-        )
-    else:
-        base_text = "voicenotes ingest terminal failure"
+    base_text = (
+        "voicenotes ingest completed"
+        if success
+        else "voicenotes ingest terminal failure"
+    )
     rows.append(
         {
             "severity": severity,
