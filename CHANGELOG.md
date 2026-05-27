@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.0.2...v2.1.0) (2026-05-27)
+
+
+### Features
+
+* remove hard length caps from extraction schema ([6f2ce29](https://github.com/mini-app-polis/transcription-cog/commit/6f2ce295292b1077269e067137617e574b287f46))
+
 ## [2.0.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.0.1...v2.0.2) (2026-05-27)
 
 
