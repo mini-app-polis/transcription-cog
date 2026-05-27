@@ -1,3 +1,10 @@
+## [2.1.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.1.0...v2.1.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* addressing voicenotes dating in processed folder ([0a08af3](https://github.com/mini-app-polis/transcription-cog/commit/0a08af32319e73a89dd9ffa3e013bc6fe79b50d1))
+
 # [2.1.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.0.2...v2.1.0) (2026-05-27)
 
 
