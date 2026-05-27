@@ -116,16 +116,40 @@ class TranscriptResponse(BaseModel):
 
 
 class SourceResponse(BaseModel):
-    """Response shape for POST /v1/wcs/sources."""
+    """Response shape for POST /v1/wcs/sources.
 
-    id: str
-    transcript_id: str
-    title: str | None = None
-    session_date: str | None = None
-    session_type: str
-    instructors_raw: list[str] = Field(default_factory=list)
-    students_raw: list[str] = Field(default_factory=list)
-    organization: str = ""
-    visibility: str
-    is_default_visible: bool
-    created_at: datetime
+    Mirrors WcsSourceItem in api-kaianolevine-com/schemas.py. Field
+    descriptions are kept in sync with :class:`SourceCreatePayload` so
+    the request and response halves of the same endpoint document the
+    same semantics in OpenAPI.
+    """
+
+    id: str = Field(..., description="UUID of the created source row.")
+    transcript_id: str = Field(
+        ..., description="UUID of the wcs_transcripts row this lesson is derived from."
+    )
+    title: str | None = Field(
+        default=None,
+        description="Lesson title (from filename topic or extraction).",
+    )
+    session_date: str | None = Field(
+        default=None, description="ISO date string YYYY-MM-DD."
+    )
+    session_type: str = Field(..., description="private_lesson | group_class | other.")
+    instructors_raw: list[str] = Field(
+        default_factory=list,
+        description="Filename-parsed instructor names; authoritative.",
+    )
+    students_raw: list[str] = Field(
+        default_factory=list, description="Filename-parsed student names."
+    )
+    organization: str = Field(
+        default="", description="Filename-parsed organization, if any."
+    )
+    visibility: str = Field(..., description="private | public.")
+    is_default_visible: bool = Field(
+        ..., description="If True, any signed-in user can see this source."
+    )
+    created_at: datetime = Field(
+        ..., description="Timestamp when the source row was created."
+    )
