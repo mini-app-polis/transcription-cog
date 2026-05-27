@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.0.0...v2.0.1) (2026-05-27)
+
+
+### Bug Fixes
+
+* adding context to eval ([1cf2c27](https://github.com/mini-app-polis/transcription-cog/commit/1cf2c27efae28c36780d7d7eebbfd7ba7b207962))
+
 # [2.0.0](https://github.com/mini-app-polis/transcription-cog/compare/v1.10.4...v2.0.0) (2026-05-20)
 
 
