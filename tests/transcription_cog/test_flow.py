@@ -228,7 +228,7 @@ def test_process_transcript_passes_parsed_metadata_to_source(
     assert call_kwargs.students_raw == ["Sarah"]
     assert call_kwargs.session_date == "2026-04-01"
     assert call_kwargs.title == "Connection"
-    assert call_kwargs.prompt_version == "2.3.1"
+    assert call_kwargs.prompt_version == "2.4.0"
     assert call_kwargs.extractor_provider == "anthropic"
     assert call_kwargs.raw_output == _MINIMAL_NOTES
 

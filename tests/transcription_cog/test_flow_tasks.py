@@ -134,7 +134,7 @@ def test_task_store_source_uses_topic_as_title() -> None:
     assert payload.session_type == "private_lesson"
     assert payload.extractor_model == "claude-sonnet-4-6"
     assert payload.extractor_provider == "anthropic"
-    assert payload.prompt_version == "2.3.1"
+    assert payload.prompt_version == "2.4.0"
     assert payload.raw_output == {"summary": "A lesson"}
 
 

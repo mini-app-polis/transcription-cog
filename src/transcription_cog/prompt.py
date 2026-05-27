@@ -22,7 +22,18 @@ from __future__ import annotations
 
 from .filename_parser import ParsedFilename
 
-PROMPT_VERSION = "2.3.1"
+PROMPT_VERSION = "2.4.0"
+
+# Version history:
+# 2.4.0: Removed hard length caps from the schema (entity names, skill
+#       descriptions, reference names). Length is now a preference
+#       expressed in this prompt, not a hard schema rule. This avoids
+#       failing the entire extraction over verbose-but-valid output
+#       (encountered on dense workshop transcripts like Robert Royston
+#       2025-06-28, where one accurate skill description ran to 161
+#       characters — well under any "this is broken" threshold, but
+#       over the conservative 120-character cap that was previously
+#       enforced).
 
 
 # Each known section in EXTRACTION_SCHEMA, with the one-line gloss the LLM
@@ -157,9 +168,11 @@ ENTITY KINDS — the four categories of WCS-domain things:
 
     Drill names: use the instructor's name when given ("the paper drill",
     "10-second walk"). When the instructor didn't name the drill, create
-    a short descriptive handle (under 80 chars) — e.g. "soften and push
-    one degree forward", "alternating collagen recoil and muscular
-    dampening landings", "lateral push direction-finding".
+    a short descriptive handle — aim for label-like names, typically
+    under 60-80 characters, but use whatever length the concept actually
+    needs. A long, accurate label is better than a short, vague one.
+    Examples: "soften and push one degree forward", "alternating collagen
+    recoil and muscular dampening landings", "lateral push direction-finding".
 
     Whenever a drill is extracted, also extract a drill_purpose for it
     (in the drill_purposes section) — the skill the exercise is meant
@@ -224,8 +237,11 @@ entities
   WCS-domain thing.
 
   - **kind** must be one of: "concept", "technique", "pattern", "drill"
-  - **name** is the canonical short noun-phrase name. Constraints:
-      - 1-6 words; capped at 80 characters.
+  - **name** is the canonical short noun-phrase name. Prefer label-like
+    phrasing:
+      - Aim for 1-6 words; typically under 60-80 characters — but use
+        whatever length the concept actually needs. A long, accurate
+        label is better than a short, vague one.
       - No sentence punctuation, no conjunctions (vs / or / and).
       - For drills: use whatever name the source uses, even if arbitrary
         ("the paper drill" is a valid drill name).
@@ -234,7 +250,8 @@ entities
     Prefer the source's own phrasing when the source explicitly named
     the thing, for traceability back to the lesson. Substitute your own
     phrasing only when the source's phrasing is:
-      - too long to be a name (sentence-shaped, over 80 chars)
+      - sentence-shaped rather than name-like (full clauses, not a
+        noun phrase)
       - too ambiguous to identify the thing uniquely
       - a less canonical form than a widely-accepted WCS term (e.g.,
         the source said "the swing-out" but the canonical WCS term is
@@ -426,9 +443,12 @@ drill_purposes
 
   - **drill_name** matches a drill in `entities`.
   - **skill_description** is the capacity the drill develops, phrased as
-    a functional ability. ("smooth weight transfer at controlled tempo",
-    "maintain connection through a redirect", "feel partner's center
-    independently of frame")
+    a functional ability. Prefer concise skill descriptions (a phrase,
+    not a paragraph), but include the qualifiers and conditions the
+    source actually states — a longer description that captures real
+    nuance is better than a short one that loses meaning. Examples:
+    "smooth weight transfer at controlled tempo", "maintain connection
+    through a redirect", "feel partner's center independently of frame"
   - **focus_context** optional: "when focusing on lower-body smoothness",
     "while watching the connection in a mirror". Empty if the drill has
     a single purpose.
@@ -451,7 +471,11 @@ technique_requirements
   drill purposes — a functional capacity description.
 
   - **technique_name** matches a technique in `entities`.
-  - **skill_description** is the capacity required.
+  - **skill_description** is the capacity required. Prefer concise
+    phrasing (a phrase, not a paragraph), but include the qualifiers
+    and conditions the source actually states — a longer description
+    that captures real nuance is better than a short one that loses
+    meaning.
 
   Extract requirements ONLY when the source explicitly names what's needed.
   Many techniques will have empty requirements — that's fine. The corpus
@@ -541,7 +565,9 @@ references
     - Objects or abstract concepts
 
   - **name** is the person's name, ideally full name. Use the most complete
-    form available in the transcript.
+    form available in the transcript. Aim for concise names where possible,
+    but use whatever form the source provides — a full name is better than
+    an abbreviated one that loses identity.
   - **type** must be one of: instructor, dancer, judge, competitor, coach, pro.
     If unclear, omit `type` rather than guessing.
   - If two people are referenced together ("Ben and Cameo", "Brandi and

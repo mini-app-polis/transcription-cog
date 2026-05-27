@@ -8,14 +8,17 @@ See:
   - transcription-cog ADR-005 for the change rationale
   - api-kaianolevine-com ADR-0002 for the downstream substrate
 
-The schema is intentionally strict on shape but tolerant in details:
+The schema validates structure only — required fields, types, and enums.
+Length preferences for names and skill descriptions are expressed in
+prompt.py, not enforced here. Downstream normalization in the API's
+composition service may trim or reshape verbose labels when needed.
+
+Other design choices:
   - Required top-level keys are minimal (none). Every section is optional
     and omitted entirely when empty — the prompt enforces this.
   - `additionalProperties: True` on object items so the LLM can add
     fields without failing validation (additional fields are ignored
     downstream).
-  - `maxLength` caps on name-shaped fields prevent paragraph-shaped
-    "names" — the most common upstream failure mode pre-v2.0.
   - `relation_kind` is a free-string by design (api-kaianolevine-com
     ADR-0002 — relation kinds emerge from corpus before being typed).
 """
@@ -34,25 +37,6 @@ _REFERENCE_TYPE_ENUM = [
     "coach",
     "pro",
 ]
-
-# Constraints on entity name length. Tight cap prevents sentence-shaped
-# names — the most common upstream extraction failure pre-v2.0. 80 chars
-# is generous for a noun-phrase name (6 words at ~12 chars/word) and
-# short enough to make sentence-shaped output visibly wrong.
-_ENTITY_NAME_MAX_LENGTH = 80
-
-# Skill descriptions are functional capacity phrases — longer than entity
-# names because they describe an ability ("smooth weight transfer at
-# controlled tempo"), not just name a thing. 120 chars accommodates a
-# specific functional description without permitting paragraph-shaped
-# answers.
-_SKILL_DESCRIPTION_MAX_LENGTH = 120
-
-# Reference name cap: person names are short. 60 chars covers full names
-# generously and prevents multi-person joiners ("Ben and Cameo Smith")
-# from passing as a single reference.
-_REFERENCE_NAME_MAX_LENGTH = 60
-
 
 # Sub-schema for the optional external_origin field on entities.
 # Captures terms borrowed from identifiable external domains (anatomy,
@@ -79,7 +63,6 @@ _EXTERNAL_ORIGIN_SCHEMA: dict = {
         "lookup_term": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
             "description": (
                 "Canonical term in the external domain — what a reader "
                 "would search for to learn more. Often matches entity "
@@ -111,10 +94,9 @@ _ENTITY_ITEM_SCHEMA: dict = {
         "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
             "description": (
                 "Canonical short noun-phrase name (1-6 words, no sentence "
-                "punctuation, no conjunctions). Capped at 80 chars."
+                "punctuation, no conjunctions)."
             ),
         },
         "prose": {
@@ -138,7 +120,6 @@ _ENTITY_DEFINITION_ITEM_SCHEMA: dict = {
         "entity_name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
         },
         "definition": {
             "type": "string",
@@ -157,12 +138,10 @@ _ENTITY_RELATION_ITEM_SCHEMA: dict = {
         "from": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
         },
         "to": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
         },
         "relation_kind": {
             "type": "string",
@@ -193,12 +172,10 @@ _DRILL_PURPOSE_ITEM_SCHEMA: dict = {
         "drill_name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
         },
         "skill_description": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _SKILL_DESCRIPTION_MAX_LENGTH,
             "description": (
                 "Functional-capacity phrase — what the dancer becomes able "
                 "to do. Examples: 'smooth weight transfer at controlled "
@@ -221,12 +198,10 @@ _TECHNIQUE_REQUIREMENT_ITEM_SCHEMA: dict = {
         "technique_name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
         },
         "skill_description": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _SKILL_DESCRIPTION_MAX_LENGTH,
             "description": (
                 "Functional-capacity phrase — what the dancer needs to be "
                 "able to do to execute this technique."
@@ -243,7 +218,6 @@ _COMMON_MISTAKE_ITEM_SCHEMA: dict = {
     "properties": {
         "entity_name": {
             "type": "string",
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
             "description": (
                 "Optional: the entity this mistake is about. Omit if the "
                 "mistake isn't tied to a specific entity."
@@ -274,7 +248,6 @@ _COMPETITION_NOTE_ITEM_SCHEMA: dict = {
         },
         "entity_name": {
             "type": "string",
-            "maxLength": _ENTITY_NAME_MAX_LENGTH,
             "description": "Optional: tie to a specific entity.",
         },
         "context": {
@@ -355,7 +328,6 @@ _REFERENCE_ITEM_SCHEMA: dict = {
         "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": _REFERENCE_NAME_MAX_LENGTH,
             "description": (
                 "Individual person's name. Full name when available. "
                 "Multiple people referenced together must be emitted as "
