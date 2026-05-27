@@ -3,10 +3,24 @@
 Layout:
     voice-inbox/                  ← watcher-cog scans here
         processed/
-            2026-05/
-                <audio files>
-            2026-06/
-                ...
+            2026-05-27/
+                <audio files processed on 2026-05-27>
+            2026-05-28/
+                <audio files processed on 2026-05-28>
+            ...
+
+Buckets are per processing-day (YYYY-MM-DD), not per month. Per-day
+folders keep each batch visually grouped — operators can open the
+folder for today and see exactly what ran today, instead of paging
+through a month's accumulation. Monthly buckets used to be the layout
+(``processed/YYYY-MM/``) but they collapsed every run in a month into
+the same folder, which made the archive opaque for triage and
+auditing.
+
+Legacy monthly folders (``processed/2026-05/``) remain in place — the
+cleanup flow walks every immediate child of ``processed/`` uniformly
+regardless of naming, so retention deletion still drains old monthly
+buckets without any migration.
 
 watcher-cog ignores subdirectories, so a moved file cannot retrigger
 the flow. The ``ensure_subfolder`` calls are idempotent — they reuse
@@ -29,26 +43,33 @@ _logger = get_logger("voicenotes-cog")
 _PROCESSED_FOLDER_NAME = "processed"
 
 
-def _current_yyyy_mm() -> str:
-    """Compute the YYYY-MM bucket the file should be archived into.
+def _current_yyyy_mm_dd() -> str:
+    """Compute the YYYY-MM-DD bucket the file should be archived into.
 
-    Uses UTC to keep behavior consistent across timezones / DST.
+    Uses UTC so the bucket name is stable across operator timezones —
+    two operators looking at the same archive folder see the same
+    layout regardless of where they run. A run that straddles midnight
+    UTC will write files into two adjacent date folders, which is the
+    correct behavior: the bucket reflects when each file's archive
+    step actually fired, not when the batch started.
     """
-    return datetime.now(UTC).strftime("%Y-%m")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _resolve_dest_folder_id() -> str:
-    """Return the Drive folder ID for ``processed/<YYYY-MM>/``.
+    """Return the Drive folder ID for ``processed/<YYYY-MM-DD>/``.
 
-    Lazy: creates the ``processed/`` parent and the YYYY-MM subfolder
-    on first archive of a new month. Idempotent.
+    Lazy: creates the ``processed/`` parent and the YYYY-MM-DD
+    subfolder on first archive of a new day. Idempotent — same-day
+    archives after the first reuse the existing folder via
+    ``ensure_subfolder``.
     """
     drive = get_drive_client()
     processed_id = drive.ensure_subfolder(
         settings.google_drive_voice_inbox_folder_id,
         _PROCESSED_FOLDER_NAME,
     )
-    bucket = _current_yyyy_mm()
+    bucket = _current_yyyy_mm_dd()
     return drive.ensure_subfolder(processed_id, bucket)
 
 
@@ -58,7 +79,7 @@ def _resolve_dest_folder_id() -> str:
     retry_delay_seconds=settings.task_retry_delays_seconds,
 )
 def archive_audio(drive_file_id: str) -> str:
-    """Move the audio file to ``processed/YYYY-MM/``.
+    """Move the audio file to ``processed/YYYY-MM-DD/``.
 
     Returns the destination folder ID for logging.
 
@@ -87,7 +108,7 @@ def archive_audio(drive_file_id: str) -> str:
         context={
             "drive_file_id": drive_file_id,
             "dest_folder_id": dest_folder_id,
-            "bucket": _current_yyyy_mm(),
+            "bucket": _current_yyyy_mm_dd(),
         },
     )
     return dest_folder_id

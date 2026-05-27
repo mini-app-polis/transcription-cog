@@ -18,7 +18,7 @@ cleanup mode is for operator-driven manual sweeps only). Mirrors
 `deejay-cog`'s single-router-deployment pattern.
 
 **WCS pipeline** — `wcs.kaianolevine.com` reads notes via `/v1/wcs/notes`.  
-**Voicenotes pipeline** — output lands in the user's Todoist Inbox project; original audio is archived to `voice-inbox/processed/YYYY-MM/`.
+**Voicenotes pipeline** — output lands in the user's Todoist Inbox project; original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
 
 See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 

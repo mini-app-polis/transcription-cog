@@ -5,11 +5,17 @@ invocation (see ``flows/ingest.py``) — there is no cron schedule.
 Cleanup-mode dispatch via the router is preserved so an operator can
 still trigger a manual sweep from the Prefect UI if needed.
 
-The flow walks ``voice-inbox/processed/`` (one folder per YYYY-MM
-month bucket) and deletes any file whose Drive ``modifiedTime`` is
-older than ``ARCHIVE_RETENTION_DAYS`` days. Empty month-folders are
-left in place — they are cheap and useful for browsing the archive
-chronologically.
+The flow walks ``voice-inbox/processed/`` and deletes any file whose
+Drive ``modifiedTime`` is older than ``ARCHIVE_RETENTION_DAYS`` days.
+Each immediate child of ``processed/`` is a date-bucket folder — new
+archives go under per-day ``YYYY-MM-DD/`` folders, and legacy monthly
+``YYYY-MM/`` folders from before that change also remain in the
+archive. Cleanup iterates immediate children uniformly without
+parsing the folder name, so both layouts drain correctly without any
+migration.
+
+Empty date-folders are left in place — they are cheap and useful for
+browsing the archive chronologically.
 
 Failure mode: a single delete failure does not stop the batch; we
 log and continue, then report counts at the end. The per-deletion
@@ -60,7 +66,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
     """Delete processed audio older than ``ARCHIVE_RETENTION_DAYS``.
 
     Returns a summary dict: ``{deleted, failed, retention_days,
-    month_folders_scanned}``.
+    date_folders_scanned}``.
     """
     # Fail fast and loud if voicenotes config is missing. Module import
     # accepts empty defaults so the parent cog can boot without
@@ -93,15 +99,21 @@ def voicenotes_cleanup() -> dict[str, Any]:
 
         deleted = 0
         failed = 0
-        month_folders_scanned = 0
+        date_folders_scanned = 0
 
-        # Each immediate child of processed/ is a YYYY-MM folder.
-        for month_folder in drive.list_files(processed_root_id):
-            month_folders_scanned += 1
-            month_id = getattr(month_folder, "id", None)
-            if not month_id:
+        # Each immediate child of processed/ is a date bucket folder.
+        # New archives use ``YYYY-MM-DD/`` (per processing day);
+        # legacy archives use ``YYYY-MM/`` (per month) from before the
+        # daily-bucket change. Don't parse the folder name — just walk
+        # every immediate child so both layouts drain uniformly.
+        for date_folder in drive.list_files(processed_root_id):
+            date_folders_scanned += 1
+            date_folder_id = getattr(date_folder, "id", None)
+            if not date_folder_id:
                 continue
-            for old_file in drive.list_files_older_than(month_id, days=retention_days):
+            for old_file in drive.list_files_older_than(
+                date_folder_id, days=retention_days
+            ):
                 file_id = getattr(old_file, "id", None)
                 if not file_id:
                     continue
@@ -114,7 +126,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
                         context={
                             "drive_file_id": file_id,
                             "name": getattr(old_file, "name", None),
-                            "month_folder": getattr(month_folder, "name", None),
+                            "date_folder": getattr(date_folder, "name", None),
                         },
                     )
                 except Exception as exc:
@@ -132,7 +144,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
         "deleted": deleted,
         "failed": failed,
         "retention_days": retention_days,
-        "month_folders_scanned": month_folders_scanned,
+        "date_folders_scanned": date_folders_scanned,
     }
     _logger.info(
         "voicenotes.cleanup.batch_complete",
@@ -141,7 +153,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
     )
     flow_logger.info(
         f"voicenotes.cleanup.success deleted={deleted} failed={failed} "
-        f"month_folders={month_folders_scanned}"
+        f"date_folders={date_folders_scanned}"
     )
 
     return summary

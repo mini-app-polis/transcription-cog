@@ -144,9 +144,12 @@ def stub_clients(monkeypatch, claude_message):
         _drive_file("drive-abc"),
         _drive_folder("processed-folder", "processed"),
     ]
-    # Cleanup walks ``processed/<YYYY-MM>/`` looking for files older
-    # than the retention window. Default to "nothing to delete" — tests
-    # can override per-test if exercising the deletion path.
+    # Cleanup walks every immediate child of ``processed/`` looking
+    # for files older than the retention window. Children may be
+    # per-day (``YYYY-MM-DD/``, new layout) or per-month
+    # (``YYYY-MM/``, legacy) — cleanup treats them uniformly. Default
+    # to "nothing to delete" — tests can override per-test if
+    # exercising the deletion path.
     drive.list_files_older_than.return_value = []
     monkeypatch.setattr(ingest_mod, "get_drive_client", lambda: drive)
     monkeypatch.setattr(download_mod, "get_drive_client", lambda: drive)
