@@ -46,7 +46,18 @@ class WhisperClient:
     def __init__(self, *, openai_client: OpenAI | None = None) -> None:
         # Lazy: tests can inject a fake client; production builds a real
         # one using the configured API key.
-        self._openai = openai_client or OpenAI(api_key=settings.openai_api_key)
+        #
+        # ``timeout`` caps one HTTP request to OpenAI. Without it the
+        # SDK defaults to ~600 s per request, which left workers holding
+        # the socket open during Railway redeploys — SIGTERM couldn't
+        # land cleanly until either the call returned or the OS sent
+        # SIGKILL. Tests inject ``openai_client=`` directly and bypass
+        # this path. See voicenotes/config.py for the chosen default
+        # (sized for the longest realistic voice-note audio).
+        self._openai = openai_client or OpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.whisper_request_timeout_seconds,
+        )
 
     def transcribe(
         self,

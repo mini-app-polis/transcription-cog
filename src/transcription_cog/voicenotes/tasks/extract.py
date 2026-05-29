@@ -36,6 +36,14 @@ def _empty_transcript_fallback(transcript: str) -> ExtractedTask:
     name="extract",
     retries=settings.extract_task_retries,
     retry_delay_seconds=settings.extract_task_retry_delays_seconds,
+    # ``timeout_seconds`` is the outer guard against a stuck Claude
+    # call holding the worker through a Railway redeploy. The Anthropic
+    # SDK also has its own per-request timeout
+    # (``claude_request_timeout_seconds``); this Prefect-level cap
+    # additionally bounds the SDK's own internal retries so an
+    # overloaded provider can't keep one worker pinned indefinitely.
+    # See voicenotes/config.py for the layering rationale.
+    timeout_seconds=settings.claude_task_timeout_seconds,
 )
 def extract(
     transcript: str,

@@ -46,6 +46,7 @@ from mini_app_polis.llm.errors import LLMTruncationError
 from prefect import flow, get_run_logger, task
 from prefect.concurrency.sync import concurrency
 
+from ._batch_fatal import is_batch_fatal
 from ._pipeline_eval import make_failure_hook, post_run_finding
 from .api_client import SubstrateApiClient
 from .config import Config, load_config
@@ -454,6 +455,12 @@ def process_transcript() -> dict:
         processed = 0
         skipped = 0
         errors = 0
+        # Saved batch-fatal exception (Prefect task timeout / cancel).
+        # See transcription_cog/_batch_fatal.py — when set, finish the
+        # post-run evaluation below so partial work is recorded, then
+        # re-raise so the flow transitions Failed and Prefect's
+        # flow-level retry picks up on the next worker.
+        batch_fatal_exc: BaseException | None = None
 
         for file_id, file_name, mime_type in files:
             logger.info(
@@ -473,13 +480,28 @@ def process_transcript() -> dict:
                             log.LOG_SUCCESS, f"Completed: {file_name!r}"
                         )
                     )
-            except Exception:
+            except Exception as exc:
+                errors += 1
+                if is_batch_fatal(exc):
+                    # Prefect task timeout fired / cancel signal /
+                    # worker shutdown — every remaining file would
+                    # fail the same way. Stop the loop, record the
+                    # abort, let the run-eval post below capture
+                    # partial state, then re-raise so the flow run
+                    # transitions Failed cleanly.
+                    logger.exception(
+                        log.with_log_prefix(
+                            log.LOG_FAILURE,
+                            f"Batch aborted at: {file_name!r}",
+                        )
+                    )
+                    batch_fatal_exc = exc
+                    break
                 logger.exception(
                     log.with_log_prefix(
                         log.LOG_FAILURE, f"Failed processing: {file_name!r}"
                     )
                 )
-                errors += 1
 
         task_post_run_evaluation.with_options(
             retry_delay_seconds=cfg.task_retry_delay_short
@@ -496,6 +518,17 @@ def process_transcript() -> dict:
                 f"Run complete — processed: {processed}, skipped: {skipped}, errors: {errors}",
             )
         )
+
+        # If a Prefect task timeout / cancel aborted the batch,
+        # propagate it now (after the run eval above has recorded
+        # what we did complete). Re-raising here is what transitions
+        # the flow run to Failed so the @flow-level retry kicks in
+        # cleanly on the next worker, rather than the cog quietly
+        # returning a partial-success summary on an infra-level
+        # failure.
+        if batch_fatal_exc is not None:
+            raise batch_fatal_exc
+
         return {
             "processed": processed,
             "skipped": skipped,

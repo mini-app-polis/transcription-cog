@@ -18,6 +18,14 @@ _logger = get_logger("voicenotes-cog")
     name="transcribe",
     retries=settings.task_retries,
     retry_delay_seconds=settings.task_retry_delays_seconds,
+    # ``timeout_seconds`` is the outer guard against a stuck Whisper
+    # call holding the worker through a Railway redeploy. The OpenAI
+    # SDK also has its own per-request timeout
+    # (``whisper_request_timeout_seconds``); this Prefect-level cap
+    # additionally bounds the SDK's own internal retries so a flapping
+    # provider can't keep one worker pinned indefinitely. See
+    # voicenotes/config.py for the layering rationale.
+    timeout_seconds=settings.whisper_task_timeout_seconds,
 )
 def transcribe(
     audio_bytes: bytes,

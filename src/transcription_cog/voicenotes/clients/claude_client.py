@@ -72,8 +72,17 @@ class ClaudeClient:
     """Thin wrapper around Anthropic's API for the extraction call."""
 
     def __init__(self, *, anthropic_client: Anthropic | None = None) -> None:
+        # ``timeout`` caps one HTTP request to Anthropic. Without it the
+        # SDK defaults to ~600 s per request, which left workers holding
+        # the socket open during Railway redeploys — SIGTERM couldn't
+        # land cleanly until either the call returned or the OS sent
+        # SIGKILL. Tests inject ``anthropic_client=`` directly and
+        # bypass this path. See voicenotes/config.py for the rationale
+        # on the chosen default (small extraction prompt, 512-token
+        # ceiling).
         self._anthropic = anthropic_client or Anthropic(
-            api_key=settings.anthropic_api_key
+            api_key=settings.anthropic_api_key,
+            timeout=settings.claude_request_timeout_seconds,
         )
         self._prompt_template = _load_extract_prompt_template()
 

@@ -217,6 +217,67 @@ class Settings(BaseSettings):
         description="Default HTTP timeout for outbound API calls.",
     )
 
+    # --- LLM request + task timeouts ---
+    # Two layers protect against the "deploy mid-LLM-call" hang. Without
+    # these, a redeploy that lands while a worker is waiting on an LLM
+    # response leaves the old process holding the socket open up to the
+    # Anthropic/OpenAI SDK default of ~600 s (10 min), well past
+    # Railway's SIGKILL grace window — so the run is force-killed in an
+    # unclean state instead of cooperatively shutting down. The Prefect
+    # task timeout on top lets Prefect cancel a hung task even if the
+    # SDK retries internally.
+    #
+    # Layering: request < task. The per-request value caps one HTTP
+    # call; the per-task value caps the whole attempt including SDK
+    # internal retries. The Anthropic/OpenAI SDKs default to ~2
+    # internal retries, so task ≈ request × (1 + SDK retries) leaves
+    # room for one retry plus headroom.
+    claude_request_timeout_seconds: float = Field(
+        default=60.0,
+        ge=1.0,
+        description=(
+            "Per-HTTP-request timeout (seconds) for Anthropic SDK calls "
+            "from claude_client.py. The extraction prompt is small and "
+            "the response is capped at ~512 tokens, so production calls "
+            "are usually <10 s; 60 s is a generous ceiling that still "
+            "bounds the worker's exposure during a redeploy. Bump only "
+            "if healthy traffic starts timing out."
+        ),
+    )
+    whisper_request_timeout_seconds: float = Field(
+        default=300.0,
+        ge=1.0,
+        description=(
+            "Per-HTTP-request timeout (seconds) for OpenAI Whisper SDK "
+            "calls from whisper_client.py. Whisper processes audio in "
+            "proportion to length; voice notes are typically <5 min of "
+            "audio, but operators occasionally record longer dictation. "
+            "5 min covers the realistic upper bound without leaving the "
+            "worker socket open indefinitely."
+        ),
+    )
+    claude_task_timeout_seconds: float = Field(
+        default=180.0,
+        ge=1.0,
+        description=(
+            "Prefect task timeout (seconds) for the extract task. Lets "
+            "Prefect cancel a stuck task even if the Anthropic SDK is "
+            "internally retrying. Sized at ~3× claude_request to allow "
+            "one SDK retry cycle plus headroom."
+        ),
+    )
+    whisper_task_timeout_seconds: float = Field(
+        default=600.0,
+        ge=1.0,
+        description=(
+            "Prefect task timeout (seconds) for the transcribe task. "
+            "Sized at ~2× whisper_request — one SDK retry on top of the "
+            "longest legitimate audio file we expect. Long enough to "
+            "succeed on real traffic, short enough to free the worker "
+            "for the next attempt before a redeploy stalls the pipeline."
+        ),
+    )
+
     environment: str = Field(default="production")
 
 

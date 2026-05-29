@@ -40,6 +40,7 @@ from prefect import flow, get_run_logger
 from prefect.concurrency.sync import concurrency
 from prefect.context import get_run_context
 
+from transcription_cog._batch_fatal import is_batch_fatal as _is_batch_fatal
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
 from transcription_cog.voicenotes.config import require_voicenotes_settings, settings
@@ -196,6 +197,18 @@ def voicenotes_ingest() -> dict[str, Any]:
     Per-file failures are isolated — a bad file does not abort the
     batch. Failed files stay in ``voice-inbox/`` for the next watcher
     cycle to retry.
+
+    Exception classes in :data:`_BATCH_FATAL_EXC_NAMES`
+    (``TimedOut``, ``TimeoutError``, ``CancelledError``, etc.) are
+    NOT isolated — they signal infra-level trouble (Prefect task
+    timeout firing, worker shutdown mid-redeploy) where every
+    subsequent file would fail the same way. The loop records the
+    failing file, breaks immediately, still emits the batch
+    ``emit_evaluation`` row so Pipeline Health shows the abort, then
+    re-raises so Prefect transitions the flow run to Failed and the
+    flow-level retry picks it up on the new worker. This is what
+    prevents one stuck LLM call from wedging a 20-file batch behind
+    the same hang during a redeploy.
     """
     # Fail fast and loud if voicenotes config is missing. Module import
     # accepts empty defaults so the parent cog can boot without
@@ -239,6 +252,11 @@ def voicenotes_ingest() -> dict[str, Any]:
 
         results: list[dict[str, Any]] = []
         failures: list[dict[str, Any]] = []
+        # Saved batch-fatal exception (Prefect task timeout / cancel).
+        # When set, we still finish the housekeeping below (emit
+        # evaluation, run cleanup) before re-raising so the flow
+        # transitions Failed in a recorded, observable way.
+        batch_fatal_exc: BaseException | None = None
 
         for f in audio_files:
             file_id = getattr(f, "id", None)
@@ -248,6 +266,7 @@ def voicenotes_ingest() -> dict[str, Any]:
                 results.append(_process_one_file(file_id))
             except Exception as exc:
                 failed_at = _failed_step_from_exception(exc)
+                fatal = _is_batch_fatal(exc)
                 failures.append(
                     {
                         "drive_file_id": file_id,
@@ -257,12 +276,13 @@ def voicenotes_ingest() -> dict[str, Any]:
                         "error_type": type(exc).__name__,
                     }
                 )
+                level_msg = "batch_aborted" if fatal else "file_failure"
                 flow_logger.error(
-                    f"voicenotes.flow.file_failure drive_file_id={file_id} "
+                    f"voicenotes.flow.{level_msg} drive_file_id={file_id} "
                     f"failed_at={failed_at} error={exc!r}"
                 )
                 _logger.error(
-                    "voicenotes.flow.file_failure",
+                    f"voicenotes.flow.{level_msg}",
                     category="pipeline",
                     context={
                         "drive_file_id": file_id,
@@ -270,9 +290,23 @@ def voicenotes_ingest() -> dict[str, Any]:
                         "error": str(exc),
                         "error_type": type(exc).__name__,
                         "flow_run_id": flow_run_id,
+                        "fatal": fatal,
                     },
                 )
-                # Continue — bad files stay in inbox, watcher retriggers.
+                if fatal:
+                    # Stop the loop now — every remaining file would
+                    # fail with the same root cause (worker timeout,
+                    # cancel, redeploy SIGTERM). Save the exception so
+                    # we can re-raise it after the batch housekeeping
+                    # runs; this gives Pipeline Health the abort record
+                    # AND lets Prefect transition the flow to Failed
+                    # so the flow-level retry picks up on a fresh
+                    # worker.
+                    batch_fatal_exc = exc
+                    break
+                # Non-fatal: bad files stay in inbox, watcher retriggers
+                # them on the next cycle. Continue with the rest of
+                # this batch.
 
         # Aggregate emit_evaluation: one record per batch, with per-file
         # failures as findings. Always emits, even on empty batches, so
@@ -350,6 +384,16 @@ def voicenotes_ingest() -> dict[str, Any]:
             "flow_run_id": flow_run_id,
         },
     )
+
+    # If a Prefect task timeout / cancel aborted the batch, propagate
+    # it now (after the housekeeping above has recorded what we did
+    # complete). Re-raising here is what transitions the flow run to
+    # Failed so the @flow-level retry kicks in cleanly on the next
+    # worker, rather than the cog quietly returning a partial-success
+    # summary on an infra-level failure.
+    if batch_fatal_exc is not None:
+        raise batch_fatal_exc
+
     return summary
 
 
