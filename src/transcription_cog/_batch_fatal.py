@@ -29,6 +29,11 @@ Class names rather than ``isinstance`` against imported types. Prefect
 has reorganised ``prefect.exceptions`` across minor versions; matching
 by name keeps the classifier working without pinning a specific
 Prefect release.
+
+The classifier walks the whole MRO so a subclass of ``TimeoutError``
+(or any other fatal type) still trips the check. Third-party SDKs
+often wrap socket timeouts in their own subclass — that's still a
+"system is wedged" signal and the batch should abort the same way.
 """
 
 from __future__ import annotations
@@ -49,9 +54,23 @@ BATCH_FATAL_EXC_NAMES: frozenset[str] = frozenset(
 def is_batch_fatal(exc: BaseException) -> bool:
     """Return True if ``exc`` should abort the batch instead of being isolated.
 
-    Matched by class name rather than isinstance — see module docstring.
+    Matched by class name (rather than ``isinstance`` against imported
+    types), walking the whole MRO. The name lookup handles Prefect's
+    periodic reorganisation of ``prefect.exceptions``; walking the
+    MRO handles third-party SDKs that wrap socket timeouts in their
+    own ``TimeoutError`` subclasses.
+
+    The MRO walk is a strict superset of leaf-name matching — a
+    direct hit on the leaf class still wins on the first iteration.
+    No entry in :data:`BATCH_FATAL_EXC_NAMES` should be a name
+    shared by a common non-fatal base class (e.g. ``Exception``,
+    ``OSError``) or the classifier would false-positive on
+    everything.
     """
-    return type(exc).__name__ in BATCH_FATAL_EXC_NAMES
+    for cls in type(exc).__mro__:
+        if cls.__name__ in BATCH_FATAL_EXC_NAMES:
+            return True
+    return False
 
 
 __all__ = ["BATCH_FATAL_EXC_NAMES", "is_batch_fatal"]
