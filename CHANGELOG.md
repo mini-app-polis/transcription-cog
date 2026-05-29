@@ -1,3 +1,11 @@
+## [2.1.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.1.1...v2.1.2) (2026-05-29)
+
+
+### Bug Fixes
+
+* tests ([7fe854b](https://github.com/mini-app-polis/transcription-cog/commit/7fe854ba2fd95a0b61e06a87af03affa5515091d))
+* uncommited changes ([3bd0c74](https://github.com/mini-app-polis/transcription-cog/commit/3bd0c7440faa5e6b5c4f44ed3f6bc324d534961d))
+
 ## [2.1.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.1.0...v2.1.1) (2026-05-27)
 
 
