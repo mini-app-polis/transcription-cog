@@ -54,6 +54,7 @@ class TestYyyyMmDdBucket:
         assert bucket_a == "2026-05-27"
         assert bucket_b == "2026-05-28"
         assert bucket_a != bucket_b
+        assert mock_dt.now.call_count == 2
 
 
 class TestArchiveAudio:
