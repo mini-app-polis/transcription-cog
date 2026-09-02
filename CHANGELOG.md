@@ -1,3 +1,10 @@
+## [2.2.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.2...v2.2.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **deps:** pin common-python-utils v4.0.0 ([6888bfb](https://github.com/mini-app-polis/transcription-cog/commit/6888bfb50a7d55f39dfd4d6180df1bfe023c4d02))
+
 ## [2.2.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.1...v2.2.2) (2026-09-02)
 
 
