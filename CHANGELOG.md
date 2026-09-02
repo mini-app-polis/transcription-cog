@@ -1,3 +1,10 @@
+## [2.2.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.1...v2.2.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **api-client:** drop the shared Clerk machine secret fallback ([146a1c5](https://github.com/mini-app-polis/transcription-cog/commit/146a1c5e9007c1073427fd71c241edf9135e4dd9))
+
 ## [2.2.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.0...v2.2.1) (2026-09-02)
 
 
