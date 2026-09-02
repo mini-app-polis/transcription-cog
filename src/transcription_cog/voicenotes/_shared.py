@@ -353,6 +353,7 @@ def get_kaiano_api_client(
         return _UpstreamKaianoApiClient(
             base_url=base_url,
             machine_secret=machine_secret,
+            machine_name="transcription-cog",
         )
 
     raise RuntimeError(

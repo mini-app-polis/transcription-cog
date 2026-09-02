@@ -9,10 +9,13 @@ transcription-cog shim around :mod:`mini_app_polis.pipeline_status`
 payload shape and best-effort semantics for evaluation findings; this
 client stays focused on the cog's domain endpoints.
 
-Auth: Clerk M2M JWT via KaianoApiClient (Project Keystone). Machine secret
-is read from KAIANO_API_CLERK_MACHINE_SECRET at client construction time;
-the shared client handles token acquisition, caching, and Authorization:
-Bearer header injection.
+Auth: this cog's own named API key, read from TRANSCRIPTION_COG_API_KEY by
+the shared client, which derives that name from MACHINE_NAME below. The key
+identifies the cog, so the API's audit trail records which cog wrote — not
+merely that a cog did.
+
+Falls back to the shared Clerk machine secret when the key is unset, which is
+the previous behaviour and the rollback path.
 """
 
 from __future__ import annotations
@@ -26,15 +29,19 @@ from .models import (
     TranscriptResponse,
 )
 
+#: This cog's name in api-kaianolevine-com's identity_registry.MACHINES. The
+#: shared client derives TRANSCRIPTION_COG_API_KEY from it, and the API
+#: derives the same variable from the same name.
+MACHINE_NAME = "transcription-cog"
+
 
 class SubstrateApiClient:
     """Typed client for the /v1/wcs/* substrate endpoints on api-kaianolevine-com."""
 
     def __init__(self) -> None:
-        # KaianoApiClient.from_env() reads KAIANO_API_BASE_URL and
-        # KAIANO_API_CLERK_MACHINE_SECRET. It handles Clerk M2M JWT
-        # acquisition, caching, and refresh.
-        self._client = KaianoApiClient.from_env()
+        # Presents this cog's own key (TRANSCRIPTION_COG_API_KEY), falling
+        # back to the shared Clerk machine secret when it is unset.
+        self._client = KaianoApiClient.from_env(MACHINE_NAME)
 
     def create_transcript(self, payload: TranscriptCreatePayload) -> TranscriptResponse:
         """POST /v1/wcs/transcripts — store raw transcript, return record."""
