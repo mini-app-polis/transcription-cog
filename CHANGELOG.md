@@ -1,3 +1,10 @@
+## [2.2.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.0...v2.2.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **deps:** pin common-python-utils v3.2.0 for named API key auth ([4720b6d](https://github.com/mini-app-polis/transcription-cog/commit/4720b6d83987b9e5e512f8b0777656c76bcf377f))
+
 # [2.2.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.1.3...v2.2.0) (2026-09-02)
 
 
