@@ -480,8 +480,8 @@ wheels = [
 
 [[package]]
 name = "common-python-utils"
-version = "3.0.0"
-source = { git = "https://github.com/mini-app-polis/common-python-utils.git?rev=v3.0.0#ebabc4934d2c25f12f96f7a37c422bee13779218" }
+version = "3.2.0"
+source = { git = "https://github.com/mini-app-polis/common-python-utils.git?rev=v3.2.0#e80cd4bd2395903bd43b3d6e98ebcba48d7fdc15" }
 dependencies = [
     { name = "google-api-python-client" },
     { name = "google-auth" },
@@ -495,6 +495,7 @@ dependencies = [
     { name = "pyacoustid" },
     { name = "python-dotenv" },
     { name = "spotipy" },
+    { name = "tenacity" },
 ]
 
 [package.optional-dependencies]
@@ -3052,6 +3053,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tenacity"
+version = "9.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+]
+
+[[package]]
 name = "text-unidecode"
 version = "1.3"
 source = { registry = "https://pypi.org/simple" }
@@ -3168,7 +3178,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
-    { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=v3.0.0" },
+    { name = "common-python-utils", extras = ["llm"], git = "https://github.com/mini-app-polis/common-python-utils.git?rev=v3.2.0" },
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
