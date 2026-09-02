@@ -42,7 +42,7 @@ _TEST_ENV_DEFAULTS = {
     "TODOIST_INBOX_PROJECT_ID": "test-project-id",
     "GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID": "test-folder-id",
     "KAIANO_API_BASE_URL": "https://api.test.invalid",
-    "KAIANO_API_CLERK_MACHINE_SECRET": "test-machine-secret",
+    "TRANSCRIPTION_COG_API_KEY": "test-api-key",
     "ENVIRONMENT": "test",
     # Defense-in-depth against slow tests in the voicenotes sub-pipeline:
     "TASK_RETRIES": "0",

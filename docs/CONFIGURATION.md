@@ -12,7 +12,7 @@ Doppler → Railway. See `.env.example` for the full list of required keys.
 | `NOTES_PROCESSED_FOLDER_ID` | Google Drive folder ID to archive processed files into |
 | `ANTHROPIC_API_KEY` | Anthropic API key (required if `LLM_PROVIDER=anthropic`) |
 | `KAIANO_API_BASE_URL` | Base URL of `api-kaianolevine-com` (e.g. `https://api.kaianolevine.com`) |
-| `KAIANO_API_CLERK_MACHINE_SECRET` | Clerk M2M machine secret key (ak_xxx) for the `miniappolis-cogs` machine. `KaianoApiClient` exchanges this for short-lived JWTs sent as `Authorization: Bearer` on every internal request. |
+| `TRANSCRIPTION_COG_API_KEY` | This cog's own named API key. Sent directly as `Authorization: Bearer` on every internal request — no token exchange. The API matches it to identify this cog, so the audit trail records which cog acted. |
 | `PREFECT_API_KEY` | Prefect Cloud API key |
 | `PREFECT_API_URL` | Prefect Cloud workspace URL |
 

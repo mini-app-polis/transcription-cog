@@ -56,7 +56,7 @@ def load_config() -> Config:
     provider: LLMProvider = provider_raw  # type: ignore[assignment]
     model = os.getenv("LLM_MODEL", _DEFAULT_MODELS[provider])
 
-    # Auth env vars (KAIANO_API_CLERK_MACHINE_SECRET) are read directly by
+    # Auth env vars (TRANSCRIPTION_COG_API_KEY) are read directly by
     # KaianoApiClient.from_env() in api_client.py — validated there rather
     # than duplicated into Config.
     return Config(

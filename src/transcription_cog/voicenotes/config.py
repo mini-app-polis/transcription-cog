@@ -143,12 +143,12 @@ class Settings(BaseSettings):
             "Base URL for api-kaianolevine-com (POST /v1/evaluations endpoint)."
         ),
     )
-    kaiano_api_clerk_machine_secret: str | None = Field(
+    transcription_cog_api_key: str | None = Field(
         default=None,
         description=(
-            "Clerk machine-secret-key for the miniappolis-cogs machine. "
-            "Used by KaianoApiClient to mint short-lived Clerk M2M "
-            "tokens. Required in production."
+            "This cog's own named API key. The shared client reads it as "
+            "TRANSCRIPTION_COG_API_KEY and presents it directly; the API "
+            "matches it to identify this cog. Required in production."
         ),
     )
 

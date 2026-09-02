@@ -336,7 +336,6 @@ KaianoApiError: type[Exception] = _UpstreamKaianoApiError
 def get_kaiano_api_client(
     *,
     base_url: str | None = None,
-    machine_secret: str | None = None,
 ) -> Any:
     """Return a ``KaianoApiClient`` configured from explicit values.
 
@@ -352,7 +351,6 @@ def get_kaiano_api_client(
     if _USING_UPSTREAM_API and _UpstreamKaianoApiClient is not None:
         return _UpstreamKaianoApiClient(
             base_url=base_url,
-            machine_secret=machine_secret,
             machine_name="transcription-cog",
         )
 
