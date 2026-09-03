@@ -1,3 +1,15 @@
+# [2.3.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.3...v2.3.0) (2026-09-03)
+
+
+### Bug Fixes
+
+* **deps:** refresh the lock to clear 33 known vulnerabilities ([eea06af](https://github.com/mini-app-polis/transcription-cog/commit/eea06af9a94565e295b6934945ebf52a8f23ae26))
+
+
+### Features
+
+* **security:** call the shared security workflow ([cd492ec](https://github.com/mini-app-polis/transcription-cog/commit/cd492ec29a55efad4bc8ea9c6a4959bb61bc4e3a))
+
 ## [2.2.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.2...v2.2.3) (2026-09-02)
 
 
