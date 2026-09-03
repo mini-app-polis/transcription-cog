@@ -5,3 +5,9 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  # SEC-001. Same gitleaks the shared security workflow runs in CI, so a
+  # secret is caught before it is committed rather than after it is pushed.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
