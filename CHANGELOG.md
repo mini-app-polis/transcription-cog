@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.3.0...v2.4.0) (2026-09-04)
+
+
+### Features
+
+* **deploy:** version-control the restart policy ([231a69c](https://github.com/mini-app-polis/transcription-cog/commit/231a69c6171808119e75a4f7568f25c8899a6797))
+
 # [2.3.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.2.3...v2.3.0) (2026-09-03)
 
 
