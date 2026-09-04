@@ -47,7 +47,8 @@ import httpx
 import sentry_sdk
 from dotenv import load_dotenv
 from mini_app_polis import logger as log
-from prefect import flow, get_run_logger, serve
+from mini_app_polis.serve_resilience import serve_with_retry
+from prefect import flow, get_run_logger
 
 from transcription_cog.config import load_config
 from transcription_cog.flow import process_transcript
@@ -160,9 +161,20 @@ def _ping_healthcheck(url: str, timeout_seconds: int) -> None:
 def main() -> None:
     """Register the transcription-cog router deployment and serve in-process.
 
-    ``prefect.serve`` blocks the process and listens for ad-hoc
-    triggers from watcher-cog. The deployment has no cron — both
-    pipelines are watcher-triggered.
+    Registration goes through ``serve_with_retry`` rather than
+    ``prefect.serve`` directly (CD-016). ``serve()`` makes a blocking,
+    fail-fast call to Prefect Cloud to resolve the deployment *before*
+    the runner loop starts; a transient error there propagates out of
+    ``main()`` and the process exits. Because that happens before any
+    flow run exists, no ``on_failure``/``on_crashed`` hook can fire, so
+    the cog goes down silently. ``serve_with_retry`` rides out the blip
+    and, on give-up, posts one CRITICAL startup finding before
+    re-raising — at which point Railway's ``restartPolicyType:
+    ON_FAILURE`` in railway.json (CD-017) is the second layer.
+
+    On success it blocks for the life of the process exactly as
+    ``serve()`` did, listening for ad-hoc triggers from watcher-cog. The
+    deployment has no cron — both pipelines are watcher-triggered.
     """
     LOG.info(log.with_log_prefix(log.LOG_START, "transcription-cog starting"))
 
@@ -185,7 +197,7 @@ def main() -> None:
         )
     )
 
-    serve(
+    serve_with_retry(
         notes_ingest_router.to_deployment(
             name="transcription-cog",
             description=(
@@ -197,6 +209,11 @@ def main() -> None:
             concurrency_limit=1,
             tags=["transcription-cog"],
         ),
+        # Required and keyword-only: the helper is shared across the fleet
+        # and cannot infer which cog it is serving, and the give-up finding
+        # is unattributable without it. Must match [project] name in
+        # pyproject.toml for version stamping.
+        repo="transcription-cog",
     )
 
 
