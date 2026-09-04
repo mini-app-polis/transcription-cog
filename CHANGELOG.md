@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.5.0...v2.6.0) (2026-09-04)
+
+
+### Features
+
+* **deps:** automate dependency updates ([cd3fc0e](https://github.com/mini-app-polis/transcription-cog/commit/cd3fc0e21cf513812657077f4eb474b365c6097c))
+
 # [2.5.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.4.0...v2.5.0) (2026-09-04)
 
 

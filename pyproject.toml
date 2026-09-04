@@ -1,6 +1,6 @@
 [project]
 name = "transcription-cog"
-version = "2.5.0"
+version = "2.6.0"
 description = "Prefect pipeline cog. Two pipelines under one deployment: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → Todoist)."
 readme = "README.md"
 requires-python = ">=3.11"
