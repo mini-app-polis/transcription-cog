@@ -1,3 +1,15 @@
+# [2.5.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.4.0...v2.5.0) (2026-09-04)
+
+
+### Bug Fixes
+
+* **cd-016:** register deployments through serve_with_retry ([f72da08](https://github.com/mini-app-polis/transcription-cog/commit/f72da08611bb7de4ea9ce06459518ac9c908c82c))
+
+
+### Features
+
+* **deploy:** declare resource ceilings (placeholder values) ([b231605](https://github.com/mini-app-polis/transcription-cog/commit/b231605ca702ea0c5c7b6a86a109bf0dc3b0b5a4))
+
 # [2.4.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.3.0...v2.4.0) (2026-09-04)
 
 
