@@ -1,3 +1,10 @@
+## [2.6.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.1...v2.6.2) (2026-09-05)
+
+
+### Bug Fixes
+
+* **deps:** consume miniapppolis-common-utils from PyPI ([d8dd145](https://github.com/mini-app-polis/transcription-cog/commit/d8dd145f84fdc8aeecddddbf156cac9591270690))
+
 ## [2.6.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.0...v2.6.1) (2026-09-05)
 
 
