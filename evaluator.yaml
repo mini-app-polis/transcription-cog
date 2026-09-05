@@ -18,6 +18,9 @@ deferrals:
 # scoping now covers these automatically — no exemptions needed.
 
 exemptions:
+  - rule: PY-011
+    reason: "The service was renamed; the GitHub repository was not. ecosystem.yaml deliberately points this entry's repo: at notes-ingest-cog so the conformance run builds a URL that exists, which makes PY-011 compare the project name transcription_cog against repo naming notes_ingest_cog and flag a mismatch that is the registry working as designed. Renaming the repository is the real fix and is not worth the redirect churn; renaming the package to match a repo name nothing else uses would be worse."
+
   # The two exemptions below were carried over from voicenotes-cog when it
   # was merged into this repo (May 2026, ADR-004). They scope to the
   # ``src/transcription_cog/voicenotes/`` sub-package only.
