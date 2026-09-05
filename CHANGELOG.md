@@ -1,3 +1,10 @@
+## [2.6.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.0...v2.6.1) (2026-09-05)
+
+
+### Bug Fixes
+
+* **git:** never three-way merge a lockfile ([49644f5](https://github.com/mini-app-polis/transcription-cog/commit/49644f570b7513f8fb27987dae6446cdb5dcb9c1))
+
 # [2.6.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.5.0...v2.6.0) (2026-09-04)
 
 
