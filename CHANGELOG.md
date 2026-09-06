@@ -1,3 +1,10 @@
+## [2.6.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.2...v2.6.3) (2026-09-06)
+
+
+### Bug Fixes
+
+* **release:** source the version from a committed file instead of pyproject.toml ([10871b9](https://github.com/mini-app-polis/transcription-cog/commit/10871b965e719cf6a7f24939132fc58fd0e21c24))
+
 ## [2.6.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.1...v2.6.2) (2026-09-05)
 
 
