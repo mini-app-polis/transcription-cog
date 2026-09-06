@@ -1,8 +1,5 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
-  "build": {
-    "buildCommand": "echo '=== GIT PROBE START ==='; ( ls -d .git && echo 'HAS .git' ) 2>&1 || echo 'NO .git directory'; echo -n 'worktree: '; git rev-parse --is-inside-work-tree 2>&1 || true; echo -n 'shallow: '; git rev-parse --is-shallow-repository 2>&1 || true; echo -n 'commits: '; git rev-list --count HEAD 2>&1 || true; echo -n 'tag count: '; git tag 2>/dev/null | wc -l || true; echo -n 'describe: '; git describe --tags --always 2>&1 || true; echo '=== GIT PROBE END ==='"
-  },
   "deploy": {
     "startCommand": "python -m transcription_cog.main",
     "restartPolicyType": "ON_FAILURE",
