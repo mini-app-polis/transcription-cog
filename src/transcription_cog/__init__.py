@@ -6,3 +6,5 @@ in Postgres via api-kaianolevine-com.
 Install name:  transcription-cog
 Import name:   transcription_cog
 """
+
+from ._version import __version__ as __version__
