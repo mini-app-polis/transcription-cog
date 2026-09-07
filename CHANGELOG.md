@@ -1,3 +1,10 @@
+## [2.6.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.3...v2.6.4) (2026-09-07)
+
+
+### Bug Fixes
+
+* include uv.lock in release artifacts ([d370ec2](https://github.com/mini-app-polis/transcription-cog/commit/d370ec22983e533c66c9f2ad57bb31a4ba8d08e2))
+
 ## [2.6.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.2...v2.6.3) (2026-09-06)
 
 
