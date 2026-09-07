@@ -1,3 +1,10 @@
+## [2.6.5](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.4...v2.6.5) (2026-09-07)
+
+
+### Bug Fixes
+
+* remove uv.lock from release (PY-017) ([18b7663](https://github.com/mini-app-polis/transcription-cog/commit/18b766394dcc774ccf3437021b77da956a3b31e3))
+
 ## [2.6.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.3...v2.6.4) (2026-09-07)
 
 
