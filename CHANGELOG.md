@@ -1,3 +1,10 @@
+## [2.7.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.7.0...v2.7.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* ci verification ([b7d5f7a](https://github.com/mini-app-polis/transcription-cog/commit/b7d5f7ad324526b22ddc40e17910529efc25d143))
+
 # [2.7.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.5...v2.7.0) (2026-09-08)
 
 
