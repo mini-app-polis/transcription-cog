@@ -1,3 +1,10 @@
+## [2.7.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.7.2...v2.7.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* lock ([a469427](https://github.com/mini-app-polis/transcription-cog/commit/a4694276dc33b26af2f703e72b26fcd5101b4ef8))
+
 ## [2.7.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.7.1...v2.7.2) (2026-09-08)
 
 
