@@ -189,16 +189,20 @@ class TestEmitEvaluation:
         """The library is best-effort; a raise here must not fail the flow.
 
         Reporting on a batch must never be the reason the batch is
-        recorded as failed.
+        recorded as failed. The task returning normally *is* the
+        assertion that nothing propagated — a raise would surface as this
+        test erroring, so there is no need to catch it by hand. The call
+        is verified as well, so a version of this that silently stopped
+        reporting would fail rather than pass.
         """
-        with patch(_POST, side_effect=RuntimeError("boom")):
-            try:
-                emit_evaluation.fn(
-                    flow_run_id="run-1",
-                    drive_file_id="batch",
-                    success=True,
-                    findings=[],
-                    files_seen=1,
-                )
-            except RuntimeError:
-                raise AssertionError("emit_evaluation must not propagate") from None
+        with patch(_POST, side_effect=RuntimeError("boom")) as post:
+            result = emit_evaluation.fn(
+                flow_run_id="run-1",
+                drive_file_id="batch",
+                success=True,
+                findings=[],
+                files_seen=1,
+            )
+
+        assert result is None
+        post.assert_called_once()
