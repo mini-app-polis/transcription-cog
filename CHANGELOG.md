@@ -1,3 +1,15 @@
+# [2.7.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.5...v2.7.0) (2026-09-08)
+
+
+### Bug Fixes
+
+* dependency ([c0a448d](https://github.com/mini-app-polis/transcription-cog/commit/c0a448d748230de2424b6603eb541162b8dc5766))
+
+
+### Features
+
+* utilizing common and notification at the cog level ([9d60b9d](https://github.com/mini-app-polis/transcription-cog/commit/9d60b9d77417eefa15e4efdcaa1307b9cb14efb3))
+
 ## [2.6.5](https://github.com/mini-app-polis/transcription-cog/compare/v2.6.4...v2.6.5) (2026-09-07)
 
 
