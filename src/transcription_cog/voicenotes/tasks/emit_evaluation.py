@@ -166,11 +166,12 @@ def emit_evaluation(
             Each becomes one line inside the single message.
         source: ``"flow_inline"`` for the end-of-flow emission,
             ``"flow_hook"`` from the on_failure / on_crashed hooks.
-        files_seen: How many audio files the scan found. This is what
-            separates a triggered run from an idle one: a cycle that saw
-            files reports even when it changed nothing, because "there
-            were four files and none were ingested" is the run worth
-            explaining. A cycle over an empty folder stays silent.
+        files_seen: How many audio files the scan found. Reported in the
+            message text; it no longer gates whether the message is sent.
+            It briefly did, on the theory that an empty scan was an idle
+            tick — but this deployment has no schedule, so an empty scan
+            means the watcher fired and the files were already gone,
+            which is the mismatch worth surfacing rather than hiding.
     """
     severity, text = _summarise(
         drive_file_id=drive_file_id,
@@ -200,7 +201,11 @@ def emit_evaluation(
             severity,
             text,
             source=source,
-            notable=bool(files_seen) or bool(findings),
+            # Unconditional, because this deployment has no cron either —
+            # it runs when watcher-cog fires it. A cycle that scanned an
+            # empty inbox did not idle; it was triggered and found
+            # nothing, which is the case most worth hearing about.
+            notable=True,
         )
     except Exception as exc:  # noqa: BLE001 - see comment above
         _logger.error(

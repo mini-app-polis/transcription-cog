@@ -157,22 +157,29 @@ def stub_clients(monkeypatch, claude_message):
     monkeypatch.setattr(cleanup_mod, "get_drive_client", lambda: drive)
 
     # ---- Pipeline-status sink (used by emit_evaluation) ----
-    # emit_evaluation now delegates to
-    # ``mini_app_polis.pipeline_status.post_findings``, which in turn
-    # calls a private ``_post_evaluation`` helper that owns the actual
-    # HTTP call. We patch the library's helper directly so the test
-    # captures every evaluations POST without standing up a real
-    # KaianoApiClient. A MagicMock ``.post`` attribute mimics the old
-    # ``kaiano_client.post`` surface so existing assertions still work.
+    # The library has two sinks and this fixture stands in for both, so a
+    # test can say which one a code path used. Run status goes through
+    # ``_deliver`` to POST /v1/notify; graded findings go through
+    # ``_post_evaluation`` to POST /v1/evaluations. Patching the library
+    # helpers directly captures either without standing up a real
+    # KaianoApiClient, and the MagicMock's ``.post`` / ``.notify``
+    # attributes mirror the client surface the assertions read.
     import mini_app_polis.pipeline_status as _pipeline_status_mod
 
     kaiano_client = MagicMock()
     kaiano_client.post.return_value = {"ok": True}
+    kaiano_client.notify.return_value = {"data": {"forwarded": True}}
 
     def _fake_post_evaluation(payload):
         kaiano_client.post("/v1/evaluations", payload)
+        return True
+
+    def _fake_deliver(message, *, repo, logger):  # noqa: ANN001, ARG001
+        kaiano_client.notify(embeds=message["embeds"], username=message.get("username"))
+        return True
 
     monkeypatch.setattr(_pipeline_status_mod, "_post_evaluation", _fake_post_evaluation)
+    monkeypatch.setattr(_pipeline_status_mod, "_deliver", _fake_deliver)
     # The library checks for KAIANO_API_BASE_URL before posting; tests
     # set this to a non-empty string so the gating doesn't short-circuit.
     monkeypatch.setenv("KAIANO_API_BASE_URL", "https://api.test.local")
@@ -313,14 +320,15 @@ class TestIngestFailurePath:
 class TestIngestEmptyInbox:
     """TEST-005: empty inbox emits a heartbeat evaluation, returns zeros."""
 
-    def test_empty_inbox_reports_nothing(self, stub_clients):
-        """Empty inbox → zero counts and no notification.
+    def test_empty_inbox_still_notifies(self, stub_clients):
+        """Empty inbox → zero counts, and a notification saying so.
 
-        A cycle over an empty folder is an idle tick. It used to write a
-        heartbeat row so the dashboard had a record of every cycle;
-        Healthchecks.io answers "did it run" by firing on absence, so the
-        heartbeat bought nothing and a notification for it would be pure
-        noise on a scheduled poller.
+        There is no cron on this deployment: the flow ran because
+        watcher-cog fired it. So an empty inbox is not an idle cycle, it
+        is the watcher and this flow disagreeing about what is in the
+        folder — which stays invisible unless the empty run reports it.
+
+        It writes no row either way; run status stopped being a finding.
         """
         stub_clients.drive.list_files.return_value = []
 
@@ -329,5 +337,5 @@ class TestIngestEmptyInbox:
         assert result["files_seen"] == 0
         assert result["files_processed"] == 0
         assert result["files_failed"] == 0
-        stub_clients.kaiano.notify.assert_not_called()
+        stub_clients.kaiano.notify.assert_called_once()
         stub_clients.kaiano.post.assert_not_called()

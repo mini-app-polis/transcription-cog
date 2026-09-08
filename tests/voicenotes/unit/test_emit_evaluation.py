@@ -147,8 +147,8 @@ class TestEmitEvaluation:
         text = post.call_args.args[2]
         assert text.count("•") == 3
 
-    def test_seen_files_make_the_run_notable(self) -> None:
-        """A cycle that saw files reports even when nothing changed."""
+    def test_every_run_is_notable(self) -> None:
+        """This deployment has no cron, so there are no idle runs to skip."""
         with patch(_POST) as post:
             post.return_value = MagicMock(sent=1, suppressed=0, failed=0)
             emit_evaluation.fn(
@@ -160,10 +160,16 @@ class TestEmitEvaluation:
             )
         assert post.call_args.kwargs["notable"] is True
 
-    def test_empty_cycle_is_not_notable(self) -> None:
-        """An idle poll over an empty folder says nothing."""
+    def test_empty_scan_still_reports(self) -> None:
+        """The mismatch case, and the reason this is unconditional.
+
+        The flow only runs because watcher-cog fired it. An empty scan
+        therefore means the watcher saw files and this run found none —
+        a race, a filter, or a bug. Gating on files_seen would silence
+        exactly that run and leave the watcher's "2 new" unanswered.
+        """
         with patch(_POST) as post:
-            post.return_value = MagicMock(sent=0, suppressed=1, failed=0)
+            post.return_value = MagicMock(sent=1, suppressed=0, failed=0)
             emit_evaluation.fn(
                 flow_run_id="run-1",
                 drive_file_id="batch",
@@ -171,7 +177,8 @@ class TestEmitEvaluation:
                 findings=[],
                 files_seen=0,
             )
-        assert post.call_args.kwargs["notable"] is False
+        assert post.call_args.kwargs["notable"] is True
+        assert "0 file(s) seen" in post.call_args.args[2]
 
     def test_source_override_is_forwarded(self) -> None:
         with patch(_POST) as post:

@@ -392,6 +392,13 @@ def task_post_run_evaluation(
         severity,
         text=finding,
         source="flow_inline",
+        # This deployment has no cron — it runs only because watcher-cog
+        # fired it (see main.py). So every run had a reason, and none of
+        # them is an idle tick that should stay quiet. That includes the
+        # "no files to process" run above: the watcher saying "2 new
+        # files" and this flow finding nothing to do is a mismatch, and
+        # it is invisible unless the empty run says so.
+        notable=True,
     )
 
 
