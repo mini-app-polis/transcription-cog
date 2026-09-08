@@ -1220,8 +1220,8 @@ name = "httpcore2"
 version = "2.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "python_full_version != '3.12.*' or sys_platform != 'emscripten'" },
+    { name = "truststore", marker = "python_full_version != '3.12.*' or sys_platform != 'emscripten'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/ad/f4f0e57345f1870f3e8cb624e058d7eca6e5a27d33bcc3311d9b618734cd/httpcore2-2.12.0.tar.gz", hash = "sha256:9293522bba0aa7c4c8e9e3f040c16575bd8868e155a77fa30c7a9085a5eae648", size = 67548, upload-time = "2026-08-18T13:22:08.211Z" }
 wheels = [
@@ -1724,7 +1724,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "5.0.1"
+version = "5.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1741,9 +1741,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b3/e1/0547e60ae88388ec85d975b8e723dc993cbeb4356c78963c54cb6cb89c0c/miniapppolis_common_utils-5.0.1.tar.gz", hash = "sha256:cbb109b7cd49afe97b5e62f7bdd4b17f7512ec0470f1a04411c29d72ab0bd67b", size = 233303, upload-time = "2026-09-05T21:28:52.168Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/71/f4c1d9e7401ef982206beb258a0dd0caca77a230cc5f10aa614872c249f3/miniapppolis_common_utils-5.1.2.tar.gz", hash = "sha256:14ca2c06db42e6bd987f4381c40b5c799ad2881e59438e79f4592756b4fc3c64", size = 240219, upload-time = "2026-09-08T22:25:53.811Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/af/3871224cdcca43d146652f41b1a7ef151ac773b0fd9d50582d747572d5e3/miniapppolis_common_utils-5.0.1-py3-none-any.whl", hash = "sha256:9239b154f7684feec48a56df5ef54c74dabc1f044a8e37a63091fbf53873920b", size = 78597, upload-time = "2026-09-05T21:28:51.02Z" },
+    { url = "https://files.pythonhosted.org/packages/da/bc/33900d3e55ace6777d579f78f374f09a6db8db4c86f4cb74750142a58095/miniapppolis_common_utils-5.1.2-py3-none-any.whl", hash = "sha256:e6451b37b3100f1568486623e214633939d7a462f51c2d1d80c3e51c9f300771", size = 82976, upload-time = "2026-09-08T22:25:52.675Z" },
 ]
 
 [package.optional-dependencies]
@@ -1981,8 +1981,8 @@ name = "pendulum"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "python-dateutil" },
-    { name = "tzdata" },
+    { name = "python-dateutil", marker = "python_full_version < '3.13'" },
+    { name = "tzdata", marker = "python_full_version < '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/72/9a51afa0a822b09e286c4cb827ed7b00bc818dac7bd11a5f161e493a217d/pendulum-3.2.0.tar.gz", hash = "sha256:e80feda2d10fa3ff8b1526715f7d33dcb7e08494b3088f2c8a3ac92d4a4331ce", size = 86912, upload-time = "2026-01-30T11:22:24.093Z" }
 wheels = [
@@ -3212,8 +3212,8 @@ name = "standard-aifc"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts" },
-    { name = "standard-chunk" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
+    { name = "standard-chunk", marker = "python_full_version >= '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c4/53/6050dc3dde1671eb3db592c13b55a8005e5040131f7509cef0215212cb84/standard_aifc-3.13.0.tar.gz", hash = "sha256:64e249c7cb4b3daf2fdba4e95721f811bde8bdfc43ad9f936589b7bb2fae2e43", size = 15240, upload-time = "2024-10-30T16:01:31.772Z" }
 wheels = [
@@ -3234,7 +3234,7 @@ name = "standard-sunau"
 version = "3.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "audioop-lts" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/66/e3/ce8d38cb2d70e05ffeddc28bb09bad77cfef979eb0a299c9117f7ed4e6a9/standard_sunau-3.13.0.tar.gz", hash = "sha256:b319a1ac95a09a2378a8442f403c66f4fd4b36616d6df6ae82b8e536ee790908", size = 9368, upload-time = "2024-10-30T16:01:41.626Z" }
 wheels = [
@@ -3370,7 +3370,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.0,<6" },
+    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.1.1,<6" },
     { name = "openai", specifier = ">=1.50" },
     { name = "prefect", specifier = ">=3.0.0,<4.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0,<3.0.0" },
@@ -3616,8 +3616,8 @@ name = "whenever"
 version = "0.10.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "tzdata", marker = "sys_platform == 'win32'" },
-    { name = "tzlocal", marker = "sys_platform != 'darwin' and sys_platform != 'linux'" },
+    { name = "tzdata", marker = "python_full_version >= '3.13' and sys_platform == 'win32'" },
+    { name = "tzlocal", marker = "python_full_version >= '3.13' and sys_platform != 'darwin' and sys_platform != 'linux'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d2/09/9ec61cfa69047a75af61e8db53e7782ed5b3995bc8a08132b951202c8aaf/whenever-0.10.5.tar.gz", hash = "sha256:bc8fd6208d50be50e490a3628fa6346d006b02df5de64c43170df8a809ded8d4", size = 437531, upload-time = "2026-08-07T15:03:30.933Z" }
 wheels = [
