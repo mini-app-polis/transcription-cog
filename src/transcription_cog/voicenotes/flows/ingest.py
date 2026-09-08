@@ -308,9 +308,9 @@ def voicenotes_ingest() -> dict[str, Any]:
                 # them on the next cycle. Continue with the rest of
                 # this batch.
 
-        # Aggregate emit_evaluation: one record per batch, with per-file
-        # failures as findings. Always emits, even on empty batches, so
-        # we have a heartbeat record for every scheduled cycle.
+        # One aggregate report per batch, with per-file failures as
+        # lines inside it. Always called, even on empty batches — the
+        # library decides whether an idle cycle is worth a message.
         success = len(failures) == 0
         findings: list[dict[str, Any]] = [
             {
@@ -327,6 +327,9 @@ def voicenotes_ingest() -> dict[str, Any]:
             drive_file_id="batch",
             success=success,
             findings=findings,
+            # A cycle that saw no files is an idle tick and reports
+            # nothing; one that saw files reports either way.
+            files_seen=files_seen,
         )
 
         # Opportunistic cleanup. Runs at the end of every ingest cycle

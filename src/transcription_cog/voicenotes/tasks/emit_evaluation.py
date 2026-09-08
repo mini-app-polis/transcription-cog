@@ -1,31 +1,39 @@
-"""Prefect task: post evaluation findings to api-kaianolevine-com.
+"""Prefect task: report the voicenotes batch outcome.
 
-Per ecosystem-standards, every flow run emits one or more evaluation
-records. evaluator-cog runs separately on a schedule and reads these
-records to populate the pipeline-health dashboard.
+What a voice-note batch did is run status, not a finding. A finding is
+something an evaluator graded against a revision of the standards
+catalog; "three files failed to transcribe" was never graded against
+anything, and writing it to the evaluations table is what made those
+rows need a null ``standards_version`` to stop the dashboard claiming
+otherwise. So this reports to ``POST /v1/notify`` and writes no rows.
+
+**One message per run, not one per failed file.** A bad batch is
+usually one event wearing N hats — the worker died, the API is down,
+the folder filled with something unreadable — and nine notifications
+describing it nine times is nine interruptions for the same news. The
+per-file detail is kept, as lines inside the one message.
 
 This task is a **thin cog-specific adapter** on top of
-:func:`mini_app_polis.pipeline_status.post_findings`. The shared library
-owns the payload shape, the Clerk M2M auth, the per-row error isolation,
-and the best-effort semantics. The voicenotes flow's only job in this
-file is to translate the cog's batch-shape input (a list of dicts with
-``category``, ``severity``, ``message``, ``drive_file_id``,
-``failed_at_task``) into the shape ``post_findings`` accepts.
+:func:`transcription_cog._pipeline_eval.post_run_finding`. The shared
+library owns auth, delivery, the processor-version stamp and the
+best-effort semantics. This file's only job is folding the cog's
+batch-shape input (a list of dicts with ``category``, ``severity``,
+``message``, ``drive_file_id``, ``failed_at_task``) into one outcome.
 
-Failure semantics: posting failures are swallowed by the library (with
-per-row isolation — one failed POST does not drop the others). Pipeline-
-health is observability, not the source of truth — a flaky
-api-kaianolevine-com must not turn a successful voice-note ingest into
-a failure.
+Failure semantics: delivery failures are logged and reported to Sentry
+by the library, never raised. Notification is observability, not the
+source of truth — a flaky api-kaianolevine-com must not turn a
+successful voice-note ingest into a failure.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from mini_app_polis.pipeline_status import post_findings
+from mini_app_polis.pipeline_status import Severity
 from prefect import task
 
+from transcription_cog._pipeline_eval import post_run_finding
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.config import settings
 
@@ -79,78 +87,57 @@ def _append_drive_file_id(text: str, drive_file_id: str | None) -> str:
     return f"{text} (drive_file_id={drive_file_id})"
 
 
-def _build_library_findings(
+#: Cap on how many per-file failures are listed in the message body.
+#: Past this the list stops being read and starts being scrolled; the
+#: count still says how many there were, and the log has all of them.
+_MAX_LISTED_FAILURES = 10
+
+
+def _summarise(
     *,
     drive_file_id: str,
     success: bool,
     findings: list[dict[str, Any]] | None,
-) -> list[dict[str, Any]]:
-    """Translate the cog's batch-shape input into library Finding rows.
+    files_seen: int | None,
+) -> tuple[Severity, str]:
+    """Fold one batch outcome into a single severity and message body.
 
-    Cog input:
-
-      ``findings`` is a list of cog-shaped dicts with keys
-      ``category``, ``severity``, ``message``, ``drive_file_id``,
-      ``failed_at_task``.
-
-    Library output:
-
-      One :class:`mini_app_polis.pipeline_status.Finding` per cog finding,
-      with the cog's fields mapped onto the library schema
-      (``message`` → ``finding`` with the per-finding drive_file_id
-      appended for visibility, ``failed_at_task`` → ``suggestion``).
-      Per-row ``category`` overrides the default ``pipeline_consistency``
-      dimension.
-
-    Edge cases:
-
-      - ``findings`` is empty/None and ``success`` is True → one
-        SUCCESS row so the dashboard records a heartbeat for this
-        flow run.
-      - ``findings`` is empty/None and ``success`` is False → one
-        ERROR row (terminal-failure path; on_crashed/on_failure
-        hooks land here).
+    Severity is the batch's, not the worst row's: a batch that finished
+    with some files failed is a WARN, and a batch that died is an ERROR
+    however few files it had got through.
     """
-    rows: list[dict[str, Any]] = []
+    problems = list(findings or [])
 
-    if findings:
-        for f in findings:
-            base_message = str(f.get("message") or f.get("finding") or "no message")
-            file_id_for_finding = str(f.get("drive_file_id") or drive_file_id or "")
-            row: dict[str, Any] = {
-                "severity": str(f.get("severity") or "ERROR").upper(),
-                "finding": _append_drive_file_id(base_message, file_id_for_finding),
-                "dimension": str(f.get("category") or _DIMENSION_PIPELINE),
-            }
-            if f.get("failed_at_task"):
-                row["suggestion"] = f"Failed at task: {f['failed_at_task']}"
-            rows.append(row)
-        return rows
+    if not success:
+        severity: Severity = "ERROR"
+    elif problems:
+        severity = "WARN"
+    else:
+        severity = "SUCCESS"
 
-    # No findings: emit a single heartbeat row capturing batch outcome.
-    #
-    # Heartbeat text is plain — the processor=X.Y.Z suffix is stamped
-    # uniformly by ``mini_app_polis.pipeline_status.post_findings`` so
-    # every cog routing through the library gets it, not just this one.
-    # Don't pre-stamp here; the library's double-stamp guard would skip
-    # the real version and we'd be back to the pre-merge regression
-    # that displayed ``(processor=0.0.0+local)`` on every Pipeline Health
-    # row (a per-cog helper queried the wrong distribution name after
-    # ADR-004's voicenotes-cog → transcription-cog merge).
-    severity = "SUCCESS" if success else "ERROR"
-    base_text = (
-        "voicenotes ingest completed"
-        if success
-        else "voicenotes ingest terminal failure"
-    )
-    rows.append(
-        {
-            "severity": severity,
-            "finding": _append_drive_file_id(base_text, drive_file_id),
-            "dimension": _DIMENSION_PIPELINE,
-        }
-    )
-    return rows
+    if not success and not problems:
+        headline = "voicenotes ingest terminal failure"
+    elif files_seen is None:
+        headline = "voicenotes ingest completed"
+    else:
+        headline = f"voicenotes ingest: {files_seen} file(s) seen"
+        if problems:
+            headline += f", {len(problems)} failed"
+
+    lines = [_append_drive_file_id(headline, drive_file_id)]
+    for problem in problems[:_MAX_LISTED_FAILURES]:
+        message = str(problem.get("message") or problem.get("finding") or "no message")
+        line = _append_drive_file_id(message, str(problem.get("drive_file_id") or ""))
+        failed_at = problem.get("failed_at_task")
+        if failed_at:
+            line += f" [failed at {failed_at}]"
+        lines.append(f"• {line}")
+
+    remaining = len(problems) - _MAX_LISTED_FAILURES
+    if remaining > 0:
+        lines.append(f"• …and {remaining} more")
+
+    return severity, "\n".join(lines)
 
 
 @task(
@@ -164,44 +151,32 @@ def emit_evaluation(
     success: bool,
     findings: list[dict[str, Any]] | None = None,
     source: str = _SOURCE_FLOW_INLINE,
+    files_seen: int | None = None,
 ) -> None:
-    """POST one or more evaluation rows to api-kaianolevine-com.
-
-    Delegates the actual HTTP/auth/best-effort plumbing to
-    :func:`mini_app_polis.pipeline_status.post_findings`; this task
-    owns only the cog-specific translation from the cog's finding
-    dict shape to the library's :class:`Finding` shape.
+    """Report this batch's outcome as one notification.
 
     Args:
-        flow_run_id: Prefect flow run identifier. Forwarded to the
-            library, which still resolves its own run_id from the
-            Prefect runtime context but accepts this for callers that
-            already have it in hand.
-        drive_file_id: The voice-note source file id (or ``"batch"``
-            for aggregate emissions). Folded into each row's
-            ``finding`` text so per-file context stays visible in the
-            Pipeline Health UI; not written to ``source``.
-        success: Aggregate batch success — controls severity of the
-            heartbeat row when ``findings`` is empty.
-        findings: Optional list of cog-shaped finding dicts. Each
-            element becomes one library Finding row.
-        source: Canonical run-type marker per ecosystem-standards
-            ``standards/evaluation.yaml``. Defaults to ``"flow_inline"``
-            for end-of-flow emissions; the ``on_failure`` /
-            ``on_crashed`` hooks must pass ``"flow_hook"``.
-
-    Posting failures are logged at WARN by the library and swallowed,
-    per the "observability not source-of-truth" semantic. Per-row
-    errors are isolated; one failed POST does not drop the others.
+        flow_run_id: Prefect flow run identifier. The library resolves
+            its own run id from the Prefect runtime; this is kept on the
+            signature for existing call sites and logged locally.
+        drive_file_id: The voice-note source file id, or ``"batch"`` for
+            the aggregate emission.
+        success: Aggregate batch success.
+        findings: Optional list of cog-shaped per-file failure dicts.
+            Each becomes one line inside the single message.
+        source: ``"flow_inline"`` for the end-of-flow emission,
+            ``"flow_hook"`` from the on_failure / on_crashed hooks.
+        files_seen: How many audio files the scan found. This is what
+            separates a triggered run from an idle one: a cycle that saw
+            files reports even when it changed nothing, because "there
+            were four files and none were ingested" is the run worth
+            explaining. A cycle over an empty folder stays silent.
     """
-    # The flow_run_id arg is kept on the public signature for
-    # backwards compatibility with existing call sites. The library
-    # resolves run_id itself from the Prefect runtime / env, so we
-    # only need to log it locally for observability.
-    rows = _build_library_findings(
+    severity, text = _summarise(
         drive_file_id=drive_file_id,
         success=success,
         findings=findings,
+        files_seen=files_seen,
     )
 
     _logger.info(
@@ -210,22 +185,38 @@ def emit_evaluation(
         context={
             "flow_run_id": flow_run_id,
             "success": success,
-            "row_count": len(rows),
+            "files_seen": files_seen,
+            "failure_count": len(findings or []),
         },
     )
 
-    post_findings(
-        repo=_REPO_NAME,
-        flow_name=_FLOW_NAME,
-        findings=rows,
-        source=source,
-    )
+    # The library is best-effort and does not raise, but this task runs
+    # inside the flow's housekeeping and from its crash hooks. Reporting
+    # on a batch must never be the reason the batch is recorded as
+    # failed, so the guarantee is enforced here too rather than assumed.
+    try:
+        result = post_run_finding(
+            _FLOW_NAME,
+            severity,
+            text,
+            source=source,
+            notable=bool(files_seen) or bool(findings),
+        )
+    except Exception as exc:  # noqa: BLE001 - see comment above
+        _logger.error(
+            "voicenotes.emit_evaluation.failed",
+            category="api",
+            context={"flow_run_id": flow_run_id, "error": repr(exc)},
+        )
+        return
 
     _logger.info(
         "voicenotes.emit_evaluation.done",
         category="api",
         context={
             "flow_run_id": flow_run_id,
-            "row_count": len(rows),
+            "sent": result.sent,
+            "suppressed": result.suppressed,
+            "failed": result.failed,
         },
     )

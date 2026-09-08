@@ -313,8 +313,15 @@ class TestIngestFailurePath:
 class TestIngestEmptyInbox:
     """TEST-005: empty inbox emits a heartbeat evaluation, returns zeros."""
 
-    def test_empty_inbox_returns_zero_counts(self, stub_clients):
-        """Empty inbox → zero counts, but emit_evaluation still posts a heartbeat."""
+    def test_empty_inbox_reports_nothing(self, stub_clients):
+        """Empty inbox → zero counts and no notification.
+
+        A cycle over an empty folder is an idle tick. It used to write a
+        heartbeat row so the dashboard had a record of every cycle;
+        Healthchecks.io answers "did it run" by firing on absence, so the
+        heartbeat bought nothing and a notification for it would be pure
+        noise on a scheduled poller.
+        """
         stub_clients.drive.list_files.return_value = []
 
         result = voicenotes_ingest.fn()
@@ -322,6 +329,5 @@ class TestIngestEmptyInbox:
         assert result["files_seen"] == 0
         assert result["files_processed"] == 0
         assert result["files_failed"] == 0
-        # Heartbeat: emit_evaluation still runs once for the batch so
-        # there's a record in pipeline_evaluations for every cycle.
-        stub_clients.kaiano.post.assert_called_once()
+        stub_clients.kaiano.notify.assert_not_called()
+        stub_clients.kaiano.post.assert_not_called()

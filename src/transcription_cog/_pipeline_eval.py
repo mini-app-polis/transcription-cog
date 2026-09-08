@@ -23,6 +23,7 @@ from collections.abc import Callable
 from typing import Any
 
 from mini_app_polis.pipeline_status import (
+    DeliveryReport,
     Severity,
     get_prefect_logger,
     get_run_id,
@@ -46,14 +47,15 @@ def post_run_finding(
     suggestion: str | None = None,
     production_only: bool = True,
     source: str = "flow_inline",
+    notable: bool = False,
     **extras: Any,
-) -> None:
+) -> DeliveryReport:
     """Emit one self-reported finding for this transcription-cog run.
 
     Identical to :func:`mini_app_polis.pipeline_status.post_run_finding`
     except that ``repo`` is pre-bound to ``"transcription-cog"``.
     """
-    _post_run_finding(
+    return _post_run_finding(
         flow_name,
         severity,
         text,
@@ -61,6 +63,7 @@ def post_run_finding(
         suggestion=suggestion,
         production_only=production_only,
         source=source,
+        notable=notable,
         **extras,
     )
 

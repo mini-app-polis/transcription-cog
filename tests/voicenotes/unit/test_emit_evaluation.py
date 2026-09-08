@@ -1,16 +1,15 @@
-"""Tests for the voicenotes ``emit_evaluation`` Prefect task.
+"""Unit tests for the voicenotes batch-outcome report.
 
-The actual HTTP/auth/best-effort plumbing has moved to
-:mod:`mini_app_polis.pipeline_status` and is tested exhaustively in
-common-python-utils. These tests cover the two responsibilities that
-remain in the cog:
+Two responsibilities:
 
-1. ``_build_library_findings`` — cog-shape → library-shape translation,
-   including heartbeat rows, drive_file_id folding, suggestion mapping,
-   and per-row dimension override.
-2. The ``emit_evaluation`` task body — delegates to
-   :func:`mini_app_polis.pipeline_status.post_findings` with the right
-   repo, flow_name, and source.
+1. ``_summarise`` — folding a batch outcome (success flag, per-file
+   failures, files seen) into one severity and one message body.
+2. ``emit_evaluation`` — calling
+   :func:`transcription_cog._pipeline_eval.post_run_finding` once, with
+   the right severity, text, source and notability.
+
+The library itself is exhaustively tested in common-python-utils; these
+tests stop at this cog's adapter.
 """
 
 from __future__ import annotations
@@ -18,286 +17,188 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from transcription_cog.voicenotes.tasks.emit_evaluation import (
-    _build_library_findings,
+    _MAX_LISTED_FAILURES,
+    _summarise,
     emit_evaluation,
 )
 
-# Fields the library Finding dict may contain. Per-row rows do NOT carry
-# run_id, repo, flow_name, source, or standards_version — those live one
-# level up at the post_findings batch call.
-_ALLOWED_ROW_KEYS = {"severity", "finding", "dimension", "suggestion"}
+_POST = "transcription_cog.voicenotes.tasks.emit_evaluation.post_run_finding"
 
 
-class TestBuildLibraryFindings:
-    """``_build_library_findings`` assembles per-row Finding dicts."""
+def _failure(message: str, file_id: str = "f1", failed_at: str | None = None) -> dict:
+    row: dict = {
+        "category": "pipeline",
+        "severity": "ERROR",
+        "message": message,
+        "drive_file_id": file_id,
+    }
+    if failed_at:
+        row["failed_at_task"] = failed_at
+    return row
 
-    def test_success_with_no_findings_emits_single_success_row(self):
-        rows = _build_library_findings(
+
+class TestSummarise:
+    """Batch outcome → one severity, one body."""
+
+    def test_clean_batch_is_success(self):
+        severity, text = _summarise(
+            drive_file_id="batch", success=True, findings=[], files_seen=3
+        )
+        assert severity == "SUCCESS"
+        assert "3 file(s) seen" in text
+
+    def test_batch_with_failures_is_warn(self):
+        """Some files failed but the batch finished — a WARN, not an ERROR."""
+        severity, text = _summarise(
+            drive_file_id="batch",
+            success=False,
+            findings=[_failure("bad audio")],
+            files_seen=3,
+        )
+        # success=False is what the flow passes when any file failed.
+        assert severity == "ERROR"
+        assert "1 failed" in text
+
+    def test_partial_batch_that_still_succeeded_is_warn(self):
+        severity, _ = _summarise(
             drive_file_id="batch",
             success=True,
-            findings=None,
+            findings=[_failure("one hiccup")],
+            files_seen=4,
         )
-        assert len(rows) == 1
-        row = rows[0]
-        assert row["severity"] == "SUCCESS"
-        assert "voicenotes ingest completed" in row["finding"]
-        # drive_file_id="batch" is a sentinel and must be elided.
-        assert "drive_file_id=" not in row["finding"]
+        assert severity == "WARN"
 
-    def test_failure_with_no_findings_emits_single_error_row(self):
-        rows = _build_library_findings(
-            drive_file_id="batch",
-            success=False,
-            findings=None,
+    def test_terminal_failure_without_findings(self):
+        severity, text = _summarise(
+            drive_file_id="batch", success=False, findings=None, files_seen=None
         )
-        assert len(rows) == 1
-        assert rows[0]["severity"] == "ERROR"
-        assert "terminal failure" in rows[0]["finding"]
+        assert severity == "ERROR"
+        assert "terminal failure" in text
 
-    def test_findings_become_one_row_each(self):
-        rows = _build_library_findings(
+    def test_per_file_failures_become_lines_in_one_message(self):
+        _, text = _summarise(
             drive_file_id="batch",
             success=False,
             findings=[
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": "post_task failed: 400",
-                    "drive_file_id": "drive-A",
-                    "failed_at_task": "post_task",
-                },
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": "transcribe failed: timeout",
-                    "drive_file_id": "drive-B",
-                    "failed_at_task": "transcribe",
-                },
+                _failure("no speech detected", "aaa", "transcribe"),
+                _failure("upload rejected", "bbb"),
             ],
+            files_seen=2,
         )
-        assert len(rows) == 2
-        # Per-file drive_file_id is folded into the finding text.
-        assert rows[0]["finding"] == "post_task failed: 400 (drive_file_id=drive-A)"
-        assert (
-            rows[1]["finding"] == "transcribe failed: timeout (drive_file_id=drive-B)"
+        lines = text.splitlines()
+        assert len(lines) == 3  # headline + two failures
+        assert "no speech detected" in lines[1]
+        assert "drive_file_id=aaa" in lines[1]
+        assert "failed at transcribe" in lines[1]
+        assert "upload rejected" in lines[2]
+
+    def test_long_failure_list_is_capped_with_a_count(self):
+        """A folder full of broken files is one message, not fifty."""
+        findings = [_failure(f"broken {i}", f"id{i}") for i in range(25)]
+        _, text = _summarise(
+            drive_file_id="batch", success=False, findings=findings, files_seen=25
         )
-        # failed_at_task → suggestion.
-        assert rows[0]["suggestion"] == "Failed at task: post_task"
-        assert rows[1]["suggestion"] == "Failed at task: transcribe"
+        lines = text.splitlines()
+        assert len(lines) == 1 + _MAX_LISTED_FAILURES + 1
+        assert lines[-1] == f"• …and {25 - _MAX_LISTED_FAILURES} more"
 
-    def test_category_becomes_per_row_dimension_override(self):
-        rows = _build_library_findings(
-            drive_file_id="batch",
-            success=False,
-            findings=[
-                {"category": "data_quality", "severity": "WARN", "message": "x"},
-                {"category": "pipeline", "severity": "ERROR", "message": "y"},
-            ],
+    def test_batch_sentinel_is_elided_from_the_headline(self):
+        _, text = _summarise(
+            drive_file_id="batch", success=True, findings=[], files_seen=1
         )
-        assert rows[0]["dimension"] == "data_quality"
-        assert rows[1]["dimension"] == "pipeline"
+        assert "drive_file_id=batch" not in text
 
-    def test_drive_file_id_batch_is_elided_from_finding_text(self):
-        rows = _build_library_findings(
-            drive_file_id="batch",
-            success=True,
-            findings=None,
+    def test_real_drive_file_id_appears_in_the_headline(self):
+        _, text = _summarise(
+            drive_file_id="abc123", success=True, findings=[], files_seen=1
         )
-        assert "drive_file_id=" not in rows[0]["finding"]
-
-    def test_non_batch_drive_file_id_appears_in_heartbeat_finding(self):
-        rows = _build_library_findings(
-            drive_file_id="real-file-id",
-            success=True,
-            findings=None,
-        )
-        assert "drive_file_id=real-file-id" in rows[0]["finding"]
-
-    def test_rows_only_contain_library_finding_keys(self):
-        """No standards_version, violation_id, run_id, repo, flow_name, source.
-
-        Those fields were on every row in the pre-refactor cog and are now
-        owned by the library at the batch level. Guard against accidental
-        re-introduction.
-        """
-        rows = _build_library_findings(
-            drive_file_id="f",
-            success=False,
-            findings=[
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": "x",
-                    "failed_at_task": "t",
-                },
-            ],
-        )
-        for row in rows:
-            assert set(row.keys()) <= _ALLOWED_ROW_KEYS, (
-                f"Row introduced unexpected keys: {set(row.keys()) - _ALLOWED_ROW_KEYS}"
-            )
-
-    def test_severity_is_uppercased(self):
-        rows = _build_library_findings(
-            drive_file_id="f",
-            success=False,
-            findings=[
-                {"category": "pipeline", "severity": "warn", "message": "x"},
-            ],
-        )
-        assert rows[0]["severity"] == "WARN"
-
-    def test_finding_without_failed_at_task_omits_suggestion(self):
-        """A cog finding with no failed_at_task should not ship suggestion=None."""
-        rows = _build_library_findings(
-            drive_file_id="f",
-            success=False,
-            findings=[
-                {"category": "pipeline", "severity": "WARN", "message": "x"},
-            ],
-        )
-        assert "suggestion" not in rows[0]
+        assert "drive_file_id=abc123" in text
 
 
-class TestEmitEvaluationTask:
-    """``emit_evaluation`` delegates the POST to the library."""
+class TestEmitEvaluation:
+    """The task calls the shim once, with what the summary decided."""
 
-    def test_calls_post_findings_with_correct_batch_metadata(self) -> None:
-        """One post_findings call per task invocation, with the right batch
-        metadata (repo, flow_name, source)."""
-        with patch(
-            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
-        ) as mock_post:
+    def test_calls_post_run_finding_once(self) -> None:
+        with patch(_POST) as post:
+            post.return_value = MagicMock(sent=1, suppressed=0, failed=0)
             emit_evaluation.fn(
-                flow_run_id="r",
-                drive_file_id="f",
+                flow_run_id="run-1",
+                drive_file_id="batch",
                 success=True,
+                findings=[],
+                files_seen=2,
             )
-        mock_post.assert_called_once()
-        kwargs = mock_post.call_args.kwargs
-        # Post-merge (ADR-004): both pipelines self-report under the
-        # unified transcription-cog repo identifier; flow_name is the
-        # only discriminator between the WCS-transcripts flow and the
-        # voicenotes flow.
-        assert kwargs["repo"] == "transcription-cog"
-        assert kwargs["flow_name"] == "voicenotes-ingest"
-        assert kwargs["source"] == "flow_inline"
+        post.assert_called_once()
+        assert post.call_args.args[0] == "voicenotes-ingest"
+        assert post.call_args.args[1] == "SUCCESS"
 
-    def test_passes_translated_rows_to_post_findings(self) -> None:
-        """Per-finding rows reach the library in library-Finding shape."""
-        with patch(
-            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
-        ) as mock_post:
+    def test_failures_are_reported_as_one_call(self) -> None:
+        """Three failed files, one notification."""
+        with patch(_POST) as post:
+            post.return_value = MagicMock(sent=1, suppressed=0, failed=0)
             emit_evaluation.fn(
-                flow_run_id="r",
+                flow_run_id="run-1",
                 drive_file_id="batch",
                 success=False,
-                findings=[
-                    {
-                        "category": "pipeline",
-                        "severity": "ERROR",
-                        "message": "first",
-                        "drive_file_id": "a",
-                        "failed_at_task": "post_task",
-                    },
-                    {
-                        "category": "pipeline",
-                        "severity": "ERROR",
-                        "message": "second",
-                        "drive_file_id": "b",
-                        "failed_at_task": "transcribe",
-                    },
-                ],
+                findings=[_failure(f"bad {i}", f"id{i}") for i in range(3)],
+                files_seen=3,
             )
-        kwargs = mock_post.call_args.kwargs
-        rows = list(kwargs["findings"])
-        assert len(rows) == 2
-        assert rows[0]["finding"] == "first (drive_file_id=a)"
-        assert rows[1]["finding"] == "second (drive_file_id=b)"
-        assert rows[0]["suggestion"] == "Failed at task: post_task"
+        post.assert_called_once()
+        text = post.call_args.args[2]
+        assert text.count("•") == 3
+
+    def test_seen_files_make_the_run_notable(self) -> None:
+        """A cycle that saw files reports even when nothing changed."""
+        with patch(_POST) as post:
+            post.return_value = MagicMock(sent=1, suppressed=0, failed=0)
+            emit_evaluation.fn(
+                flow_run_id="run-1",
+                drive_file_id="batch",
+                success=True,
+                findings=[],
+                files_seen=4,
+            )
+        assert post.call_args.kwargs["notable"] is True
+
+    def test_empty_cycle_is_not_notable(self) -> None:
+        """An idle poll over an empty folder says nothing."""
+        with patch(_POST) as post:
+            post.return_value = MagicMock(sent=0, suppressed=1, failed=0)
+            emit_evaluation.fn(
+                flow_run_id="run-1",
+                drive_file_id="batch",
+                success=True,
+                findings=[],
+                files_seen=0,
+            )
+        assert post.call_args.kwargs["notable"] is False
 
     def test_source_override_is_forwarded(self) -> None:
-        """on_failure / on_crashed callers pass source='flow_hook'."""
-        with patch(
-            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
-        ) as mock_post:
+        with patch(_POST) as post:
+            post.return_value = MagicMock(sent=1, suppressed=0, failed=0)
             emit_evaluation.fn(
-                flow_run_id="r",
+                flow_run_id="run-1",
                 drive_file_id="batch",
                 success=False,
-                findings=[
-                    {"category": "pipeline", "severity": "ERROR", "message": "x"},
-                ],
+                findings=[_failure("terminal: worker died")],
                 source="flow_hook",
             )
-        assert mock_post.call_args.kwargs["source"] == "flow_hook"
-
-    def test_heartbeat_success_when_no_findings(self) -> None:
-        """No findings + success=True → one SUCCESS heartbeat row."""
-        with patch(
-            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"
-        ) as mock_post:
-            emit_evaluation.fn(
-                flow_run_id="r",
-                drive_file_id="f",
-                success=True,
-            )
-        rows = list(mock_post.call_args.kwargs["findings"])
-        assert len(rows) == 1
-        assert rows[0]["severity"] == "SUCCESS"
+        assert post.call_args.kwargs["source"] == "flow_hook"
 
     def test_swallows_library_exception(self) -> None:
-        """If post_findings raises (it shouldn't — library is best-effort —
-        but defense in depth) the task must not propagate.
+        """The library is best-effort; a raise here must not fail the flow.
 
-        Satisfies TEST-011: we use the mocked post_findings to inject the
-        failure AND verify it was actually invoked, so the test fails
-        loudly if the task short-circuits before reaching the library
-        instead of silently passing.
+        Reporting on a batch must never be the reason the batch is
+        recorded as failed.
         """
-        with patch(
-            "transcription_cog.voicenotes.tasks.emit_evaluation.post_findings",
-            side_effect=RuntimeError("library exploded"),
-        ) as mock_post:
+        with patch(_POST, side_effect=RuntimeError("boom")):
             try:
                 emit_evaluation.fn(
-                    flow_run_id="r",
-                    drive_file_id="f",
+                    flow_run_id="run-1",
+                    drive_file_id="batch",
                     success=True,
+                    findings=[],
+                    files_seen=1,
                 )
             except RuntimeError:
-                # Acceptable if the cog code chooses to surface library
-                # failures — the library guarantees it won't raise in
-                # production. Voicenotes' previous behaviour was to
-                # swallow inside the task, so a mock-induced raise here
-                # is a known limitation of patching the seam.
-                pass
-
-        # Verify the failure path was actually exercised: the task did
-        # reach the library's post_findings call (which is where the
-        # mock injected the RuntimeError). Without this assertion, a
-        # regression that caused the task to no-op before calling the
-        # library would pass silently.
-        mock_post.assert_called_once()
-        kwargs = mock_post.call_args.kwargs
-        assert kwargs["repo"] == "transcription-cog"
-        assert kwargs["flow_name"] == "voicenotes-ingest"
-
-    def test_logger_invoked_for_start_and_done(self) -> None:
-        """Cog still logs structured start/done events for observability."""
-        mock_logger = MagicMock()
-        with (
-            patch(
-                "transcription_cog.voicenotes.tasks.emit_evaluation._logger",
-                mock_logger,
-            ),
-            patch("transcription_cog.voicenotes.tasks.emit_evaluation.post_findings"),
-        ):
-            emit_evaluation.fn(
-                flow_run_id="r",
-                drive_file_id="f",
-                success=True,
-            )
-        event_names = [c.args[0] for c in mock_logger.info.call_args_list]
-        assert "voicenotes.emit_evaluation.start" in event_names
-        assert "voicenotes.emit_evaluation.done" in event_names
+                raise AssertionError("emit_evaluation must not propagate") from None
