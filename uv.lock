@@ -1724,7 +1724,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "5.1.2"
+version = "5.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1741,9 +1741,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/71/f4c1d9e7401ef982206beb258a0dd0caca77a230cc5f10aa614872c249f3/miniapppolis_common_utils-5.1.2.tar.gz", hash = "sha256:14ca2c06db42e6bd987f4381c40b5c799ad2881e59438e79f4592756b4fc3c64", size = 240219, upload-time = "2026-09-08T22:25:53.811Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/fd/5643863b96e9fa90ef5d8e2a332f3f070590d52998320e6f585ef2a084f1/miniapppolis_common_utils-5.1.3.tar.gz", hash = "sha256:eef596eec2a6ab259780bd660add5f070862e0d0fdbbb0aa60f11514578ac96c", size = 241349, upload-time = "2026-09-08T23:35:44.179Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/bc/33900d3e55ace6777d579f78f374f09a6db8db4c86f4cb74750142a58095/miniapppolis_common_utils-5.1.2-py3-none-any.whl", hash = "sha256:e6451b37b3100f1568486623e214633939d7a462f51c2d1d80c3e51c9f300771", size = 82976, upload-time = "2026-09-08T22:25:52.675Z" },
+    { url = "https://files.pythonhosted.org/packages/32/cd/ce7a31a4a15b726092529f4e5769e82329531af29d1302f79d55449cdc26/miniapppolis_common_utils-5.1.3-py3-none-any.whl", hash = "sha256:f1b6264465bf467c22fac68d071797341074027d499cc90ac0103a70e9c7d134", size = 83284, upload-time = "2026-09-08T23:35:42.899Z" },
 ]
 
 [package.optional-dependencies]
@@ -3370,7 +3370,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.1.1,<6" },
+    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.1.3,<6" },
     { name = "openai", specifier = ">=1.50" },
     { name = "prefect", specifier = ">=3.0.0,<4.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0,<3.0.0" },
