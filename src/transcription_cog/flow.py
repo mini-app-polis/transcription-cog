@@ -47,7 +47,7 @@ from prefect import flow, get_run_logger, task
 from prefect.concurrency.sync import concurrency
 
 from ._batch_fatal import is_batch_fatal
-from ._pipeline_eval import make_failure_hook, post_run_finding
+from ._pipeline_eval import make_failure_hook, run_report
 from .api_client import SubstrateApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
@@ -327,81 +327,6 @@ def _process_one(
 _emit_terminal_failure = make_failure_hook("process-transcript")
 
 
-@task(retries=2)
-def task_post_run_evaluation(
-    *,
-    processed: int,
-    skipped: int,
-    results: list[dict],
-    errors: int,
-) -> None:
-    """Post ONE pipeline evaluation summarizing the whole flow run.
-
-    Resolves PIPE-009 / PIPE-011: pipeline-cogs must emit at least one
-    evaluation signal per run. The unit of evaluation is the flow run
-    (not the record). Severity reflects whether every processed file
-    passed schema validation and had no data-level skips.
-
-    Run-level severity rules:
-      SUCCESS: every processed file had schema_valid=True and no
-               data-level skips; empty runs also SUCCESS.
-      WARN:    at least one schema_valid=False, at least one data-level
-               skip (invalid_filename or transcript_too_short), or at
-               least one unhandled exception.
-      already_processed skips are benign and do not affect severity.
-
-    The actual POST is delegated to ``post_run_finding`` (from the
-    transcription-cog shim around ``mini_app_polis.pipeline_status``);
-    that helper is itself best-effort, so failure to POST never raises
-    out of this task.
-    """
-    schema_invalid = sum(
-        1 for r in results if not r.get("skipped") and r.get("schema_valid") is False
-    )
-    data_skips = sum(
-        1
-        for r in results
-        if r.get("skipped")
-        and r.get("reason") in {"invalid_filename", "transcript_too_short"}
-    )
-    benign_skips = sum(
-        1
-        for r in results
-        if r.get("skipped") and r.get("reason") == "already_processed"
-    )
-
-    has_problems = schema_invalid > 0 or data_skips > 0 or errors > 0
-    severity = "WARN" if has_problems else "SUCCESS"
-
-    if processed == 0 and skipped == 0 and errors == 0:
-        finding = "Run complete — no files to process."
-    else:
-        parts = [f"processed={processed}", f"skipped={skipped}"]
-        if errors:
-            parts.append(f"errors={errors}")
-        if schema_invalid:
-            parts.append(f"schema_invalid={schema_invalid}")
-        if data_skips:
-            parts.append(f"data_skips={data_skips}")
-        if benign_skips:
-            parts.append(f"already_processed={benign_skips}")
-        finding = "Run complete — " + ", ".join(parts) + "."
-
-    post_run_finding(
-        "process-transcript",
-        severity,
-        text=finding,
-        source="flow_inline",
-        # This deployment has no cron — it runs only because watcher-cog
-        # fired it (see main.py). So every run had a reason, and none of
-        # them is an idle tick that should stay quiet. That includes the
-        # "no files to process" run above: the watcher saying "2 new
-        # files" and this flow finding nothing to do is a mismatch, and
-        # it is invisible unless the empty run says so.
-        notable=True,
-    )
-
-
 @flow(
     name="process-transcript",
     description=(
@@ -431,7 +356,15 @@ def process_transcript() -> dict:
     """
     logger = _get_logger()
 
-    with concurrency("notes-ingest", occupy=1):
+    # notable=True because this deployment has no cron — it runs only
+    # because watcher-cog fired it, so every run had a reason and none of
+    # them is an idle tick to keep quiet. That includes a run that finds
+    # nothing: the watcher saying "2 new files" and this flow finding none
+    # is a mismatch, and it is invisible unless the empty run says so.
+    with (
+        concurrency("notes-ingest", occupy=1),
+        run_report("process-transcript", notable=True) as report,
+    ):
         logger.info(
             log.with_log_prefix(log.LOG_START, "Scanning input folder for transcripts")
         )
@@ -444,14 +377,6 @@ def process_transcript() -> dict:
 
         if not files:
             logger.info("No transcript files found in input folder")
-            task_post_run_evaluation.with_options(
-                retry_delay_seconds=cfg.task_retry_delay_short
-            )(
-                processed=0,
-                skipped=0,
-                results=[],
-                errors=0,
-            )
             return {"processed": 0, "skipped": 0, "files": []}
 
         logger.info(
@@ -463,10 +388,10 @@ def process_transcript() -> dict:
         skipped = 0
         errors = 0
         # Saved batch-fatal exception (Prefect task timeout / cancel).
-        # See transcription_cog/_batch_fatal.py — when set, finish the
-        # post-run evaluation below so partial work is recorded, then
-        # re-raise so the flow transitions Failed and Prefect's
-        # flow-level retry picks up on the next worker.
+        # See transcription_cog/_batch_fatal.py — when set, stop the loop
+        # and re-raise below so the flow transitions Failed and Prefect's
+        # flow-level retry picks up on the next worker. The report records
+        # the exception and sends partial work on its way out.
         batch_fatal_exc: BaseException | None = None
 
         for file_id, file_name, mime_type in files:
@@ -480,8 +405,21 @@ def process_transcript() -> dict:
                 results.append(result)
                 if result.get("skipped"):
                     skipped += 1
+                    reason = str(result.get("reason") or "skipped")
+                    # already_processed is the idempotency guard doing its
+                    # job — counted so the totals add up, never escalated.
+                    # The other two mean a file was dropped and nobody
+                    # will notice unless this says so.
+                    if reason == "already_processed":
+                        report.note(reason, file_name)
+                    else:
+                        report.issue(reason, file_name)
                 else:
                     processed += 1
+                    if result.get("schema_valid") is False:
+                        report.issue("schema_invalid", file_name)
+                    else:
+                        report.ok()
                     logger.info(
                         log.with_log_prefix(
                             log.LOG_SUCCESS, f"Completed: {file_name!r}"
@@ -489,12 +427,16 @@ def process_transcript() -> dict:
                     )
             except Exception as exc:
                 errors += 1
+                report.issue(
+                    "processing_failed",
+                    file_name,
+                    detail=f"{type(exc).__name__}: {exc}",
+                )
                 if is_batch_fatal(exc):
                     # Prefect task timeout fired / cancel signal /
                     # worker shutdown — every remaining file would
                     # fail the same way. Stop the loop, record the
-                    # abort, let the run-eval post below capture
-                    # partial state, then re-raise so the flow run
+                    # abort, then re-raise below so the flow run
                     # transitions Failed cleanly.
                     logger.exception(
                         log.with_log_prefix(
@@ -510,15 +452,6 @@ def process_transcript() -> dict:
                     )
                 )
 
-        task_post_run_evaluation.with_options(
-            retry_delay_seconds=cfg.task_retry_delay_short
-        )(
-            processed=processed,
-            skipped=skipped,
-            results=results,
-            errors=errors,
-        )
-
         logger.info(
             log.with_log_prefix(
                 log.LOG_SUCCESS,
@@ -526,13 +459,12 @@ def process_transcript() -> dict:
             )
         )
 
-        # If a Prefect task timeout / cancel aborted the batch,
-        # propagate it now (after the run eval above has recorded
-        # what we did complete). Re-raising here is what transitions
-        # the flow run to Failed so the @flow-level retry kicks in
-        # cleanly on the next worker, rather than the cog quietly
-        # returning a partial-success summary on an infra-level
-        # failure.
+        # If a Prefect task timeout / cancel aborted the batch, propagate
+        # it now. It passes through the report's context manager, which
+        # sends what the run did complete before re-raising. Re-raising is
+        # what transitions the flow run to Failed so the @flow-level retry
+        # kicks in cleanly on the next worker, rather than the cog quietly
+        # returning a partial-success summary on an infra-level failure.
         if batch_fatal_exc is not None:
             raise batch_fatal_exc
 

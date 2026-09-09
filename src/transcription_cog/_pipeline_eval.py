@@ -20,10 +20,12 @@ directly rather than going through this shim.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Any
 
 from mini_app_polis.pipeline_status import (
     DeliveryReport,
+    RunReport,
     Severity,
     get_prefect_logger,
     get_run_id,
@@ -33,6 +35,9 @@ from mini_app_polis.pipeline_status import (
 )
 from mini_app_polis.pipeline_status import (
     post_run_finding as _post_run_finding,
+)
+from mini_app_polis.pipeline_status import (
+    run_report as _run_report,
 )
 
 REPO = "transcription-cog"
@@ -80,11 +85,34 @@ def make_failure_hook(
     return _make_failure_hook(flow_name, repo=REPO, production_only=production_only)
 
 
+def run_report(
+    flow_name: str,
+    *,
+    production_only: bool = True,
+    notable: bool = False,
+    source: str = "flow_inline",
+) -> AbstractContextManager[RunReport]:
+    """Open a run report for this cog, with ``repo`` pre-bound.
+
+    Identical to :func:`mini_app_polis.pipeline_status.run_report` except
+    that ``repo`` is fixed to ``"transcription-cog"``.
+    """
+    return _run_report(
+        flow_name,
+        repo=REPO,
+        production_only=production_only,
+        notable=notable,
+        source=source,
+    )
+
+
 __all__ = [
     "REPO",
+    "RunReport",
     "Severity",
     "get_prefect_logger",
     "get_run_id",
     "make_failure_hook",
     "post_run_finding",
+    "run_report",
 ]

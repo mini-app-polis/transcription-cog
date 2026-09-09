@@ -54,7 +54,7 @@ def test_process_transcript_empty_folder(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -70,7 +70,7 @@ def test_process_transcript_empty_folder(mock_env: None) -> None:
     eval_args = mock_post_eval.call_args.args
     eval_kwargs = mock_post_eval.call_args.kwargs
     assert eval_args[1] == "SUCCESS"
-    assert "no files to process" in eval_kwargs["text"].lower()
+    assert "nothing to do" in eval_kwargs["text"].lower()
     assert result["processed"] == 0
     assert result["skipped"] == 0
     assert result["files"] == []
@@ -80,7 +80,7 @@ def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -105,7 +105,7 @@ def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -129,7 +129,7 @@ def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -154,7 +154,7 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -199,7 +199,7 @@ def test_process_transcript_passes_parsed_metadata_to_source(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -237,7 +237,7 @@ def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -273,7 +273,7 @@ def test_process_transcript_skips_already_processed(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
     ):
         mock_g = MagicMock()
         mock_gapi.from_env.return_value = mock_g
@@ -306,7 +306,7 @@ def test_process_transcript_continues_after_failure(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -349,7 +349,7 @@ def test_process_transcript_mixed_batch_invalid_then_valid(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -407,7 +407,7 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -448,8 +448,8 @@ def test_process_transcript_mixed_batch_duplicate_then_valid(
     assert result["skipped"] == 1
     assert result["errors"] == 0
 
-    # Run eval is SUCCESS — already_processed is a benign skip that
-    # does NOT escalate severity (see task_post_run_evaluation rules).
+    # Run eval is SUCCESS — already_processed is recorded with
+    # RunReport.note, which counts without escalating severity.
     mock_post_eval.assert_called_once()
     assert mock_post_eval.call_args.args[1] == "SUCCESS"
 
@@ -465,7 +465,7 @@ def test_process_transcript_posts_run_evaluation(
     with (
         patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
         patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("transcription_cog.flow.post_run_finding") as mock_post_eval,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
         patch("transcription_cog.flow.build_llm") as mock_build_llm,
     ):
         mock_g = MagicMock()
@@ -494,3 +494,30 @@ def test_process_transcript_posts_run_evaluation(
     assert call_kwargs.get("source") == "flow_inline"
     assert "text" in call_kwargs
     # repo + dimension are bound by the transcription-cog shim.
+
+
+def test_run_report_names_the_file_that_failed(mock_env: None) -> None:
+    """The message says which file, not just that a count went up."""
+    with (
+        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
+        patch("transcription_cog.flow._process_one") as mock_process_one,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-1", _VALID_FILENAME),
+        ]
+        mock_api_cls.return_value = MagicMock()
+        mock_process_one.side_effect = RuntimeError("drive read exploded")
+
+        result = process_transcript()
+
+    assert result["errors"] == 1
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
+    text = mock_post_eval.call_args.kwargs["text"]
+    assert "processing_failed" in text
+    assert _VALID_FILENAME in text
+    assert "RuntimeError" in text
