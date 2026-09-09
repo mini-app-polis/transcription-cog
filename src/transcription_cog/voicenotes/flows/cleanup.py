@@ -5,6 +5,18 @@ invocation (see ``flows/ingest.py``) — there is no cron schedule.
 Cleanup-mode dispatch via the router is preserved so an operator can
 still trigger a manual sweep from the Prefect UI if needed.
 
+That coupling is deliberate, and it has a consequence worth stating
+plainly rather than discovering: **retention advances with use.**
+``voicenotes_ingest`` only runs when watcher-cog sees a change in
+``voice-inbox/``, so a stretch with no new recordings is also a stretch
+with no sweep, and archived audio can sit past
+``ARCHIVE_RETENTION_DAYS`` for as long as that lasts. The window is
+therefore a floor on how long audio is kept, not a ceiling. Deleting
+promptly was never the point — bounding how much accumulates was — and
+a scheduled sweep was considered and rejected rather than overlooked.
+An operator who wants the archive drained during a quiet stretch runs
+``voicenotes-cleanup`` from the Prefect UI.
+
 The flow walks ``voice-inbox/processed/`` and deletes archived audio
 older than ``ARCHIVE_RETENTION_DAYS`` days. Each immediate child of
 ``processed/`` is a date-bucket folder — new archives go under per-day
@@ -248,6 +260,10 @@ def voicenotes_cleanup() -> dict[str, Any]:
         "retention_days": retention_days,
         "date_folders_scanned": date_folders_scanned,
         "first_error": first_error,
+        # Surfaced so the caller can say what was deleted, not just how
+        # much: "deleted 30 recordings archived before 2026-08-26" is a
+        # sentence an operator can check against the archive.
+        "cutoff_date": cutoff_date.isoformat(),
     }
 
     # Level follows the outcome. Every deletion failing is not a

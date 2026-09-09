@@ -337,6 +337,7 @@ def voicenotes_ingest() -> dict[str, Any]:
         # reporting it keeps "off the success path" from meaning
         # "invisible".
         cleanup_findings: list[dict[str, Any]] = []
+        cleanup_notices: list[str] = []
         try:
             cleanup_summary = voicenotes_cleanup.fn()
             cleanup_failed = int(cleanup_summary.get("failed", 0) or 0)
@@ -345,6 +346,17 @@ def voicenotes_ingest() -> dict[str, Any]:
                 "voicenotes.flow.cleanup_completed "
                 f"deleted={cleanup_deleted} failed={cleanup_failed}"
             )
+            if cleanup_deleted:
+                # Permanently deleting the operator's audio was the one
+                # thing this cog did that produced no notification —
+                # only a Railway log line nobody reads on a good day.
+                # It rides in the run's existing message rather than a
+                # second one, per the one-message-per-run rule.
+                cleanup_notices.append(
+                    f"retention: deleted {cleanup_deleted} recording(s) "
+                    f"archived before "
+                    f"{cleanup_summary.get('cutoff_date') or 'the retention window'}"
+                )
             if cleanup_failed:
                 cleanup_findings.append(
                     {
@@ -412,6 +424,7 @@ def voicenotes_ingest() -> dict[str, Any]:
             # A cycle that saw no files is an idle tick and reports
             # nothing; one that saw files reports either way.
             files_seen=files_seen,
+            notices=cleanup_notices,
         )
 
     duration_sec = (datetime.now(UTC) - started_at).total_seconds()

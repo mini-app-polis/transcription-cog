@@ -99,12 +99,20 @@ def _summarise(
     success: bool,
     findings: list[dict[str, Any]] | None,
     files_seen: int | None,
+    notices: list[str] | None = None,
 ) -> tuple[Severity, str]:
     """Fold one batch outcome into a single severity and message body.
 
     Severity is the batch's, not the worst row's: a batch that finished
     with some files failed is a WARN, and a batch that died is an ERROR
     however few files it had got through.
+
+    ``notices`` are lines that are worth reporting but are not problems
+    — today, that the retention sweep permanently deleted archived
+    audio. They never affect severity: a clean run that also deleted
+    thirty expired recordings is still a SUCCESS. They exist because a
+    permanent delete was previously the one thing this cog did that
+    produced no notification at all, only a Railway log line.
     """
     problems = list(findings or [])
 
@@ -137,6 +145,9 @@ def _summarise(
     if remaining > 0:
         lines.append(f"• …and {remaining} more")
 
+    for notice in notices or []:
+        lines.append(f"• {notice}")
+
     return severity, "\n".join(lines)
 
 
@@ -152,6 +163,7 @@ def emit_evaluation(
     findings: list[dict[str, Any]] | None = None,
     source: str = _SOURCE_FLOW_INLINE,
     files_seen: int | None = None,
+    notices: list[str] | None = None,
 ) -> None:
     """Report this batch's outcome as one notification.
 
@@ -169,15 +181,18 @@ def emit_evaluation(
         files_seen: How many audio files the scan found. Reported in the
             message text; it no longer gates whether the message is sent.
             It briefly did, on the theory that an empty scan was an idle
-            tick — but this deployment has no schedule, so an empty scan
-            means the watcher fired and the files were already gone,
-            which is the mismatch worth surfacing rather than hiding.
+            tick — but an ad-hoc scan that found nothing means the
+            watcher fired and the files were already gone, which is the
+            mismatch worth surfacing rather than hiding.
+        notices: Non-problem lines to include in the message — currently
+            what the retention sweep deleted. Never affects severity.
     """
     severity, text = _summarise(
         drive_file_id=drive_file_id,
         success=success,
         findings=findings,
         files_seen=files_seen,
+        notices=notices,
     )
 
     _logger.info(

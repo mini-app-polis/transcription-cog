@@ -115,6 +115,54 @@ class TestSummarise:
         assert "drive_file_id=abc123" in text
 
 
+class TestNotices:
+    """Non-problem lines — today, what the retention sweep deleted."""
+
+    def test_notice_appears_in_the_message_body(self) -> None:
+        _, text = _summarise(
+            drive_file_id="batch",
+            success=True,
+            findings=[],
+            files_seen=1,
+            notices=["retention: deleted 30 recording(s) archived before 2026-08-26"],
+        )
+        assert "• retention: deleted 30 recording(s)" in text
+
+    def test_notice_does_not_change_severity(self) -> None:
+        """Deleting expired audio on a clean run is still a success."""
+        severity, _ = _summarise(
+            drive_file_id="batch",
+            success=True,
+            findings=[],
+            files_seen=1,
+            notices=["retention: deleted 30 recording(s) archived before 2026-08-26"],
+        )
+        assert severity == "SUCCESS"
+
+    def test_notices_follow_the_failure_lines(self) -> None:
+        _, text = _summarise(
+            drive_file_id="batch",
+            success=False,
+            findings=[_failure("transcribe blew up")],
+            files_seen=2,
+            notices=["retention: deleted 1 recording(s) archived before 2026-08-26"],
+        )
+        assert text.index("transcribe blew up") < text.index("retention:")
+
+    def test_no_notices_leaves_the_message_unchanged(self) -> None:
+        _, with_none = _summarise(
+            drive_file_id="batch", success=True, findings=[], files_seen=1
+        )
+        _, with_empty = _summarise(
+            drive_file_id="batch",
+            success=True,
+            findings=[],
+            files_seen=1,
+            notices=[],
+        )
+        assert with_none == with_empty
+
+
 class TestEmitEvaluation:
     """The task calls the shim once, with what the summary decided."""
 

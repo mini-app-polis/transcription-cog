@@ -216,3 +216,17 @@ class TestRetentionClock:
         )
         assert voicenotes_cleanup.fn()["deleted"] == 1
         drive.list_files_older_than.assert_called_once()
+
+
+class TestDeletionIsReportable:
+    """A permanent delete must be able to reach the run's notification."""
+
+    def test_summary_carries_the_cutoff_so_the_notice_can_name_a_date(
+        self, patch_drive
+    ):
+        patch_drive(
+            _drive(children=[_folder("d1", _bucket_name(30))], old_files=[_file("a")])
+        )
+        summary = voicenotes_cleanup.fn()
+        expected = (datetime.now(UTC).date() - timedelta(days=14)).isoformat()
+        assert summary["cutoff_date"] == expected
