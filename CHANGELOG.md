@@ -1,3 +1,10 @@
+## [2.9.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.1...v2.9.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* merging old todoist format with new asana formatting ([cba7373](https://github.com/mini-app-polis/transcription-cog/commit/cba737351a943db440f146ba1f4b388ab106f514))
+
 ## [2.9.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.0...v2.9.1) (2026-09-09)
 
 
