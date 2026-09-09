@@ -86,16 +86,32 @@ def _get_logger():
         return LOG
 
 
-def _iter_files(g: GoogleAPI, folder_id: str):
-    """Yield (file_id, file_name, mime_type) for supported files in folder."""
+def _iter_files(g: GoogleAPI, folder_id: str) -> tuple[list[tuple], list[tuple]]:
+    """Split a folder into files this flow can process and files it cannot.
+
+    Returns ``(supported, rejected)``. Rejections used to be a bare
+    ``continue`` inside a generator, which meant a .docx or .pdf dropped
+    in the inbox produced a run reporting "processed: 0, skipped: 0" —
+    a clean sweep of a folder that was not empty. The file is not
+    archived either, so it stays there and the same silent run repeats
+    every time watcher-cog fires.
+    """
+    supported: list[tuple] = []
+    rejected: list[tuple] = []
     for item in g.drive.get_files_in_folder(folder_id, include_folders=False):
         mime_type = (
             item.mime_type if hasattr(item, "mime_type") else item.get("mimeType")
         )
         file_id = item.id if hasattr(item, "id") else item.get("id")
         name = item.name if hasattr(item, "name") else item.get("name")
-        if mime_type in _SUPPORTED_MIME_TYPES and file_id:
-            yield file_id, name or file_id, mime_type
+        if not file_id:
+            rejected.append(("", name or "<unnamed>", mime_type))
+            continue
+        if mime_type in _SUPPORTED_MIME_TYPES:
+            supported.append((file_id, name or file_id, mime_type))
+        else:
+            rejected.append((file_id, name or file_id, mime_type))
+    return supported, rejected
 
 
 @task(retries=2)
@@ -373,7 +389,17 @@ def process_transcript() -> dict:
         g = GoogleAPI.from_env()
         api = SubstrateApiClient()
 
-        files = list(_iter_files(g, cfg.notes_input_folder_id))
+        files, rejected = _iter_files(g, cfg.notes_input_folder_id)
+
+        for _fid, rejected_name, rejected_mime in rejected:
+            # An issue, not a note: this file will sit in the inbox until
+            # a person moves it, and nothing else in the system will ever
+            # mention it.
+            report.issue(
+                "unsupported_file_type",
+                rejected_name,
+                detail=str(rejected_mime or "unknown"),
+            )
 
         if not files:
             logger.info("No transcript files found in input folder")

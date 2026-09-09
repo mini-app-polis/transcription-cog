@@ -261,6 +261,19 @@ def voicenotes_ingest() -> dict[str, Any]:
         for f in audio_files:
             file_id = getattr(f, "id", None)
             if not isinstance(file_id, str):
+                # Recorded rather than skipped: success is computed as
+                # `len(failures) == 0`, so a silent continue meant an
+                # audio file that was seen, never transcribed, never
+                # moved, and skipped again on every later cycle — under a
+                # SUCCESS report.
+                failures.append(
+                    {
+                        "drive_file_id": str(file_id),
+                        "name": getattr(f, "name", None),
+                        "failed_at_task": "scan",
+                        "error": "drive entry has no usable string id",
+                    }
+                )
                 continue
             try:
                 results.append(_process_one_file(file_id))

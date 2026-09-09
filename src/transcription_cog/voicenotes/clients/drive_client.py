@@ -118,9 +118,11 @@ class DriveClient:
         cutoff = datetime.now(UTC) - timedelta(days=days)
         all_files = self.list_files(folder_id)
         old: list[Any] = []
+        undatable = 0
         for f in all_files:
             mod = getattr(f, "modified_time", None)
             if mod is None:
+                undatable += 1
                 continue
             try:
                 # Drive returns RFC-3339. Python 3.11+ `fromisoformat`
@@ -128,9 +130,25 @@ class DriveClient:
                 # `+00:00` is harmless and tolerates older formats.
                 ts = datetime.fromisoformat(mod.replace("Z", "+00:00"))
             except (ValueError, AttributeError):
+                undatable += 1
                 continue
             if ts < cutoff:
                 old.append(f)
+        if undatable:
+            # A file with no readable timestamp is permanently exempt from
+            # retention. One is a curiosity; all of them means an upstream
+            # field-selection change has stopped populating modified_time
+            # and the sweep has quietly stopped running while still
+            # reporting deleted=0, failed=0.
+            _logger.warning(
+                "drive.retention.undatable_files",
+                category="api",
+                context={
+                    "folder_id": folder_id,
+                    "undatable": undatable,
+                    "files_seen": len(all_files),
+                },
+            )
         return old
 
     def ensure_subfolder(self, parent_folder_id: str, name: str) -> str:

@@ -317,6 +317,44 @@ class TestIngestFailurePath:
         assert stub_clients.todoist.create_task.call_count == 1
 
 
+class TestIngestUnusableEntry:
+    """A Drive row the scanner cannot use is still a file that was there."""
+
+    def test_entry_without_a_string_id_lands_in_failures(
+        self, stub_clients, monkeypatch
+    ):
+        """success = len(failures) == 0 must not stay True."""
+        emit = MagicMock()
+        monkeypatch.setattr(ingest_mod, "emit_evaluation", emit)
+
+        stub_clients.drive.list_files.return_value = [
+            SimpleNamespace(id=None, name="no-id.m4a", mime_type="audio/mp4"),
+            _drive_file("drive-good"),
+        ]
+
+        result = voicenotes_ingest.fn()
+
+        assert result["files_seen"] == 2
+        assert result["files_processed"] == 1
+        assert result["files_failed"] == 1
+        (failure,) = result["failures"]
+        assert failure["name"] == "no-id.m4a"
+        assert failure["failed_at_task"] == "scan"
+
+        # The usable file in the same batch still processed.
+        stub_clients.drive.download_file.assert_called_once_with("drive-good")
+
+        # And the batch did not report itself successful.
+        emit.assert_called_once()
+        assert emit.call_args.kwargs["success"] is False
+        (batch_finding,) = [
+            f
+            for f in emit.call_args.kwargs["findings"]
+            if f["failed_at_task"] == "scan"
+        ]
+        assert "no usable string id" in batch_finding["message"]
+
+
 class TestIngestEmptyInbox:
     """TEST-005: empty inbox emits a heartbeat evaluation, returns zeros."""
 

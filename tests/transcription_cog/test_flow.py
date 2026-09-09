@@ -27,6 +27,9 @@ _VALID_FILENAME = "2026-04-01 Kaiano > Sarah - Connection.txt"
 _VALID_GROUP_FILENAME = "2026-04-01 Kaiano > Swingesota.txt"
 _INVALID_FILENAME = "random notes.txt"
 
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_PDF_MIME = "application/pdf"
+
 
 def _drive_item(
     file_id: str, filename: str, mime_type: str = "text/plain"
@@ -494,6 +497,78 @@ def test_process_transcript_posts_run_evaluation(
     assert call_kwargs.get("source") == "flow_inline"
     assert "text" in call_kwargs
     # repo + dimension are bound by the transcription-cog shim.
+
+
+def test_unsupported_file_type_is_reported(
+    mock_env: None, mock_drive_text: str
+) -> None:
+    """A .docx in the inbox makes the run WARN and names the file."""
+    with (
+        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
+        patch("transcription_cog.flow.build_llm") as mock_build_llm,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-doc", "meeting notes.docx", mime_type=_DOCX_MIME),
+            _drive_item("file-1", _VALID_FILENAME),
+        ]
+        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+
+        mock_api = MagicMock()
+        mock_api_cls.return_value = mock_api
+        mock_api.create_transcript.return_value = MagicMock(id="t-1")
+        mock_api.create_source.return_value = MagicMock(id="n-1")
+
+        mock_llm = MagicMock()
+        mock_build_llm.return_value = mock_llm
+        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
+
+        result = process_transcript()
+
+    # The supported file still went through end to end.
+    assert result["processed"] == 1
+    mock_api.create_source.assert_called_once()
+
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
+    text = mock_post_eval.call_args.kwargs["text"]
+    assert "unsupported_file_type" in text
+    assert "meeting notes.docx" in text
+    assert _DOCX_MIME in text
+
+
+def test_a_folder_of_only_unsupported_files_is_not_nothing_to_do(
+    mock_env: None,
+) -> None:
+    """ "processed: 0, skipped: 0" on a non-empty folder was the bug."""
+    with (
+        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
+        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
+        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
+    ):
+        mock_g = MagicMock()
+        mock_gapi.from_env.return_value = mock_g
+        mock_g.drive.get_files_in_folder.return_value = [
+            _drive_item("file-doc", "meeting notes.docx", mime_type=_DOCX_MIME),
+            _drive_item("file-pdf", "scan.pdf", mime_type=_PDF_MIME),
+        ]
+        mock_api_cls.return_value = MagicMock()
+
+        result = process_transcript()
+
+    assert result["processed"] == 0
+    assert result["files"] == []
+
+    mock_post_eval.assert_called_once()
+    assert mock_post_eval.call_args.args[1] == "WARN"
+    text = mock_post_eval.call_args.kwargs["text"]
+    assert "nothing to do" not in text.lower()
+    assert "unsupported_file_type=2" in text
+    assert "meeting notes.docx" in text
+    assert "scan.pdf" in text
 
 
 def test_run_report_names_the_file_that_failed(mock_env: None) -> None:
