@@ -18,9 +18,15 @@ from transcription_cog.voicenotes.tasks.post_task import (
     compose_task_input,
     external_id_for,
     post_task,
+    render_template_block,
     resolve_tag_gids,
     tag_names_for,
 )
+
+# The board's card template, verbatim from the "TEMPLATE — do not work"
+# card. Every machine-created card has to match this shape or it cannot
+# be groomed in place.
+_EMPTY_TEMPLATE_BLOCK = "Done when:\nWhere:\nConstraints:\nEffort:\nPR:\nBlocked by:"
 
 
 def _fake_asana(*, find_returns: str | None = None, create_returns: str = "as-new"):
@@ -65,17 +71,16 @@ class TestComposeHtmlNotes:
 
         The description body has no bold "Description" header — Asana's
         own rendering of the task body makes "this is the description"
-        obvious. Sparse notes skip Context/Peers/Timeline entirely.
+        obvious. Sparse notes skip Peers/Timeline entirely.
         """
         extracted = ExtractedTask(title="t", description="My note body.")
         rendered = compose_html_notes(extracted, drive_file_id="file-1")
-        assert rendered.startswith("<body>My note body.")
+        assert "\n\nMy note body.\n\n" in rendered
         assert "<strong>Description</strong>" not in rendered
         assert (
             "<strong>Audio</strong>\n"
             '<a href="https://drive.google.com/file/d/file-1/view">Listen</a>'
         ) in rendered
-        assert "<strong>Context</strong>" not in rendered
         assert "<strong>Peers</strong>" not in rendered
         assert "<strong>Timeline</strong>" not in rendered
 
@@ -90,13 +95,12 @@ class TestComposeHtmlNotes:
         rendered = compose_html_notes(extracted, drive_file_id="f")
         assert "<strong>Peers</strong>\nSarah" in rendered
         assert "<strong>Timeline</strong>\nBefore Friday review" in rendered
-        assert "<strong>Context</strong>" not in rendered
 
     def test_section_order_is_fixed(self):
-        """Documented order: prose → Context → Peers → Timeline → Audio.
+        """Documented order: template → prose → Peers → Timeline → Audio.
 
-        The operator scans bold headers by position, so the order can't
-        drift with ExtractedTask field order.
+        The operator scans by position, so the order can't drift with
+        ExtractedTask field order.
         """
         extracted = ExtractedTask(
             title="t",
@@ -107,8 +111,8 @@ class TestComposeHtmlNotes:
         )
         rendered = compose_html_notes(extracted, drive_file_id="f")
         assert (
-            rendered.index("d-prose")
-            < rendered.index("<strong>Context</strong>")
+            rendered.index("Done when:")
+            < rendered.index("d-prose")
             < rendered.index("<strong>Peers</strong>")
             < rendered.index("<strong>Timeline</strong>")
             < rendered.index("<strong>Audio</strong>")
@@ -142,7 +146,43 @@ class TestComposeHtmlNotes:
         )
         rendered = compose_html_notes(extracted, drive_file_id="f")
         assert "check value &lt; threshold &amp; retry" in rendered
-        assert "<strong>Context</strong>\n&lt;repo&gt;" in rendered
+        assert "Where: &lt;repo&gt;" in rendered
+
+    def test_body_opens_with_the_full_template_block(self):
+        """Every card carries all six template lines, filled or not.
+
+        An empty ``Effort:`` is a prompt to fill it during grooming; an
+        absent one is a card that does not match the board.
+        """
+        extracted = ExtractedTask(title="t", description="My note body.")
+        rendered = compose_html_notes(extracted, drive_file_id="f")
+        assert rendered.startswith(f"<body>{_EMPTY_TEMPLATE_BLOCK}\n\n")
+
+    def test_where_fills_the_template_field_and_is_not_repeated_below(self):
+        """``where`` is the one template field a voice note can supply."""
+        extracted = ExtractedTask(title="t", description="d", where="deejaytools")
+        rendered = compose_html_notes(extracted, drive_file_id="f")
+        assert "Where: deejaytools" in rendered
+        assert "<strong>Context</strong>" not in rendered
+        assert rendered.count("deejaytools") == 1
+
+
+class TestRenderTemplateBlock:
+    """The six-field header block, mirrored from the board's TEMPLATE card."""
+
+    def test_all_six_fields_when_the_note_supplies_nothing(self):
+        extracted = ExtractedTask(title="t", description="d")
+        assert render_template_block(extracted) == _EMPTY_TEMPLATE_BLOCK
+
+    def test_only_where_is_ever_auto_filled(self):
+        """A voice note has no basis to invent a definition of done or an
+        effort estimate, so those stay blank for grooming."""
+        extracted = ExtractedTask(
+            title="t", description="d", where="api", who="Sarah", when="Tonight"
+        )
+        assert render_template_block(extracted) == (
+            "Done when:\nWhere: api\nConstraints:\nEffort:\nPR:\nBlocked by:"
+        )
 
 
 class TestTagNames:

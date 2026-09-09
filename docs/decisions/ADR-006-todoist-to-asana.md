@@ -46,10 +46,36 @@ created with `external.gid = voicenote.<drive_file_id>`, and the check
 before posting is a single `GET /tasks/external:<id>`. The Drive view
 URL stays in the body, but only as a link for the operator.
 
-**Bodies become Asana rich text.** `compose_html_notes` emits the same
-layout as before — description prose, then Context / Peers / Timeline,
-then Audio — as `<body>`-wrapped markup. Everything Whisper or Claude
-produced is escaped on the way in.
+**Bodies become Asana rich text, in the board's card format.**
+`compose_html_notes` emits `<body>`-wrapped markup in two regions,
+mirroring the "TEMPLATE — do not work" card in the intake column:
+
+    Done when:
+    Where: <where>          <- blank when the note had none
+    Constraints:
+    Effort:
+    PR:
+    Blocked by:
+
+    <description prose>
+
+    **Peers** / **Timeline** <- only when the note supplied them
+    **Audio** <- Drive link
+
+All six template lines are emitted whether or not the note filled them:
+an empty `Effort:` is a prompt to fill it during grooming, while an
+absent one is a card that cannot be groomed without being reshaped by
+hand first. Only `Where` is ever auto-filled — it already means the
+system, repo or location the work happens in, which is what the board's
+existing `Where: deejaytools` entries record. A definition of done, an
+effort estimate and a PR link are grooming decisions a voice note has
+no basis to invent, so they are left blank rather than guessed at.
+
+The region below the blank line is the layout carried over from
+Todoist. `where` does not repeat there as a `Context` section, since
+the template's `Where` field already carries it.
+
+Everything Whisper or Claude produced is escaped on the way in.
 
 **Labels become real tags.** Claude's suggested labels and the `review`
 flag are resolved to workspace tag gids via `find_or_create_tag`,
@@ -102,6 +128,23 @@ nothing exercises, and this pipeline has exactly one sink.
 - **Free tier.** No custom fields, so there is nowhere structured to
   put source metadata; the `external` field is the API-level substitute
   and it is invisible in the UI.
+
+## Correction — September 2026
+
+The first deployed version emitted only the Todoist-era layout
+(description prose, then `Context` / `Peers` / `Timeline` / `Audio`) and
+no template block, so machine-created cards did not match the board's
+existing format and could not be groomed in place. The board's card
+template had been agreed before this work started and was visible on
+every existing card; it simply was not consulted. The Decision section
+above records the corrected format.
+
+The board's card format now lives in `post_task.py` as
+`_TEMPLATE_FIELDS` / `render_template_block`. That is the wrong long-term
+home — it is a board convention, not a voicenotes one, so the Discord
+path would duplicate it. It stays here until there is a second caller,
+at which point it moves to `mini_app_polis.asana` alongside the client,
+per the principle that a design belongs with its implementation.
 
 ## Migration steps
 

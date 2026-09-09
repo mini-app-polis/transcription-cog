@@ -85,13 +85,36 @@ _ASSIGNEE = "me"
 # on its own, which matters because tag resolution is best-effort.
 _EMPTY_TITLE_FALLBACK = "[Voice note needs review]"
 
-# Human labels for the auxiliary 5W sections rendered below the
-# description. Internal field names on ExtractedTask use the 5W
-# vocabulary (where/who/when) so the prompt and the model speak the
-# same language; the user-facing labels live here so they can change
-# without touching the model or prompt.
+# The board's card template, mirrored from the "TEMPLATE — do not work"
+# card in the intake column. Every card on the board carries these six
+# lines, so machine-created ones do too: the point of the template is
+# that a groomer fills the blanks in place, and a card missing the
+# fields can't be groomed without first being reshaped by hand.
+#
+# Each entry is ``(label, ExtractedTask field or None)``. Only ``Where``
+# has anything a voice note can supply — it already means the system,
+# repo or location the work happens in, which is what the board's
+# "Where: deejaytools" entries record. The rest are grooming decisions
+# (a definition of done, an effort estimate, a PR link) that a voice
+# note has no basis to invent, so they are emitted blank rather than
+# guessed at.
+_TEMPLATE_FIELDS: tuple[tuple[str, str | None], ...] = (
+    ("Done when", None),
+    ("Where", "where"),
+    ("Constraints", None),
+    ("Effort", None),
+    ("PR", None),
+    ("Blocked by", None),
+)
+
+# Human labels for the auxiliary sections rendered below the template
+# block. Internal field names on ExtractedTask use the 5W vocabulary
+# (where/who/when) so the prompt and the model speak the same language;
+# the user-facing labels live here so they can change without touching
+# the model or prompt. ``where`` is absent because it is carried by the
+# template's ``Where`` field above — repeating it below would be the
+# same fact in two places.
 _METADATA_LABELS: tuple[tuple[str, str], ...] = (
-    ("where", "Context"),
     ("who", "Peers"),
     ("when", "Timeline"),
 )
@@ -127,6 +150,29 @@ def _audio_section_value(drive_file_id: str) -> str:
     return link(url, "Listen")
 
 
+def render_template_block(extracted: ExtractedTask) -> str:
+    """Render the board's six-field header block.
+
+    All six lines are always emitted, in TEMPLATE's order, whether or
+    not the note filled them — an empty ``Effort:`` is a prompt to fill
+    it, while an absent one is a card that doesn't match the board.
+    Values are escaped; the labels are plain text, not bold, because
+    that is how the TEMPLATE card renders them.
+
+    The block is one section: its lines are joined with single newlines
+    so they read as a tight header, and ``rich_text_body`` puts the
+    blank line between it and the prose below.
+    """
+    lines: list[str] = []
+    for label, field_name in _TEMPLATE_FIELDS:
+        value = getattr(extracted, field_name, None) if field_name else None
+        if value:
+            lines.append(f"{label}: {escape_rich_text(value)}")
+        else:
+            lines.append(f"{label}:")
+    return "\n".join(lines)
+
+
 def _render_metadata_sections(extracted: ExtractedTask) -> list[str]:
     """Return one formatted section per present auxiliary 5W field.
 
@@ -146,15 +192,18 @@ def _render_metadata_sections(extracted: ExtractedTask) -> list[str]:
 def compose_html_notes(extracted: ExtractedTask, drive_file_id: str) -> str:
     """Build the Asana task body as rich text.
 
-    Layout -- the description prose leads (no header; Asana's own
-    rendering of the task body makes "this is the description"
-    obvious), then each auxiliary section gets a bold header directly
-    above its value, with blank lines between sections::
+    Two regions, which is what the board's TEMPLATE card reserves: the
+    six-field header block, then everything the note actually captured
+    below the blank line::
 
-        <body><description prose>
+        <body>Done when:
+        Where: <where>                 <- blank if the note had none
+        Constraints:
+        Effort:
+        PR:
+        Blocked by:
 
-        <strong>Context</strong>       <- only if where is set
-        <where>
+        <description prose>
 
         <strong>Peers</strong>         <- only if who is set
         <who>
@@ -165,8 +214,11 @@ def compose_html_notes(extracted: ExtractedTask, drive_file_id: str) -> str:
         <strong>Audio</strong>
         <a href="https://drive.google.com/file/d/.../view">Listen</a></body>
 
-    Sparse notes (no auxiliary Ws) render as description prose plus the
-    Audio section.
+    The header block is the board's convention and is always complete;
+    the region below it is the voicenotes layout carried over from
+    Todoist, where a section appears only when the note supplied it.
+    A sparse note therefore renders as the header block, the prose and
+    the Audio section.
 
     Everything Claude or Whisper produced is escaped on the way in.
     Asana's ``html_notes`` is a restricted HTML subset rather than the
@@ -174,7 +226,7 @@ def compose_html_notes(extracted: ExtractedTask, drive_file_id: str) -> str:
     -- a transcript containing "value < threshold" would otherwise fail
     the whole post.
     """
-    sections: list[str] = []
+    sections: list[str] = [render_template_block(extracted)]
     if extracted.description:
         sections.append(escape_rich_text(extracted.description))
     sections.extend(_render_metadata_sections(extracted))
