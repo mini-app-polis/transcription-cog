@@ -1,3 +1,10 @@
+# [2.9.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.8.1...v2.9.0) (2026-09-09)
+
+
+### Features
+
+* **voicenotes:** post captured tasks to Asana instead of Todoist ([188cc53](https://github.com/mini-app-polis/transcription-cog/commit/188cc53792d52b618b0ec95d487ee3c0ae3e83e5))
+
 ## [2.8.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.8.0...v2.8.1) (2026-09-09)
 
 
