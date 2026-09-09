@@ -1,3 +1,10 @@
+## [2.9.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.2...v2.9.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **voicenotes:** report retention sweep honestly and measure it from the archive date ([33e1011](https://github.com/mini-app-polis/transcription-cog/commit/33e10114e5eb1c28b52a5ddb80d34a1ba3dbd281))
+
 ## [2.9.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.1...v2.9.2) (2026-09-09)
 
 
