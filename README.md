@@ -9,7 +9,7 @@ router-style deployment** (`notes-ingest-cog/notes-ingest-cog`):
 | Mode (`mode=…`)         | What it does                                                       | Source folder | Sink                                  |
 | ----------------------- | ------------------------------------------------------------------ | ------------- | ------------------------------------- |
 | `wcs-transcripts`       | WCS lesson transcripts → structured notes (LLM) → Postgres        | `NOTES_INPUT_FOLDER_ID`            | `api-kaianolevine-com` (`/v1/wcs/notes`) |
-| `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → Todoist | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | Todoist Inbox project                 |
+| `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → Asana | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | Asana board intake column             |
 | `voicenotes-cleanup`    | Manual operator sweep: delete archived audio older than retention  | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID/processed/` | (deletes from Drive)                  |
 
 Triggered by `watcher-cog` with `mode` set to one of the modes above (default
@@ -18,7 +18,7 @@ cleanup mode is for operator-driven manual sweeps only). Mirrors
 `deejay-cog`'s single-router-deployment pattern.
 
 **WCS pipeline** — `wcs.kaianolevine.com` reads notes via `/v1/wcs/notes`.  
-**Voicenotes pipeline** — output lands in the user's Todoist Inbox project; original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
+**Voicenotes pipeline** — output lands in the intake column of the operator's Asana board, assigned to them; original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
 
 See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
@@ -154,12 +154,12 @@ src/transcription_cog/
   voicenotes/       voice sticky-note sub-pipeline (merged from voicenotes-cog)
     _shared.py
     config.py       pydantic-settings Settings (voicenotes-specific env)
-    clients/        whisper, claude, todoist, drive
+    clients/        whisper, claude, asana, drive
     flows/          ingest, cleanup, router
     models/         ExtractedTask
     prompts/        extract.md (Claude extraction prompt)
     tasks/          download, transcribe, extract, post_task, archive, emit_evaluation
-    scripts/        setup_todoist.py (one-time operator helper)
+    scripts/        setup_asana.py (one-time operator helper)
 
 tests/
   conftest.py                shared Prefect test harness

@@ -21,7 +21,7 @@ def _empty_transcript_fallback(transcript: str) -> ExtractedTask:
     output for ambient noise. There's no useful task to extract — so
     short-circuit, save the API call, and let post_task tag it 'review'
     so the user can listen if curious. Lost-note guarantee: still
-    creates a Todoist task.
+    creates an Asana task.
     """
     snippet = transcript.strip()[:200] or "Recording contained no audible speech."
     return ExtractedTask(

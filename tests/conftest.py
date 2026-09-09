@@ -38,8 +38,10 @@ _TEST_ENV_DEFAULTS = {
     # Required by voicenotes/config.py Settings
     "OPENAI_API_KEY": "test-openai-key",
     "ANTHROPIC_API_KEY": "test-anthropic-key",
-    "TODOIST_API_TOKEN": "test-todoist-token",
-    "TODOIST_INBOX_PROJECT_ID": "test-project-id",
+    "ASANA_ACCESS_TOKEN": "test-asana-token",
+    "ASANA_WORKSPACE_ID": "test-workspace-gid",
+    "ASANA_INBOX_PROJECT_ID": "test-project-gid",
+    "ASANA_INBOX_SECTION_ID": "test-section-gid",
     "GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID": "test-folder-id",
     "KAIANO_API_BASE_URL": "https://api.test.invalid",
     "TRANSCRIPTION_COG_API_KEY": "test-api-key",

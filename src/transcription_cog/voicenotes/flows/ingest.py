@@ -22,8 +22,8 @@ in ``voice-inbox/``, watcher will re-trigger on the next cycle.
 
 If ``post_task`` succeeds but ``archive`` fails: the next watcher
 cycle will see the file again. The post_task idempotency check
-(drive_file_id marker embedded in the Todoist task description)
-prevents duplicate Todoist tasks.
+(``external.gid = voicenote.<drive_file_id>`` on the Asana task)
+prevents duplicate tasks, including for notes already completed.
 
 Per-batch ``emit_evaluation`` runs once at the end with aggregated
 results — Whisper/Claude cost is summed across files, and per-file
@@ -139,7 +139,7 @@ def _process_one_file(drive_file_id: str) -> dict[str, Any]:
     archive_audio(drive_file_id)
     return {
         "drive_file_id": drive_file_id,
-        "todoist_task_id": task_id,
+        "asana_task_id": task_id,
         "needs_review": extracted.needs_review,
         "transcription_cost_usd": float(
             getattr(transcription, "cost_usd_estimate", None) or 0.0

@@ -84,7 +84,7 @@ def archive_audio(drive_file_id: str) -> str:
     Returns the destination folder ID for logging.
 
     MUST run after ``post_task`` succeeds — running before would risk
-    losing the audio if the Todoist post fails.
+    losing the audio if the Asana post fails.
     """
     _logger.info(
         "voicenotes.archive.start",

@@ -32,7 +32,7 @@ class TestExtractedTask:
         Earlier the model enforced ``max_length=60`` and Claude
         occasionally returned titles a few chars over, which caused
         parse failures and forced the cog into a bland review
-        fallback. Todoist itself accepts long titles, so the cap was
+        fallback. Asana itself accepts long titles, so the cap was
         more harm than help. The prompt still nudges Claude toward
         concise titles, but no hard limit is enforced.
         """

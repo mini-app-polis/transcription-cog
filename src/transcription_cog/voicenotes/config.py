@@ -6,8 +6,9 @@ this module just reads them. Defaults are deliberately conservative.
 Validation-deferral note
 ------------------------
 The voicenotes-specific required fields (``openai_api_key``,
-``todoist_api_token``, ``todoist_inbox_project_id``,
-``google_drive_voice_inbox_folder_id``) are declared with empty-string
+``asana_access_token``, ``asana_workspace_id``,
+``asana_inbox_project_id``, ``google_drive_voice_inbox_folder_id``)
+are declared with empty-string
 defaults rather than ``Field(...)``-required. This is deliberate:
 transcription-cog ships as a single Railway service hosting two
 unrelated pipelines, and Doppler may have voicenotes secrets configured
@@ -24,7 +25,7 @@ generic pydantic ValidationError at boot.
 
 Usage:
     from transcription_cog.voicenotes.config import settings
-    settings.todoist_inbox_project_id
+    settings.asana_inbox_project_id
 """
 
 from __future__ import annotations
@@ -82,26 +83,48 @@ class Settings(BaseSettings):
         ),
     )
 
-    # --- Todoist ---
-    # Todoist uses a long-lived personal API token (no OAuth). The
-    # token is minted from the Todoist app at
-    # Settings → Integrations → Developer and remains valid until
-    # the operator manually revokes it. On 401/403 the runtime
-    # client raises TodoistAuthError; the fix is to mint a new
-    # token and rotate TODOIST_API_TOKEN in Doppler.
+    # --- Asana ---
+    # Asana uses a long-lived personal access token (no OAuth). The
+    # token is minted from the Asana app at My Settings → Apps →
+    # Manage Developer Apps → Personal Access Tokens and remains valid
+    # until the operator manually revokes it. On 401/403 the shared
+    # client raises AsanaAuthError; the fix is to mint a new token and
+    # rotate ASANA_ACCESS_TOKEN in Doppler.
+    #
+    # The client itself lives in common-python-utils
+    # (``mini_app_polis.asana``) so the planned Discord-sourced task
+    # path on api-kaianolevine-com consumes the same one. These fields
+    # exist here so every secret still flows through pydantic-settings
+    # and Doppler rather than being read out of os.environ directly.
     # Empty-string defaults: see module docstring (validation deferred).
-    todoist_api_token: str = Field(
+    asana_access_token: str = Field(
         default="",
         description=(
-            "Long-lived Todoist personal API token. Required for voicenotes "
-            "mode. Bootstrap via scripts/setup_todoist.py."
+            "Long-lived Asana personal access token. Required for voicenotes "
+            "mode. Bootstrap via scripts/setup_asana.py."
         ),
     )
-    todoist_inbox_project_id: str = Field(
+    asana_workspace_id: str = Field(
         default="",
         description=(
-            "Todoist project ID where voice notes are posted. Required for "
+            "Asana workspace gid. Required for voicenotes mode: tags are "
+            "workspace-scoped objects, so resolving a tag name needs it."
+        ),
+    )
+    asana_inbox_project_id: str = Field(
+        default="",
+        description=(
+            "Asana project gid where voice notes are posted. Required for "
             "voicenotes mode."
+        ),
+    )
+    asana_inbox_section_id: str = Field(
+        default="",
+        description=(
+            "Asana section gid (board column) for new voice notes — the "
+            "intake column, where notes wait to be groomed. Optional: when "
+            "empty the task lands in whichever section is leftmost, which is "
+            "a position rather than a decision, so set it in Doppler."
         ),
     )
 
@@ -160,7 +183,7 @@ class Settings(BaseSettings):
             "Days to keep audio in processed/ before cleanup deletes it. "
             "14 days is more than enough for the typical 'I want to "
             "re-listen to that note from last week' use case; older audio "
-            "is rarely consulted and the Todoist task description is the "
+            "is rarely consulted and the Asana task body is the "
             "durable record."
         ),
     )
@@ -208,7 +231,7 @@ class Settings(BaseSettings):
         ),
     )
 
-    # HTTP client default timeout for outbound API calls (Todoist,
+    # HTTP client default timeout for outbound API calls (Asana,
     # Drive, etc.). Surfaced in settings so tests can override to a
     # tiny value without monkeypatching, per TEST-013.
     http_timeout_seconds: float = Field(
@@ -297,18 +320,22 @@ def get_settings() -> Settings:
 settings = get_settings()
 
 
-# Fields that MUST be populated for voicenotes mode to run. The four
-# pieces of state the voicenotes pipeline can't fake: an OpenAI key for
-# Whisper, the two Todoist credentials needed to post a task, and the
-# Drive folder that's the source of audio. ``anthropic_api_key`` is
+# Fields that MUST be populated for voicenotes mode to run. The pieces
+# of state the voicenotes pipeline can't fake: an OpenAI key for
+# Whisper, the three Asana values needed to post a task into the right
+# board, and the Drive folder that's the source of audio.
+# ``asana_inbox_section_id`` is deliberately absent — a task with no
+# section still lands in the project, so a missing column is a cosmetic
+# problem, not a reason to refuse the run. ``anthropic_api_key`` is
 # deliberately omitted — the parent WCS pipeline has its own
 # Claude-via-mini_app_polis path that reads ANTHROPIC_API_KEY too, so
 # its absence will already be caught upstream if it matters.
 _VOICENOTES_REQUIRED_FIELDS: tuple[str, ...] = (
     "openai_api_key",
     "anthropic_api_key",
-    "todoist_api_token",
-    "todoist_inbox_project_id",
+    "asana_access_token",
+    "asana_workspace_id",
+    "asana_inbox_project_id",
     "google_drive_voice_inbox_folder_id",
 )
 

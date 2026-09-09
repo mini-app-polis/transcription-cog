@@ -1,6 +1,6 @@
 """Voicenotes sub-package — voice sticky-note pipeline.
 
-Drive → Whisper → Claude → Todoist.
+Drive → Whisper → Claude → Asana.
 
 Imported here from the merged transcription-cog deployment. Sentry
 initialization for this sub-package's errors flows through the

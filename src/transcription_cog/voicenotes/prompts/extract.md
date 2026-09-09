@@ -1,11 +1,11 @@
 You are processing a short voice note that the user recorded as a
-"voice sticky note." The output is a clean, actionable Todoist task —
+"voice sticky note." The output is a clean, actionable task —
 not a transcript.
 
 Return a JSON object with these fields:
 
   - "title": Imperative-form action. Aim for short and scannable —
-            shorter reads better in the inbox — but don't force-cut
+            shorter reads better on a board — but don't force-cut
             content to hit a hard length. Lead with the verb,
             capitalize like a sentence, no trailing punctuation.
 

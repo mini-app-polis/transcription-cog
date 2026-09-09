@@ -30,7 +30,7 @@ exemptions:
       The two flagged print() sites inside src/transcription_cog/voicenotes/
       are intentional and not candidates for the structured logger:
 
-      1. src/transcription_cog/voicenotes/scripts/setup_todoist.py — a
+      1. src/transcription_cog/voicenotes/scripts/setup_asana.py — a
          one-time interactive operator-facing CLI script. The print() calls
          render the Doppler-bound output the operator needs to copy/paste;
          they are the script's user interface, not telemetry. Routing

@@ -1,15 +1,15 @@
 """End-to-end integration test for the ingest flow body.
 
-All external clients (Drive, Whisper, Claude, Todoist,
+All external clients (Drive, Whisper, Claude, Asana,
 api-kaianolevine-com) are mocked. Exercises the full ingest flow
 body end-to-end — scan inbox → for each file: download → transcribe
 → extract → post → archive — plus the aggregate emit_evaluation.
 
 Covers:
   - TEST-001 normalization: a plain transcript flows through and lands
-    as a Todoist task with the normalized title.
-  - TEST-002 deduplication: a file whose drive_file_id marker already
-    exists in Todoist skips create_task but still archives.
+    as an Asana task with the normalized title.
+  - TEST-002 deduplication: a file whose external id already exists in
+    Asana skips create_task but still archives.
   - TEST-003 per-file failure isolation: when Whisper fails on one
     file, that file is NOT archived (stays in inbox for retrigger),
     but other files in the same batch still process. The batch flow
@@ -35,15 +35,13 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from mini_app_polis.asana import AsanaClient
 
 from transcription_cog.voicenotes.clients import (
     claude_client as claude_mod,
 )
 from transcription_cog.voicenotes.clients import (
     drive_client as drive_mod,
-)
-from transcription_cog.voicenotes.clients import (
-    todoist_client as todoist_mod,
 )
 from transcription_cog.voicenotes.clients.whisper_client import TranscriptionResult
 from transcription_cog.voicenotes.flows import cleanup as cleanup_mod
@@ -127,11 +125,12 @@ def stub_clients(monkeypatch, claude_message):
     real_claude = claude_mod.ClaudeClient(anthropic_client=fake_anthropic)
     monkeypatch.setattr(extract_mod, "get_claude_client", lambda: real_claude)
 
-    # ---- Todoist ----
-    todoist = MagicMock(spec=todoist_mod.TodoistClient)
-    todoist.find_task_by_drive_file_id.return_value = None
-    todoist.create_task.return_value = "td-100"
-    monkeypatch.setattr(post_task_mod, "get_todoist_client", lambda: todoist)
+    # ---- Asana ----
+    asana = MagicMock(spec=AsanaClient)
+    asana.find_task_by_external_id.return_value = None
+    asana.create_task.return_value = "as-100"
+    asana.find_or_create_tag.side_effect = lambda name: f"tag-{name}"
+    monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: asana)
 
     # ---- Drive (used by ingest scan, download, archive, and the
     # opportunistic cleanup that runs at the end of every ingest) ----
@@ -186,7 +185,7 @@ def stub_clients(monkeypatch, claude_message):
 
     return SimpleNamespace(
         whisper=whisper,
-        todoist=todoist,
+        asana=asana,
         drive=drive,
         kaiano=kaiano_client,
         anthropic_create=fake_anthropic.messages.create,
@@ -221,7 +220,7 @@ class TestIngestHappyPath:
         # The per-file result reflects the processed file.
         (file_result,) = result["results"]
         assert file_result["drive_file_id"] == "drive-abc"
-        assert file_result["todoist_task_id"] == "td-100"
+        assert file_result["asana_task_id"] == "as-100"
         assert file_result["needs_review"] is False
 
         # Each external dependency was called for the one file. Drive's
@@ -239,8 +238,8 @@ class TestIngestHappyPath:
         stub_clients.drive.download_file.assert_called_once_with("drive-abc")
         stub_clients.whisper.transcribe.assert_called_once()
         stub_clients.anthropic_create.assert_called()
-        stub_clients.todoist.find_task_by_drive_file_id.assert_called_once()
-        stub_clients.todoist.create_task.assert_called_once()
+        stub_clients.asana.find_task_by_external_id.assert_called_once()
+        stub_clients.asana.create_task.assert_called_once()
         stub_clients.drive.move_file.assert_called_once()
 
     def test_subfolders_are_skipped(self, stub_clients):
@@ -258,18 +257,18 @@ class TestIngestHappyPath:
 
 
 class TestIngestDeduplication:
-    """TEST-002: a file whose marker is already in Todoist → no duplicate."""
+    """TEST-002: a file already posted to Asana → no duplicate."""
 
     def test_skips_create_when_marker_already_present(self, stub_clients):
-        """Existing marker in Todoist → no duplicate create, but archive still runs."""
-        stub_clients.todoist.find_task_by_drive_file_id.return_value = "td-existing"
+        """Existing task in Asana → no duplicate create, but archive still runs."""
+        stub_clients.asana.find_task_by_external_id.return_value = "as-existing"
 
         result = voicenotes_ingest.fn()
 
         assert result["files_processed"] == 1
         (file_result,) = result["results"]
-        assert file_result["todoist_task_id"] == "td-existing"
-        stub_clients.todoist.create_task.assert_not_called()
+        assert file_result["asana_task_id"] == "as-existing"
+        stub_clients.asana.create_task.assert_not_called()
         # Archive still runs — file should still move out of the inbox so
         # watcher-cog stops re-triggering on the same file.
         stub_clients.drive.move_file.assert_called_once()
@@ -313,8 +312,8 @@ class TestIngestFailurePath:
         }
         assert "drive-bad" not in archived_ids
         assert "drive-good" in archived_ids
-        # And no Todoist task was created for the bad file.
-        assert stub_clients.todoist.create_task.call_count == 1
+        # And no Asana task was created for the bad file.
+        assert stub_clients.asana.create_task.call_count == 1
 
 
 class TestIngestUnusableEntry:

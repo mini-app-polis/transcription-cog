@@ -53,7 +53,7 @@ def voicenotes_router(mode: str = MODE_INGEST) -> dict[str, Any]:
         — i.e., an ad-hoc trigger that doesn't specify a mode runs
         ingest, which is the safer default (it scans the inbox and
         processes new files; running this redundantly is idempotent
-        thanks to the post_task drive_file_id marker).
+        thanks to the post_task external-id check).
 
     Returns
     -------

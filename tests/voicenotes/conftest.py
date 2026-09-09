@@ -58,13 +58,13 @@ def _noop_concurrency(*args, **kwargs):
 # definition above are deliberate module-scope statements; the imports
 # themselves are first-use-correct.
 from transcription_cog.voicenotes.clients import (  # noqa: E402
+    asana_client as _asana_mod,
+)
+from transcription_cog.voicenotes.clients import (  # noqa: E402
     claude_client as _claude_mod,
 )
 from transcription_cog.voicenotes.clients import (  # noqa: E402
     drive_client as _drive_mod,
-)
-from transcription_cog.voicenotes.clients import (  # noqa: E402
-    todoist_client as _todoist_mod,
 )
 from transcription_cog.voicenotes.clients import (  # noqa: E402
     whisper_client as _whisper_mod,
@@ -105,12 +105,12 @@ def _reset_client_singletons() -> Iterator[None]:
     """
     _whisper_mod.reset_whisper_client()
     _claude_mod.reset_claude_client()
-    _todoist_mod.reset_todoist_client()
+    _asana_mod.reset_asana_client()
     _drive_mod.reset_drive_client()
     yield
     _whisper_mod.reset_whisper_client()
     _claude_mod.reset_claude_client()
-    _todoist_mod.reset_todoist_client()
+    _asana_mod.reset_asana_client()
     _drive_mod.reset_drive_client()
 
 

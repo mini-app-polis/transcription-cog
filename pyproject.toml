@@ -1,11 +1,11 @@
 [project]
 name = "transcription-cog"
 dynamic = ["version"]
-description = "Prefect pipeline cog. Two pipelines under one deployment: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → Todoist)."
+description = "Prefect pipeline cog. Two pipelines under one deployment: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → Asana)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "miniapppolis-common-utils[llm]>=5.2.0,<6",
+    "miniapppolis-common-utils[llm]>=5.3.0,<6",
     "prefect>=3.0.0,<4.0.0",
     "psycopg2-binary>=2.9.0,<3.0.0",
     "pydantic>=2.0.0,<3.0.0",
