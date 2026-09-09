@@ -1,6 +1,6 @@
 """Tests for the retention sweep — counting, filtering, and honest reporting.
 
-There was no test module here, which is how ``deleted=0 failed=38`` came
+There was no test module here, which is how ``trashed=0 failed=38`` came
 to be logged as ``voicenotes.cleanup.success`` in production. The
 assertions below are mostly about what the sweep *says* it did.
 """
@@ -36,7 +36,7 @@ def _file(file_id: str, name: str = "note.m4a"):
     return SimpleNamespace(id=file_id, name=name, mime_type="audio/mp4")
 
 
-def _drive(*, children, old_files, delete_side_effect=None):
+def _drive(*, children, old_files, trash_side_effect=None):
     """Build a DriveClient stub for one processed/ root.
 
     ``list_files`` answers the processed/ root with ``children`` and any
@@ -51,8 +51,8 @@ def _drive(*, children, old_files, delete_side_effect=None):
 
     drive.list_files.side_effect = _list_files
     drive.list_files_older_than.return_value = old_files
-    if delete_side_effect is not None:
-        drive.delete_file.side_effect = delete_side_effect
+    if trash_side_effect is not None:
+        drive.trash_file.side_effect = trash_side_effect
     return drive
 
 
@@ -71,7 +71,7 @@ class TestCounting:
         patch_drive(_drive(children=[_folder("d1")], old_files=[]))
         summary = voicenotes_cleanup.fn()
         assert summary["attempted"] == 0
-        assert summary["deleted"] == 0
+        assert summary["trashed"] == 0
         assert summary["failed"] == 0
         assert summary["date_folders_scanned"] == 1
 
@@ -86,15 +86,15 @@ class TestCounting:
         # Only the real bucket was walked (root listing + that bucket).
         assert drive.list_files.call_count == 2
 
-    def test_deletes_every_file_past_retention(self, patch_drive):
+    def test_trashes_every_file_past_retention(self, patch_drive):
         drive = patch_drive(
             _drive(children=[_folder("d1")], old_files=[_file("a"), _file("b")])
         )
         summary = voicenotes_cleanup.fn()
-        assert summary["deleted"] == 2
+        assert summary["trashed"] == 2
         assert summary["failed"] == 0
         assert summary["attempted"] == 2
-        assert drive.delete_file.call_count == 2
+        assert drive.trash_file.call_count == 2
 
 
 class TestReporting:
@@ -105,13 +105,13 @@ class TestReporting:
             _drive(
                 children=[_folder("d1")],
                 old_files=[_file("a"), _file("b")],
-                delete_side_effect=PermissionError("insufficientFilePermissions"),
+                trash_side_effect=PermissionError("insufficientFilePermissions"),
             )
         )
         with caplog.at_level("ERROR"):
             summary = voicenotes_cleanup.fn()
 
-        assert summary["deleted"] == 0
+        assert summary["trashed"] == 0
         assert summary["failed"] == 2
         assert summary["attempted"] == 2
         assert "cleanup.failure" in caplog.text
@@ -124,13 +124,13 @@ class TestReporting:
             _drive(
                 children=[_folder("d1")],
                 old_files=[_file("a"), _file("b")],
-                delete_side_effect=[None, RuntimeError("boom")],
+                trash_side_effect=[None, RuntimeError("boom")],
             )
         )
         with caplog.at_level("WARNING"):
             summary = voicenotes_cleanup.fn()
 
-        assert (summary["deleted"], summary["failed"]) == (1, 1)
+        assert (summary["trashed"], summary["failed"]) == (1, 1)
         assert "cleanup.degraded" in caplog.text
         assert "cleanup.success" not in caplog.text
 
@@ -149,7 +149,7 @@ class TestReporting:
             _drive(
                 children=[_folder("d1")],
                 old_files=[_file("a")],
-                delete_side_effect=PermissionError("insufficientFilePermissions"),
+                trash_side_effect=PermissionError("insufficientFilePermissions"),
             )
         )
         summary = voicenotes_cleanup.fn()
@@ -177,7 +177,7 @@ class TestRetentionClock:
         )
         summary = voicenotes_cleanup.fn()
         assert summary["attempted"] == 0
-        drive.delete_file.assert_not_called()
+        drive.trash_file.assert_not_called()
 
     def test_expired_bucket_is_drained_whole(self, patch_drive):
         """Every file in a per-day bucket was archived that day, so no
@@ -189,7 +189,7 @@ class TestRetentionClock:
             )
         )
         summary = voicenotes_cleanup.fn()
-        assert summary["deleted"] == 2
+        assert summary["trashed"] == 2
         drive.list_files_older_than.assert_not_called()
 
     def test_bucket_exactly_at_the_window_edge_is_kept(self, patch_drive):
@@ -197,7 +197,7 @@ class TestRetentionClock:
             _drive(children=[_folder("d1", _bucket_name(14))], old_files=[_file("a")])
         )
         assert voicenotes_cleanup.fn()["attempted"] == 0
-        drive.delete_file.assert_not_called()
+        drive.trash_file.assert_not_called()
 
     def test_legacy_monthly_bucket_falls_back_to_per_file_timestamps(self, patch_drive):
         """``2026-05/`` carries no single archive date, so the old filter
@@ -206,7 +206,7 @@ class TestRetentionClock:
             _drive(children=[_folder("d1", "2026-05")], old_files=[_file("a")])
         )
         summary = voicenotes_cleanup.fn()
-        assert summary["deleted"] == 1
+        assert summary["trashed"] == 1
         drive.list_files_older_than.assert_called_once()
 
     def test_hand_made_folder_falls_back_rather_than_being_skipped(self, patch_drive):
@@ -214,12 +214,12 @@ class TestRetentionClock:
         drive = patch_drive(
             _drive(children=[_folder("d1", "misc")], old_files=[_file("a")])
         )
-        assert voicenotes_cleanup.fn()["deleted"] == 1
+        assert voicenotes_cleanup.fn()["trashed"] == 1
         drive.list_files_older_than.assert_called_once()
 
 
 class TestDeletionIsReportable:
-    """A permanent delete must be able to reach the run's notification."""
+    """Removing the operator's audio must reach the run's notification."""
 
     def test_summary_carries_the_cutoff_so_the_notice_can_name_a_date(
         self, patch_drive
@@ -230,3 +230,20 @@ class TestDeletionIsReportable:
         summary = voicenotes_cleanup.fn()
         expected = (datetime.now(UTC).date() - timedelta(days=14)).isoformat()
         assert summary["cutoff_date"] == expected
+
+
+class TestTrashNotDelete:
+    """The sweep must never call the irreversible path.
+
+    ``files.delete`` needs organizer/Manager on a shared drive; this
+    cog's service account is a Content manager, so every call 404'd
+    while its moves succeeded. Trashing is an edit and works.
+    """
+
+    def test_expired_files_are_trashed_never_deleted(self, patch_drive):
+        drive = patch_drive(
+            _drive(children=[_folder("d1", _bucket_name(30))], old_files=[_file("a")])
+        )
+        voicenotes_cleanup.fn()
+        drive.trash_file.assert_called_once_with("a")
+        drive.delete_file.assert_not_called()

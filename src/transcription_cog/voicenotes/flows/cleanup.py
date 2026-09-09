@@ -1,4 +1,4 @@
-"""Cleanup flow: delete archived audio older than retention window.
+"""Cleanup flow: trash archived audio older than retention window.
 
 Trigger model: this flow runs at the end of every ``voicenotes_ingest``
 invocation (see ``flows/ingest.py``) — there is no cron schedule.
@@ -17,8 +17,26 @@ a scheduled sweep was considered and rejected rather than overlooked.
 An operator who wants the archive drained during a quiet stretch runs
 ``voicenotes-cleanup`` from the Prefect UI.
 
-The flow walks ``voice-inbox/processed/`` and deletes archived audio
-older than ``ARCHIVE_RETENTION_DAYS`` days. Each immediate child of
+The flow walks ``voice-inbox/processed/`` and trashes archived audio
+older than ``ARCHIVE_RETENTION_DAYS`` days.
+
+Trash, not delete
+-----------------
+This used to call ``files.delete`` and never once succeeded: every
+attempt returned 404 while the archive step's moves worked perfectly.
+``files.delete`` is Drive's irreversible path and requires the
+*organizer* role on a shared drive — the Manager access level. This
+cog's service account is a Content manager, which can add, move and
+trash content but cannot permanently delete it. Google's own help pages
+describe Content manager as able to "delete" shared drive content, but
+their permissions table separates the two rows: trashing is Manager and
+Content manager, permanently deleting from the trash is Manager only.
+
+Trashing needs no new privilege, and the shared drive empties its own
+trash after 30 days, so storage is still reclaimed on its own. The
+retention window is therefore a floor of ``ARCHIVE_RETENTION_DAYS`` in
+``processed/`` plus roughly 30 more in the trash — and a bug in this
+sweep costs a restore rather than the recording. Each immediate child of
 ``processed/`` is a date-bucket folder — new archives go under per-day
 ``YYYY-MM-DD/`` folders, and legacy monthly ``YYYY-MM/`` folders from
 before that change also remain in the archive.
@@ -42,8 +60,9 @@ Legacy monthly buckets carry no single archive date, so they keep the
 old per-file ``modifiedTime`` filter; they only shrink, so the
 imprecision ages out on its own.
 
-Empty date-folders are left in place — they are cheap and useful for
-browsing the archive chronologically.
+Empty date-folders are left in place — they are cheap, useful for
+browsing the archive chronologically, and removing them would need the
+same privilege the file deletions could not get.
 
 Failure mode: a single delete failure does not stop the batch; we
 log and continue, then report counts at the end. The per-deletion
@@ -131,12 +150,12 @@ def _flow_logger():
 def voicenotes_cleanup() -> dict[str, Any]:
     """Delete processed audio older than ``ARCHIVE_RETENTION_DAYS``.
 
-    Returns a summary dict: ``{deleted, failed, attempted,
+    Returns a summary dict: ``{trashed, failed, attempted,
     retention_days, date_folders_scanned}``.
 
-    ``attempted`` is what makes the other two readable: ``deleted=0,
+    ``attempted`` is what makes the other two readable: ``trashed=0,
     failed=0`` is an idle sweep with nothing past retention, while
-    ``deleted=0, failed=38`` is a sweep that is completely broken. The
+    ``trashed=0, failed=38`` is a sweep that is completely broken. The
     counts alone cannot distinguish them, which is why the summary log
     line below is chosen from the outcome rather than fixed at INFO.
     """
@@ -169,7 +188,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
             )
             raise
 
-        deleted = 0
+        trashed = 0
         failed = 0
         date_folders_scanned = 0
         first_error: str | None = None
@@ -227,10 +246,10 @@ def voicenotes_cleanup() -> dict[str, Any]:
                 if not file_id:
                     continue
                 try:
-                    drive.delete_file(file_id)
-                    deleted += 1
+                    drive.trash_file(file_id)
+                    trashed += 1
                     _logger.info(
-                        "voicenotes.cleanup.deleted",
+                        "voicenotes.cleanup.trashed",
                         category="pipeline",
                         context={
                             "drive_file_id": file_id,
@@ -243,7 +262,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
                     if first_error is None:
                         first_error = f"{type(exc).__name__}: {exc}"
                     _logger.warning(
-                        "voicenotes.cleanup.delete_failed",
+                        "voicenotes.cleanup.trash_failed",
                         category="pipeline",
                         context={
                             "drive_file_id": file_id,
@@ -252,38 +271,40 @@ def voicenotes_cleanup() -> dict[str, Any]:
                         },
                     )
 
-    attempted = deleted + failed
+    attempted = trashed + failed
     summary = {
-        "deleted": deleted,
+        "trashed": trashed,
         "failed": failed,
         "attempted": attempted,
         "retention_days": retention_days,
         "date_folders_scanned": date_folders_scanned,
         "first_error": first_error,
-        # Surfaced so the caller can say what was deleted, not just how
-        # much: "deleted 30 recordings archived before 2026-08-26" is a
+        # Surfaced so the caller can say what was trashed, not just how
+        # much: "trashed 30 recordings archived before 2026-08-26" is a
         # sentence an operator can check against the archive.
         "cutoff_date": cutoff_date.isoformat(),
     }
 
-    # Level follows the outcome. Every deletion failing is not a
-    # degraded sweep, it is a sweep that does not work, and it will keep
-    # not working every cycle until someone looks — so it is an ERROR
-    # even though cleanup is best-effort and never fails the ingest.
+    # Level follows the outcome. Every file failing is not a degraded
+    # sweep, it is a sweep that does not work, and it will keep not
+    # working every cycle until someone looks — so it is an ERROR even
+    # though cleanup is best-effort and never fails the ingest. That is
+    # the case that ran undetected for months behind an INFO line
+    # reading "success".
     if failed == 0:
         _logger.info(
             "voicenotes.cleanup.batch_complete", category="pipeline", context=summary
         )
         flow_logger.info(
-            f"voicenotes.cleanup.success deleted={deleted} failed=0 "
+            f"voicenotes.cleanup.success trashed={trashed} failed=0 "
             f"date_folders={date_folders_scanned}"
         )
-    elif deleted == 0:
+    elif trashed == 0:
         _logger.error(
             "voicenotes.cleanup.batch_failed", category="pipeline", context=summary
         )
         flow_logger.error(
-            f"voicenotes.cleanup.failure deleted=0 failed={failed} "
+            f"voicenotes.cleanup.failure trashed=0 failed={failed} "
             f"date_folders={date_folders_scanned} first_error={first_error!r}"
         )
     else:
@@ -291,7 +312,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
             "voicenotes.cleanup.batch_degraded", category="pipeline", context=summary
         )
         flow_logger.warning(
-            f"voicenotes.cleanup.degraded deleted={deleted} failed={failed} "
+            f"voicenotes.cleanup.degraded trashed={trashed} failed={failed} "
             f"date_folders={date_folders_scanned} first_error={first_error!r}"
         )
 

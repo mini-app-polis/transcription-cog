@@ -31,6 +31,7 @@ class DriveClient:
     Operations:
         - download_file(file_id) -> bytes
         - move_file(file_id, dest_folder_id) -> None
+        - trash_file(file_id) -> None
         - delete_file(file_id) -> None
         - list_files_older_than(folder_id, days) -> list[dict]
         - get_file_metadata(file_id) -> dict
@@ -90,7 +91,15 @@ class DriveClient:
         )
 
     def delete_file(self, file_id: str) -> None:
-        """Permanently delete a file. Used by cleanup flow."""
+        """Permanently delete a file.
+
+        Not used by this cog. ``files.delete`` requires the organizer
+        (Manager) role on a shared drive, and this cog's service account
+        is a Content manager — every call failed while its moves kept
+        working. The retention sweep uses :meth:`trash_file` instead.
+        Kept because the facade exposes it and a future caller with the
+        right role may want it.
+        """
         _logger.info(
             "drive.delete.start",
             category="api",
@@ -99,6 +108,25 @@ class DriveClient:
         self._g.drive.delete_file(file_id)
         _logger.info(
             "drive.delete.success",
+            category="api",
+            context={"drive_file_id": file_id},
+        )
+
+    def trash_file(self, file_id: str) -> None:
+        """Move a file to the trash. Used by the retention sweep.
+
+        Recoverable for 30 days, after which the shared drive empties
+        its own trash — so storage is still reclaimed, but a bug in the
+        sweep costs a restore rather than the recording.
+        """
+        _logger.info(
+            "drive.trash.start",
+            category="api",
+            context={"drive_file_id": file_id},
+        )
+        self._g.drive.trash_file(file_id)
+        _logger.info(
+            "drive.trash.success",
             category="api",
             context={"drive_file_id": file_id},
         )

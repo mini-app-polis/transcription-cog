@@ -341,21 +341,23 @@ def voicenotes_ingest() -> dict[str, Any]:
         try:
             cleanup_summary = voicenotes_cleanup.fn()
             cleanup_failed = int(cleanup_summary.get("failed", 0) or 0)
-            cleanup_deleted = int(cleanup_summary.get("deleted", 0) or 0)
+            cleanup_trashed = int(cleanup_summary.get("trashed", 0) or 0)
             flow_logger.info(
                 "voicenotes.flow.cleanup_completed "
-                f"deleted={cleanup_deleted} failed={cleanup_failed}"
+                f"trashed={cleanup_trashed} failed={cleanup_failed}"
             )
-            if cleanup_deleted:
-                # Permanently deleting the operator's audio was the one
-                # thing this cog did that produced no notification —
-                # only a Railway log line nobody reads on a good day.
-                # It rides in the run's existing message rather than a
-                # second one, per the one-message-per-run rule.
+            if cleanup_trashed:
+                # Removing the operator's audio was the one thing this
+                # cog did that produced no notification — only a Railway
+                # log line nobody reads on a good day. It rides in the
+                # run's existing message rather than a second one, per
+                # the one-message-per-run rule. The 30-day window is
+                # named because that is the operator's chance to undo it.
                 cleanup_notices.append(
-                    f"retention: deleted {cleanup_deleted} recording(s) "
+                    f"retention: trashed {cleanup_trashed} recording(s) "
                     f"archived before "
                     f"{cleanup_summary.get('cutoff_date') or 'the retention window'}"
+                    " — recoverable from shared drive trash for 30 days"
                 )
             if cleanup_failed:
                 cleanup_findings.append(
@@ -363,9 +365,9 @@ def voicenotes_ingest() -> dict[str, Any]:
                         "category": "pipeline",
                         # Every deletion failing is a sweep that does not
                         # work; some failing is a degraded one.
-                        "severity": "ERROR" if cleanup_deleted == 0 else "WARN",
+                        "severity": "ERROR" if cleanup_trashed == 0 else "WARN",
                         "message": (
-                            f"retention sweep deleted {cleanup_deleted} of "
+                            f"retention sweep trashed {cleanup_trashed} of "
                             f"{cleanup_summary.get('attempted', cleanup_failed)} "
                             f"eligible files: "
                             f"{cleanup_summary.get('first_error') or 'see logs'}"
@@ -425,6 +427,9 @@ def voicenotes_ingest() -> dict[str, Any]:
             # nothing; one that saw files reports either way.
             files_seen=files_seen,
             notices=cleanup_notices,
+            # The headline counts files, not findings — a failed
+            # retention sweep is a finding and zero failed files.
+            files_failed=len(failures),
         )
 
     duration_sec = (datetime.now(UTC) - started_at).total_seconds()

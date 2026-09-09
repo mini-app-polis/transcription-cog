@@ -180,7 +180,9 @@ class Settings(BaseSettings):
         default=14,
         ge=1,
         description=(
-            "Days to keep audio in processed/ before cleanup deletes it. "
+            "Days to keep audio in processed/ before the sweep trashes "
+            "it. Trashed, not deleted: the shared drive empties its own "
+            "trash after ~30 days, so the real floor is this plus that. "
             "14 days is more than enough for the typical 'I want to "
             "re-listen to that note from last week' use case; older audio "
             "is rarely consulted and the Asana task body is the "

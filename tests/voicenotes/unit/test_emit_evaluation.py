@@ -163,6 +163,58 @@ class TestNotices:
         assert with_none == with_empty
 
 
+class TestHeadlineCounter:
+    """The headline counts files; not every finding is a file."""
+
+    def test_non_file_finding_does_not_inflate_the_file_count(self) -> None:
+        """A failed retention sweep is one finding and zero failed files.
+
+        Without this the message read "1 file(s) seen, 1 failed" for a
+        run whose only file processed perfectly.
+        """
+        _, text = _summarise(
+            drive_file_id="batch",
+            success=True,
+            findings=[_failure("retention sweep deleted 0 of 38", file_id="cleanup")],
+            files_seen=1,
+            files_failed=0,
+        )
+        assert "1 file(s) seen" in text
+        assert "failed" not in text.splitlines()[0]
+
+    def test_file_failures_are_still_counted(self) -> None:
+        _, text = _summarise(
+            drive_file_id="batch",
+            success=False,
+            findings=[_failure("bad audio")],
+            files_seen=3,
+            files_failed=1,
+        )
+        assert "3 file(s) seen, 1 failed" in text
+
+    def test_finding_count_is_used_when_no_file_count_is_given(self) -> None:
+        """Back-compat for callers whose findings are all per-file."""
+        _, text = _summarise(
+            drive_file_id="batch",
+            success=False,
+            findings=[_failure("bad audio"), _failure("worse audio")],
+            files_seen=3,
+        )
+        assert "3 file(s) seen, 2 failed" in text
+
+    def test_severity_still_reflects_the_non_file_finding(self) -> None:
+        """Not counted in the headline is not the same as not reported."""
+        severity, text = _summarise(
+            drive_file_id="batch",
+            success=True,
+            findings=[_failure("retention sweep deleted 0 of 38", file_id="cleanup")],
+            files_seen=1,
+            files_failed=0,
+        )
+        assert severity == "WARN"
+        assert "retention sweep deleted 0 of 38" in text
+
+
 class TestEmitEvaluation:
     """The task calls the shim once, with what the summary decided."""
 

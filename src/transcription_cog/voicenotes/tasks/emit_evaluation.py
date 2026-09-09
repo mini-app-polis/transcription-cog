@@ -100,6 +100,7 @@ def _summarise(
     findings: list[dict[str, Any]] | None,
     files_seen: int | None,
     notices: list[str] | None = None,
+    files_failed: int | None = None,
 ) -> tuple[Severity, str]:
     """Fold one batch outcome into a single severity and message body.
 
@@ -113,6 +114,13 @@ def _summarise(
     thirty expired recordings is still a SUCCESS. They exist because a
     permanent delete was previously the one thing this cog did that
     produced no notification at all, only a Railway log line.
+
+    ``files_failed`` is the headline's counter and is not the same as
+    ``len(findings)``. Not every finding is a file: a failed retention
+    sweep is one finding and zero failed files, and counting it in the
+    headline produced "1 file(s) seen, 1 failed" for a run whose file
+    processed perfectly. When it is not supplied the finding count is
+    used, which is correct for callers whose findings are all per-file.
     """
     problems = list(findings or [])
 
@@ -129,8 +137,9 @@ def _summarise(
         headline = "voicenotes ingest completed"
     else:
         headline = f"voicenotes ingest: {files_seen} file(s) seen"
-        if problems:
-            headline += f", {len(problems)} failed"
+        failed_count = len(problems) if files_failed is None else files_failed
+        if failed_count:
+            headline += f", {failed_count} failed"
 
     lines = [_append_drive_file_id(headline, drive_file_id)]
     for problem in problems[:_MAX_LISTED_FAILURES]:
@@ -164,6 +173,7 @@ def emit_evaluation(
     source: str = _SOURCE_FLOW_INLINE,
     files_seen: int | None = None,
     notices: list[str] | None = None,
+    files_failed: int | None = None,
 ) -> None:
     """Report this batch's outcome as one notification.
 
@@ -186,6 +196,9 @@ def emit_evaluation(
             mismatch worth surfacing rather than hiding.
         notices: Non-problem lines to include in the message — currently
             what the retention sweep deleted. Never affects severity.
+        files_failed: How many audio files failed, for the headline.
+            Distinct from the finding count, which can include
+            non-file problems such as a failed retention sweep.
     """
     severity, text = _summarise(
         drive_file_id=drive_file_id,
@@ -193,6 +206,7 @@ def emit_evaluation(
         findings=findings,
         files_seen=files_seen,
         notices=notices,
+        files_failed=files_failed,
     )
 
     _logger.info(
