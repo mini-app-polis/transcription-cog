@@ -1,3 +1,10 @@
+## [2.8.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.8.0...v2.8.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **flow:** report files skipped before the processing loop ([0fa7ef7](https://github.com/mini-app-polis/transcription-cog/commit/0fa7ef750ceea1aec0be4603559642a34a28b239))
+
 # [2.8.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.7.4...v2.8.0) (2026-09-09)
 
 
