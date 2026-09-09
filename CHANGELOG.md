@@ -1,3 +1,10 @@
+## [2.10.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.10.0...v2.10.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **voicenotes:** trash expired audio instead of deleting it ([e5fc340](https://github.com/mini-app-polis/transcription-cog/commit/e5fc340be494794c1ec83f492df25394e80acec1))
+
 # [2.10.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.3...v2.10.0) (2026-09-09)
 
 
