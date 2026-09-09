@@ -321,30 +321,6 @@ def voicenotes_ingest() -> dict[str, Any]:
                 # them on the next cycle. Continue with the rest of
                 # this batch.
 
-        # One aggregate report per batch, with per-file failures as
-        # lines inside it. Always called, even on empty batches — the
-        # library decides whether an idle cycle is worth a message.
-        success = len(failures) == 0
-        findings: list[dict[str, Any]] = [
-            {
-                "category": "pipeline",
-                "severity": "ERROR",
-                "message": fail["error"],
-                "drive_file_id": fail["drive_file_id"],
-                "failed_at_task": fail["failed_at_task"],
-            }
-            for fail in failures
-        ]
-        emit_evaluation(
-            flow_run_id=flow_run_id,
-            drive_file_id="batch",
-            success=success,
-            findings=findings,
-            # A cycle that saw no files is an idle tick and reports
-            # nothing; one that saw files reports either way.
-            files_seen=files_seen,
-        )
-
         # Opportunistic cleanup. Runs at the end of every ingest cycle
         # so retention sweeps stay in sync with actual usage and we
         # avoid paying for a daily cron tick that often has nothing
@@ -352,13 +328,40 @@ def voicenotes_ingest() -> dict[str, Any]:
         # housekeeping and must not fail an otherwise-successful
         # ingest run. Called via ``.fn()`` to skip the Prefect
         # subflow boilerplate; we just want the function body.
+        #
+        # This runs BEFORE emit_evaluation, which is a correction: the
+        # batch report used to be sent first, so cleanup's outcome had
+        # already missed the only report of the cycle and could never
+        # reach Pipeline Health no matter how badly it failed. Swallowing
+        # the exception keeps cleanup off the ingest success path;
+        # reporting it keeps "off the success path" from meaning
+        # "invisible".
+        cleanup_findings: list[dict[str, Any]] = []
         try:
             cleanup_summary = voicenotes_cleanup.fn()
+            cleanup_failed = int(cleanup_summary.get("failed", 0) or 0)
+            cleanup_deleted = int(cleanup_summary.get("deleted", 0) or 0)
             flow_logger.info(
                 "voicenotes.flow.cleanup_completed "
-                f"deleted={cleanup_summary.get('deleted', 0)} "
-                f"failed={cleanup_summary.get('failed', 0)}"
+                f"deleted={cleanup_deleted} failed={cleanup_failed}"
             )
+            if cleanup_failed:
+                cleanup_findings.append(
+                    {
+                        "category": "pipeline",
+                        # Every deletion failing is a sweep that does not
+                        # work; some failing is a degraded one.
+                        "severity": "ERROR" if cleanup_deleted == 0 else "WARN",
+                        "message": (
+                            f"retention sweep deleted {cleanup_deleted} of "
+                            f"{cleanup_summary.get('attempted', cleanup_failed)} "
+                            f"eligible files: "
+                            f"{cleanup_summary.get('first_error') or 'see logs'}"
+                        ),
+                        "drive_file_id": "cleanup",
+                        "failed_at_task": "cleanup",
+                    }
+                )
         except Exception as cleanup_exc:
             flow_logger.warning(f"voicenotes.flow.cleanup_failed error={cleanup_exc!r}")
             _logger.warning(
@@ -370,6 +373,46 @@ def voicenotes_ingest() -> dict[str, Any]:
                     "error_type": type(cleanup_exc).__name__,
                 },
             )
+            cleanup_findings.append(
+                {
+                    "category": "pipeline",
+                    "severity": "ERROR",
+                    "message": f"retention sweep raised: {cleanup_exc}",
+                    "drive_file_id": "cleanup",
+                    "failed_at_task": "cleanup",
+                }
+            )
+
+        # One aggregate report per batch, with per-file failures as
+        # lines inside it. Always called, even on empty batches — the
+        # library decides whether an idle cycle is worth a message.
+        #
+        # ``success`` stays scoped to ingest: a broken retention sweep
+        # does not mean a voice note was lost, and conflating the two
+        # would make every cycle look like a pipeline failure while the
+        # pipeline is fine. The cleanup finding rides along instead, so
+        # the failure is visible in Pipeline Health at its own severity.
+        success = len(failures) == 0
+        findings: list[dict[str, Any]] = [
+            {
+                "category": "pipeline",
+                "severity": "ERROR",
+                "message": fail["error"],
+                "drive_file_id": fail["drive_file_id"],
+                "failed_at_task": fail["failed_at_task"],
+            }
+            for fail in failures
+        ]
+        findings.extend(cleanup_findings)
+        emit_evaluation(
+            flow_run_id=flow_run_id,
+            drive_file_id="batch",
+            success=success,
+            findings=findings,
+            # A cycle that saw no files is an idle tick and reports
+            # nothing; one that saw files reports either way.
+            files_seen=files_seen,
+        )
 
     duration_sec = (datetime.now(UTC) - started_at).total_seconds()
     total_cost_usd = sum(r.get("transcription_cost_usd", 0.0) for r in results)

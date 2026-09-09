@@ -5,14 +5,30 @@ invocation (see ``flows/ingest.py``) — there is no cron schedule.
 Cleanup-mode dispatch via the router is preserved so an operator can
 still trigger a manual sweep from the Prefect UI if needed.
 
-The flow walks ``voice-inbox/processed/`` and deletes any file whose
-Drive ``modifiedTime`` is older than ``ARCHIVE_RETENTION_DAYS`` days.
-Each immediate child of ``processed/`` is a date-bucket folder — new
-archives go under per-day ``YYYY-MM-DD/`` folders, and legacy monthly
-``YYYY-MM/`` folders from before that change also remain in the
-archive. Cleanup iterates immediate children uniformly without
-parsing the folder name, so both layouts drain correctly without any
-migration.
+The flow walks ``voice-inbox/processed/`` and deletes archived audio
+older than ``ARCHIVE_RETENTION_DAYS`` days. Each immediate child of
+``processed/`` is a date-bucket folder — new archives go under per-day
+``YYYY-MM-DD/`` folders, and legacy monthly ``YYYY-MM/`` folders from
+before that change also remain in the archive.
+
+Which clock retention runs on
+-----------------------------
+The bucket folder name is the archive date, so it is what retention is
+measured against. This flow used to ignore the name and filter on each
+file's Drive ``modifiedTime`` instead, which is a property of the audio
+— roughly when it was recorded — not of when it was archived. The
+setting promises "days to keep audio in processed/", and those are only
+the same clock when a note is processed the day it is recorded. A voice
+note sitting in the inbox for three weeks before a run picked it up
+could satisfy the retention test the moment it landed, and be deleted on
+the very next sweep.
+
+Per-day buckets are therefore drained whole once the bucket's own date
+falls outside the window — every file in a ``YYYY-MM-DD/`` folder was
+archived that day, so no per-file timestamp is needed or trusted.
+Legacy monthly buckets carry no single archive date, so they keep the
+old per-file ``modifiedTime`` filter; they only shrink, so the
+imprecision ages out on its own.
 
 Empty date-folders are left in place — they are cheap and useful for
 browsing the archive chronologically.
@@ -22,11 +38,21 @@ log and continue, then report counts at the end. The per-deletion
 log line is the audit trail. The ingest flow that invokes us also
 swallows our exceptions — cleanup is best-effort housekeeping, not
 on the success path.
+
+Best-effort is not the same as unreported, and this flow used to
+conflate the two. It logged ``voicenotes.cleanup.success`` with the
+counts interpolated into it, so a sweep that attempted 38 deletions
+and completed none announced itself as a success — the same shape as
+the September 2026 finding-delivery outage, where three instruments
+reported green while nothing landed. The final log line now takes its
+level from the outcome, and the batch returns ``attempted`` so the
+caller can tell "nothing to do" apart from "nothing worked".
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from prefect import flow, get_run_logger
@@ -40,6 +66,34 @@ _logger = get_logger("voicenotes-cog")
 _log = logging.getLogger(__name__)
 
 _PROCESSED_FOLDER_NAME = "processed"
+
+# Drive's folder mime type. Children of ``processed/`` are expected to
+# be date-bucket folders, but nothing stops a stray file landing there,
+# and listing children of a *file* id returns an empty list rather than
+# an error — so an unfiltered walk counts that stray as a scanned
+# bucket and reports a sweep that never looked at anything.
+_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
+
+#: Per-day archive bucket name, e.g. ``2026-09-09``. The name is written
+#: by ``tasks/archive.py`` at archive time, which is exactly the fact
+#: retention needs.
+_BUCKET_DATE_FORMAT = "%Y-%m-%d"
+
+
+def _bucket_archive_date(name: str | None) -> date | None:
+    """Return the archive date encoded in a bucket folder name, or None.
+
+    ``None`` means "this bucket does not carry a single archive date" —
+    a legacy monthly ``YYYY-MM/`` folder, or something an operator
+    created by hand. Callers fall back to per-file timestamps for those.
+    """
+    if not name:
+        return None
+    try:
+        return datetime.strptime(name.strip(), _BUCKET_DATE_FORMAT).date()
+    except ValueError:
+        return None
+
 
 # Concurrency slot for cleanup. By design, the matching limit is
 # NOT created in Prefect Cloud — Prefect's ``concurrency()``
@@ -65,8 +119,14 @@ def _flow_logger():
 def voicenotes_cleanup() -> dict[str, Any]:
     """Delete processed audio older than ``ARCHIVE_RETENTION_DAYS``.
 
-    Returns a summary dict: ``{deleted, failed, retention_days,
-    date_folders_scanned}``.
+    Returns a summary dict: ``{deleted, failed, attempted,
+    retention_days, date_folders_scanned}``.
+
+    ``attempted`` is what makes the other two readable: ``deleted=0,
+    failed=0`` is an idle sweep with nothing past retention, while
+    ``deleted=0, failed=38`` is a sweep that is completely broken. The
+    counts alone cannot distinguish them, which is why the summary log
+    line below is chosen from the outcome rather than fixed at INFO.
     """
     # Fail fast and loud if voicenotes config is missing. Module import
     # accepts empty defaults so the parent cog can boot without
@@ -100,6 +160,9 @@ def voicenotes_cleanup() -> dict[str, Any]:
         deleted = 0
         failed = 0
         date_folders_scanned = 0
+        first_error: str | None = None
+        # Buckets dated on or after this are still inside the window.
+        cutoff_date = datetime.now(UTC).date() - timedelta(days=retention_days)
 
         # Each immediate child of processed/ is a date bucket folder.
         # New archives use ``YYYY-MM-DD/`` (per processing day);
@@ -107,13 +170,47 @@ def voicenotes_cleanup() -> dict[str, Any]:
         # daily-bucket change. Don't parse the folder name — just walk
         # every immediate child so both layouts drain uniformly.
         for date_folder in drive.list_files(processed_root_id):
-            date_folders_scanned += 1
             date_folder_id = getattr(date_folder, "id", None)
             if not date_folder_id:
                 continue
-            for old_file in drive.list_files_older_than(
-                date_folder_id, days=retention_days
-            ):
+            if getattr(date_folder, "mime_type", None) != _DRIVE_FOLDER_MIME:
+                # A stray file directly under processed/. Listing its
+                # children would return [] and silently inflate the
+                # scanned-bucket count.
+                _logger.warning(
+                    "voicenotes.cleanup.unexpected_file_in_processed_root",
+                    category="data",
+                    context={
+                        "drive_file_id": date_folder_id,
+                        "name": getattr(date_folder, "name", None),
+                    },
+                )
+                continue
+            date_folders_scanned += 1
+
+            bucket_date = _bucket_archive_date(getattr(date_folder, "name", None))
+            if bucket_date is not None:
+                if bucket_date >= cutoff_date:
+                    # Whole bucket is still within retention.
+                    continue
+                # Everything here was archived on bucket_date.
+                expired_files = drive.list_files(date_folder_id)
+            else:
+                # Legacy monthly bucket (or a hand-made folder): no single
+                # archive date, so fall back to per-file modifiedTime.
+                _logger.info(
+                    "voicenotes.cleanup.undated_bucket",
+                    category="data",
+                    context={
+                        "drive_file_id": date_folder_id,
+                        "name": getattr(date_folder, "name", None),
+                    },
+                )
+                expired_files = drive.list_files_older_than(
+                    date_folder_id, days=retention_days
+                )
+
+            for old_file in expired_files:
                 file_id = getattr(old_file, "id", None)
                 if not file_id:
                     continue
@@ -131,29 +228,55 @@ def voicenotes_cleanup() -> dict[str, Any]:
                     )
                 except Exception as exc:
                     failed += 1
+                    if first_error is None:
+                        first_error = f"{type(exc).__name__}: {exc}"
                     _logger.warning(
                         "voicenotes.cleanup.delete_failed",
                         category="pipeline",
                         context={
                             "drive_file_id": file_id,
                             "error": str(exc),
+                            "error_type": type(exc).__name__,
                         },
                     )
 
+    attempted = deleted + failed
     summary = {
         "deleted": deleted,
         "failed": failed,
+        "attempted": attempted,
         "retention_days": retention_days,
         "date_folders_scanned": date_folders_scanned,
+        "first_error": first_error,
     }
-    _logger.info(
-        "voicenotes.cleanup.batch_complete",
-        category="pipeline",
-        context=summary,
-    )
-    flow_logger.info(
-        f"voicenotes.cleanup.success deleted={deleted} failed={failed} "
-        f"date_folders={date_folders_scanned}"
-    )
+
+    # Level follows the outcome. Every deletion failing is not a
+    # degraded sweep, it is a sweep that does not work, and it will keep
+    # not working every cycle until someone looks — so it is an ERROR
+    # even though cleanup is best-effort and never fails the ingest.
+    if failed == 0:
+        _logger.info(
+            "voicenotes.cleanup.batch_complete", category="pipeline", context=summary
+        )
+        flow_logger.info(
+            f"voicenotes.cleanup.success deleted={deleted} failed=0 "
+            f"date_folders={date_folders_scanned}"
+        )
+    elif deleted == 0:
+        _logger.error(
+            "voicenotes.cleanup.batch_failed", category="pipeline", context=summary
+        )
+        flow_logger.error(
+            f"voicenotes.cleanup.failure deleted=0 failed={failed} "
+            f"date_folders={date_folders_scanned} first_error={first_error!r}"
+        )
+    else:
+        _logger.warning(
+            "voicenotes.cleanup.batch_degraded", category="pipeline", context=summary
+        )
+        flow_logger.warning(
+            f"voicenotes.cleanup.degraded deleted={deleted} failed={failed} "
+            f"date_folders={date_folders_scanned} first_error={first_error!r}"
+        )
 
     return summary
