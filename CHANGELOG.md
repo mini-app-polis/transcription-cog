@@ -1,3 +1,10 @@
+# [2.10.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.3...v2.10.0) (2026-09-09)
+
+
+### Features
+
+* **voicenotes:** report what the retention sweep deleted ([c1d11c3](https://github.com/mini-app-polis/transcription-cog/commit/c1d11c333c225c8653141b15b1bfcdfead849fd3))
+
 ## [2.9.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.2...v2.9.3) (2026-09-09)
 
 
