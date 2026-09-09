@@ -60,9 +60,17 @@ Legacy monthly buckets carry no single archive date, so they keep the
 old per-file ``modifiedTime`` filter; they only shrink, so the
 imprecision ages out on its own.
 
-Empty date-folders are left in place — they are cheap, useful for
-browsing the archive chronologically, and removing them would need the
-same privilege the file deletions could not get.
+A per-day bucket is trashed once it has been drained, so the archive
+shows only dates that still hold audio rather than accumulating empty
+folders forever. Trashing a folder is an edit like trashing a file, so
+it needs no privilege the sweep does not already have — which is why
+this became possible only once the sweep stopped trying to delete.
+
+A bucket is trashed only when every file in it was trashed
+successfully: a partial drain leaves the folder alone so nothing is
+hidden while a file is still sitting in it. Legacy monthly buckets are
+never trashed at all — they hold files from a whole month, and the
+per-file filter that drains them can leave recent recordings behind.
 
 Failure mode: a single delete failure does not stop the batch; we
 log and continue, then report counts at the end. The per-deletion
@@ -148,10 +156,11 @@ def _flow_logger():
 
 @flow(name="voicenotes-cleanup")
 def voicenotes_cleanup() -> dict[str, Any]:
-    """Delete processed audio older than ``ARCHIVE_RETENTION_DAYS``.
+    """Trash processed audio older than ``ARCHIVE_RETENTION_DAYS``.
 
     Returns a summary dict: ``{trashed, failed, attempted,
-    retention_days, date_folders_scanned}``.
+    buckets_trashed, buckets_failed, retention_days,
+    date_folders_scanned}``.
 
     ``attempted`` is what makes the other two readable: ``trashed=0,
     failed=0`` is an idle sweep with nothing past retention, while
@@ -190,6 +199,8 @@ def voicenotes_cleanup() -> dict[str, Any]:
 
         trashed = 0
         failed = 0
+        buckets_trashed = 0
+        buckets_failed = 0
         date_folders_scanned = 0
         first_error: str | None = None
         # Buckets dated on or after this are still inside the window.
@@ -241,6 +252,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
                     date_folder_id, days=retention_days
                 )
 
+            bucket_failed = 0
             for old_file in expired_files:
                 file_id = getattr(old_file, "id", None)
                 if not file_id:
@@ -259,6 +271,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
                     )
                 except Exception as exc:
                     failed += 1
+                    bucket_failed += 1
                     if first_error is None:
                         first_error = f"{type(exc).__name__}: {exc}"
                     _logger.warning(
@@ -271,9 +284,42 @@ def voicenotes_cleanup() -> dict[str, Any]:
                         },
                     )
 
+            # The bucket is drained; retire the folder with it. Only for
+            # dated buckets, and only on a clean drain — a folder still
+            # holding a file that would not trash must stay visible.
+            if bucket_date is not None and bucket_failed == 0:
+                try:
+                    drive.trash_file(date_folder_id)
+                    buckets_trashed += 1
+                    _logger.info(
+                        "voicenotes.cleanup.bucket_trashed",
+                        category="pipeline",
+                        context={
+                            "drive_file_id": date_folder_id,
+                            "name": getattr(date_folder, "name", None),
+                            "files_trashed": len(expired_files),
+                        },
+                    )
+                except Exception as exc:
+                    buckets_failed += 1
+                    if first_error is None:
+                        first_error = f"{type(exc).__name__}: {exc}"
+                    _logger.warning(
+                        "voicenotes.cleanup.bucket_trash_failed",
+                        category="pipeline",
+                        context={
+                            "drive_file_id": date_folder_id,
+                            "name": getattr(date_folder, "name", None),
+                            "error": str(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+
     attempted = trashed + failed
     summary = {
         "trashed": trashed,
+        "buckets_trashed": buckets_trashed,
+        "buckets_failed": buckets_failed,
         "failed": failed,
         "attempted": attempted,
         "retention_days": retention_days,
@@ -291,15 +337,16 @@ def voicenotes_cleanup() -> dict[str, Any]:
     # though cleanup is best-effort and never fails the ingest. That is
     # the case that ran undetected for months behind an INFO line
     # reading "success".
-    if failed == 0:
+    if failed == 0 and buckets_failed == 0:
         _logger.info(
             "voicenotes.cleanup.batch_complete", category="pipeline", context=summary
         )
         flow_logger.info(
             f"voicenotes.cleanup.success trashed={trashed} failed=0 "
+            f"buckets_trashed={buckets_trashed} "
             f"date_folders={date_folders_scanned}"
         )
-    elif trashed == 0:
+    elif attempted > 0 and trashed == 0:
         _logger.error(
             "voicenotes.cleanup.batch_failed", category="pipeline", context=summary
         )
@@ -313,6 +360,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
         )
         flow_logger.warning(
             f"voicenotes.cleanup.degraded trashed={trashed} failed={failed} "
+            f"buckets_trashed={buckets_trashed} buckets_failed={buckets_failed} "
             f"date_folders={date_folders_scanned} first_error={first_error!r}"
         )
 

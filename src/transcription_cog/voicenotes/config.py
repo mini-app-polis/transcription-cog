@@ -177,14 +177,14 @@ class Settings(BaseSettings):
 
     # --- Behavior ---
     archive_retention_days: int = Field(
-        default=14,
+        default=7,
         ge=1,
         description=(
             "Days to keep audio in processed/ before the sweep trashes "
             "it. Trashed, not deleted: the shared drive empties its own "
             "trash after ~30 days, so the real floor is this plus that. "
-            "14 days is more than enough for the typical 'I want to "
-            "re-listen to that note from last week' use case; older audio "
+            "7 days covers the typical 'I want to re-listen to that "
+            "note from earlier this week' use case; older audio "
             "is rarely consulted and the Asana task body is the "
             "durable record."
         ),

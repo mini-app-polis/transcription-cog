@@ -346,6 +346,7 @@ def voicenotes_ingest() -> dict[str, Any]:
                 "voicenotes.flow.cleanup_completed "
                 f"trashed={cleanup_trashed} failed={cleanup_failed}"
             )
+            cleanup_buckets = int(cleanup_summary.get("buckets_trashed", 0) or 0)
             if cleanup_trashed:
                 # Removing the operator's audio was the one thing this
                 # cog did that produced no notification — only a Railway
@@ -353,12 +354,15 @@ def voicenotes_ingest() -> dict[str, Any]:
                 # run's existing message rather than a second one, per
                 # the one-message-per-run rule. The 30-day window is
                 # named because that is the operator's chance to undo it.
-                cleanup_notices.append(
+                notice = (
                     f"retention: trashed {cleanup_trashed} recording(s) "
                     f"archived before "
                     f"{cleanup_summary.get('cutoff_date') or 'the retention window'}"
-                    " — recoverable from shared drive trash for 30 days"
                 )
+                if cleanup_buckets:
+                    notice += f" and {cleanup_buckets} emptied date folder(s)"
+                notice += " — recoverable from shared drive trash for 30 days"
+                cleanup_notices.append(notice)
             if cleanup_failed:
                 cleanup_findings.append(
                     {
