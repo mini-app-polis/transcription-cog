@@ -1,3 +1,10 @@
+## [2.9.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.9.0...v2.9.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **asana:** send workspace as the container when creating into a section ([7e17df1](https://github.com/mini-app-polis/transcription-cog/commit/7e17df1271293dc387c5494fea253f1a88160d2f))
+
 # [2.9.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.8.1...v2.9.0) (2026-09-09)
 
 
