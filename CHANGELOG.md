@@ -1,3 +1,10 @@
+# [2.8.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.7.4...v2.8.0) (2026-09-09)
+
+
+### Features
+
+* **flow:** report per-file outcomes through RunReport ([916ee6a](https://github.com/mini-app-polis/transcription-cog/commit/916ee6a4b07cede940ab372550b5130fc03686ff))
+
 ## [2.7.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.7.3...v2.7.4) (2026-09-09)
 
 
