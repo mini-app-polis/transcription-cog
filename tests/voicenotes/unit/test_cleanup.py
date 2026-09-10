@@ -95,7 +95,10 @@ class TestCounting:
         """Listing a file's children returns [], which would otherwise
         inflate the scanned-bucket count with a folder that never was."""
         drive = patch_drive(
-            _drive(children=[_folder("d1"), _file("stray")], old_files=[])
+            _drive(
+                children=[_dated_folder("d1", days_ago=30), _file("stray")],
+                old_files=[],
+            )
         )
         summary = voicenotes_cleanup.fn()
         assert summary["date_folders_scanned"] == 1
