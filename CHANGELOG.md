@@ -1,3 +1,15 @@
+# [2.12.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.11.1...v2.12.0) (2026-09-10)
+
+
+### Bug Fixes
+
+* moving to common 5.7.1 ([35ed340](https://github.com/mini-app-polis/transcription-cog/commit/35ed340eadaa5aa3506865ad0fb085c421a9a2bf))
+
+
+### Features
+
+* **environment:** gate the Healthchecks ping outside production ([07616d4](https://github.com/mini-app-polis/transcription-cog/commit/07616d4b9611de4e85b489f3182680a36857de33))
+
 ## [2.11.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.11.0...v2.11.1) (2026-09-10)
 
 
