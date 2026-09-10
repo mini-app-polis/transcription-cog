@@ -27,13 +27,27 @@ def _file(file_id: str, name: str = "note.m4a"):
 
 
 def _drive(*, children, old_files, delete_side_effect=None):
-    """Build a DriveClient stub for one processed/ root."""
+    """Build a DriveClient stub for one processed/ root.
+
+    A dated bucket (name matching ``YYYY-MM-DD``) is drained via
+    ``list_files(bucket_id)`` — measured by the bucket's own archive
+    date, not per-file timestamps — while ``list_files_older_than`` is
+    reserved for legacy, undated buckets. ``list_files`` therefore
+    needs to answer differently for the processed/ root than for a
+    bucket inside it.
+    """
     drive = MagicMock()
     drive.ensure_subfolder.return_value = "processed-root"
-    drive.list_files.return_value = children
+
+    def _list_files(folder_id):
+        if folder_id == "processed-root":
+            return children
+        return old_files
+
+    drive.list_files.side_effect = _list_files
     drive.list_files_older_than.return_value = old_files
     if delete_side_effect is not None:
-        drive.delete_file.side_effect = delete_side_effect
+        drive.trash_file.side_effect = delete_side_effect
     return drive
 
 
@@ -52,7 +66,7 @@ class TestCounting:
         patch_drive(_drive(children=[_folder("d1")], old_files=[]))
         summary = voicenotes_cleanup.fn()
         assert summary["attempted"] == 0
-        assert summary["deleted"] == 0
+        assert summary["trashed"] == 0
         assert summary["failed"] == 0
         assert summary["date_folders_scanned"] == 1
 
@@ -64,18 +78,22 @@ class TestCounting:
         )
         summary = voicenotes_cleanup.fn()
         assert summary["date_folders_scanned"] == 1
-        # The stray was never walked.
-        assert drive.list_files_older_than.call_count == 1
+        # The stray was never walked, and the dated bucket is drained
+        # via list_files (measured by bucket date), not the legacy
+        # per-file list_files_older_than path.
+        assert drive.list_files.call_count == 2
+        assert drive.list_files_older_than.call_count == 0
 
     def test_deletes_every_file_past_retention(self, patch_drive):
         drive = patch_drive(
             _drive(children=[_folder("d1")], old_files=[_file("a"), _file("b")])
         )
         summary = voicenotes_cleanup.fn()
-        assert summary["deleted"] == 2
+        assert summary["trashed"] == 2
         assert summary["failed"] == 0
         assert summary["attempted"] == 2
-        assert drive.delete_file.call_count == 2
+        # 2 files trashed, plus the now-empty bucket folder itself.
+        assert drive.trash_file.call_count == 3
 
 
 class TestReporting:
@@ -92,7 +110,7 @@ class TestReporting:
         with caplog.at_level("ERROR"):
             summary = voicenotes_cleanup.fn()
 
-        assert summary["deleted"] == 0
+        assert summary["trashed"] == 0
         assert summary["failed"] == 2
         assert summary["attempted"] == 2
         assert "cleanup.failure" in caplog.text
@@ -111,7 +129,7 @@ class TestReporting:
         with caplog.at_level("WARNING"):
             summary = voicenotes_cleanup.fn()
 
-        assert (summary["deleted"], summary["failed"]) == (1, 1)
+        assert (summary["trashed"], summary["failed"]) == (1, 1)
         assert "cleanup.degraded" in caplog.text
         assert "cleanup.success" not in caplog.text
 
