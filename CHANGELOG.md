@@ -1,3 +1,15 @@
+# [2.11.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.10.1...v2.11.0) (2026-09-10)
+
+
+### Bug Fixes
+
+* tests ([2bd3d79](https://github.com/mini-app-polis/transcription-cog/commit/2bd3d79da5d71a624428ea888a35f8b42813d9ba))
+
+
+### Features
+
+* finishing updates with folder trash and 7 day retention ([3b3555a](https://github.com/mini-app-polis/transcription-cog/commit/3b3555a11f8b2ab1413d248a398376cf39dca062))
+
 ## [2.10.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.10.0...v2.10.1) (2026-09-09)
 
 

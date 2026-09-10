@@ -99,8 +99,11 @@ class TestCounting:
         )
         summary = voicenotes_cleanup.fn()
         assert summary["date_folders_scanned"] == 1
-        # The stray was never walked.
-        assert drive.list_files_older_than.call_count == 1
+        # The stray was never walked, and the dated bucket is drained
+        # via list_files (measured by bucket date), not the legacy
+        # per-file list_files_older_than path.
+        assert drive.list_files.call_count == 2
+        assert drive.list_files_older_than.call_count == 0
 
     def test_deletes_every_file_past_retention(self, patch_drive):
         drive = patch_drive(
