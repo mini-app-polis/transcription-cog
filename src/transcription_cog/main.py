@@ -47,6 +47,7 @@ import httpx
 import sentry_sdk
 from dotenv import load_dotenv
 from mini_app_polis import logger as log
+from mini_app_polis.environment import Effect, current_environment, effect_enabled
 from mini_app_polis.serve_resilience import serve_with_retry
 from prefect import flow, get_run_logger
 
@@ -141,13 +142,26 @@ def _init_sentry(dsn: str) -> None:
     sentry_sdk.init(
         dsn=dsn,
         traces_sample_rate=0.1,
-        environment=os.getenv("RAILWAY_ENVIRONMENT", "production"),
+        environment=current_environment().value,
         release=os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown"),
     )
     LOG.info(log.with_log_prefix(log.LOG_SUCCESS, "Sentry initialised"))
 
 
 def _ping_healthcheck(url: str, timeout_seconds: int) -> None:
+    # A Healthchecks.io check has no environment of its own — one URL is
+    # one check — and a dev container pinging it holds it green while
+    # production is dead, which is the one failure the check exists to
+    # catch. The gate is gone through before the URL is read, so a
+    # production ping URL copied into dev is never reached even by
+    # accident.
+    if not effect_enabled(Effect.HEALTHCHECKS):
+        LOG.info(
+            log.with_log_prefix(
+                log.LOG_START, "Healthchecks.io ping suppressed (not production)"
+            )
+        )
+        return
     if not url:
         return
     try:
