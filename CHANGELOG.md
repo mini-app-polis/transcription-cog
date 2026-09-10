@@ -1,3 +1,10 @@
+## [2.11.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.11.0...v2.11.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **voicenotes:** test the retention sweep against its actual contract ([61158de](https://github.com/mini-app-polis/transcription-cog/commit/61158deb18a2dc165d281666269ef7e1e985caad))
+
 # [2.11.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.10.1...v2.11.0) (2026-09-10)
 
 
