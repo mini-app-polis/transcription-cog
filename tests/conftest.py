@@ -119,6 +119,19 @@ def _disable_task_retries(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _production_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise the real Healthchecks path unless a test says otherwise.
+
+    Effect gates resolve from the environment, and the module-scope
+    bootstrap seeds ENVIRONMENT=test — which would suppress every ping
+    and quietly turn healthcheck tests into a test of the suppression
+    branch. Tests that want the suppressed path set ENVIRONMENT themselves.
+    """
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("HEALTHCHECKS_ENABLED", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _quiet_prefect_logs() -> None:
     """Suppress Prefect's task-engine tracebacks for expected exceptions."""
     logging.getLogger("prefect").setLevel(logging.CRITICAL)
