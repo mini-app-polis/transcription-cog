@@ -446,6 +446,10 @@ def process_transcript() -> dict:
                         report.issue("schema_invalid", file_name)
                     else:
                         report.ok()
+                    # A transcript row now exists that did not before.
+                    # ``ok()`` counts it; only this says which one, and
+                    # a count is not something you can go and look at.
+                    report.created("transcript", file_name)
                     logger.info(
                         log.with_log_prefix(
                             log.LOG_SUCCESS, f"Completed: {file_name!r}"
