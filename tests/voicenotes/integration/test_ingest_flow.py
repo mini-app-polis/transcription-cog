@@ -343,15 +343,29 @@ class TestIngestUnusableEntry:
         # The usable file in the same batch still processed.
         stub_clients.drive.download_file.assert_called_once_with("drive-good")
 
-        # And the batch did not report itself successful.
+        # And the batch did not report itself clean. There is no longer a
+        # success flag to check: the report carries the failure as a
+        # finding and counts one of the two files as processed, which is
+        # what the message is built from.
         emit.assert_called_once()
-        assert emit.call_args.kwargs["success"] is False
+        kwargs = emit.call_args.kwargs
+        assert kwargs["files_seen"] == 2
+        assert kwargs["files_processed"] == 1
         (batch_finding,) = [
-            f
-            for f in emit.call_args.kwargs["findings"]
-            if f["failed_at_task"] == "scan"
+            f for f in kwargs["findings"] if f["failed_at_task"] == "scan"
         ]
         assert "no usable string id" in batch_finding["message"]
+
+        # The file that did work is announced by name, which is the whole
+        # point of the outcome verb — the run said "1 file(s) seen" and
+        # nothing about the Asana task before this.
+        (created,) = kwargs["outcomes"]
+        assert created["kind"] == "asana task"
+        assert created["item"] == "Send floor trials report to Mark"
+        assert created["link"].endswith("/as-100")
+
+        # And how long it took, on every report.
+        assert kwargs["duration_sec"] >= 0
 
 
 class TestIngestEmptyInbox:

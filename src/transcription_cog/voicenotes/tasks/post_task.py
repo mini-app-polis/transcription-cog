@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from mini_app_polis.asana import (
@@ -58,6 +59,34 @@ _TASK_RETRY_DELAYS = settings.task_retry_delays_seconds
 # ``external`` id directly, so dedup is one request and sees completed
 # tasks too. The link is now just a link.
 DRIVE_FILE_VIEW_URL_TEMPLATE = "https://drive.google.com/file/d/{drive_file_id}/view"
+
+# Where a person goes to look at the task this run created. The run report
+# carries it so the Discord message is one click from the thing it is
+# announcing, rather than a gid to paste into a search box.
+ASANA_TASK_URL_TEMPLATE = "https://app.asana.com/0/{project_gid}/{task_gid}"
+
+
+@dataclass(frozen=True)
+class PostedTask:
+    """The task this file now has, and whether this run is why.
+
+    ``gid`` alone could not answer the second question, and the run report
+    needs it: a replayed file whose task already existed created nothing,
+    and announcing it as new would make the idempotency guard look like
+    duplicate work every time a batch retried.
+    """
+
+    gid: str
+    created: bool
+
+    @property
+    def url(self) -> str:
+        """Permalink to the task in Asana."""
+        return ASANA_TASK_URL_TEMPLATE.format(
+            project_gid=settings.asana_inbox_project_id or "0",
+            task_gid=self.gid,
+        )
+
 
 # Namespace for the idempotency key stored on the task's ``external``
 # field. The prefix keeps voice notes distinct from other sources that
@@ -326,8 +355,8 @@ def tag_names_for(extracted: ExtractedTask) -> tuple[str, ...]:
 def post_task(
     extracted: ExtractedTask,
     drive_file_id: str,
-) -> str:
-    """Create the Asana task. Returns the task gid.
+) -> PostedTask:
+    """Create the Asana task. Returns the task and whether it is new.
 
     Idempotency:
       - Every task carries ``external.gid = voicenote.<drive_file_id>``.
@@ -337,6 +366,10 @@ def post_task(
     The lookup finds completed tasks as well as open ones, so a note
     the operator has already triaged and checked off is not recreated
     when a downstream failure replays the file.
+
+    ``created`` is returned rather than inferred because the run report
+    distinguishes the two: a task this run made is news, and a task it
+    found already there is the guard working.
     """
     _logger.info(
         "voicenotes.asana_post.start",
@@ -362,7 +395,7 @@ def post_task(
                 "existing_task_id": existing_id,
             },
         )
-        return existing_id
+        return PostedTask(gid=existing_id, created=False)
 
     tag_gids = resolve_tag_gids(client, tag_names_for(extracted))
     payload = compose_task_input(extracted, drive_file_id, tag_gids=tag_gids)
@@ -388,4 +421,4 @@ def post_task(
             "tagged_review": _REVIEW_TAG in tag_names_for(extracted),
         },
     )
-    return task_id
+    return PostedTask(gid=task_id, created=True)

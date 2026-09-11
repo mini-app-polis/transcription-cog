@@ -310,7 +310,11 @@ class TestPostTaskHappyPath:
         extracted = ExtractedTask(title="Send report", description="Body.")
         result = post_task.fn(extracted, drive_file_id="drive-abc")
 
-        assert result == "as-101"
+        assert result.gid == "as-101"
+        # The run report needs to know this task is new; a replay that
+        # found an existing one must not be announced as work done.
+        assert result.created is True
+        assert result.url.endswith("/as-101")
         fake.find_task_by_external_id.assert_called_once_with("voicenote.drive-abc")
         fake.create_task.assert_called_once()
         sent = fake.create_task.call_args.args[0]
@@ -331,7 +335,8 @@ class TestPostTaskDeduplication:
         extracted = ExtractedTask(title="t", description="s")
         result = post_task.fn(extracted, drive_file_id="dup-id")
 
-        assert result == "as-existing"
+        assert result.gid == "as-existing"
+        assert result.created is False
         fake.find_task_by_external_id.assert_called_once_with("voicenote.dup-id")
         fake.create_task.assert_not_called()
 

@@ -36,11 +36,13 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from mini_app_polis.pipeline_status import CREATED, REMOVED
 from prefect import flow, get_run_logger
 from prefect.concurrency.sync import concurrency
 from prefect.context import get_run_context
 
 from transcription_cog._batch_fatal import is_batch_fatal as _is_batch_fatal
+from transcription_cog._pipeline_eval import make_failure_hook
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
 from transcription_cog.voicenotes.config import require_voicenotes_settings, settings
@@ -87,38 +89,17 @@ def _current_flow_run_id() -> str:
     return f"local-{datetime.now(UTC).isoformat()}"
 
 
-def _emit_terminal_failure(flow, flow_run, state) -> None:
-    """Prefect flow hook: emit a final pipeline_evaluation on crash.
-
-    Used as ``on_crashed`` and ``on_failure``. Covers the scenario
-    where the flow body never reaches its inline ``except`` branches
-    — e.g., worker SIGKILL, OOM, or an exception escaping the
-    ``with concurrency()`` block. Best-effort; never re-raises.
-    """
-    flow_run_id = (
-        str(flow_run.id) if getattr(flow_run, "id", None) else _current_flow_run_id()
-    )
-    message = str(getattr(state, "message", "") or type(state).__name__)
-    try:
-        # source="flow_hook" tells the Pipeline Health UI's Run Type
-        # facet that this row came from an on_failure / on_crashed
-        # hook rather than the inline body — load-bearing for
-        # distinguishing "flow caught an error" from "flow died".
-        emit_evaluation.fn(
-            flow_run_id=flow_run_id,
-            drive_file_id="batch",
-            success=False,
-            findings=[
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": f"terminal: {message}",
-                }
-            ],
-            source="flow_hook",
-        )
-    except Exception as exc:
-        _log.warning("voicenotes.flow.terminal_emit_failed error=%r", exc)
+# Prefect on_failure / on_crashed hook. This was a hand-rolled function
+# that reported every terminal state as ERROR through emit_evaluation.
+# The shared helper reports WARN for Failed and ERROR for Crashed — the
+# distinction the Prefect state already carries and the local version
+# flattened — and it is the same hook the WCS transcript flow in this
+# repo already uses, so the two pipelines now fail the same way.
+#
+# source="flow_hook" tells the Pipeline Health UI's Run Type facet that
+# the row came from a hook rather than the inline body; the helper sets
+# it. Best-effort, and documented never to raise.
+_emit_terminal_failure = make_failure_hook("voicenotes-ingest")
 
 
 # ---------------------------------------------------------------------------
@@ -131,15 +112,23 @@ def _process_one_file(drive_file_id: str) -> dict[str, Any]:
 
     Raises whatever the underlying tasks raise — caller catches and
     decides whether to abort the batch or continue.
+
+    The task's title, url and whether it is new are carried back out
+    alongside the gid. They were not, and the batch report could
+    therefore only ever say how many files it had seen — the one fact
+    about a processed voice note that does not answer "and then what?".
     """
     audio_bytes = download_audio(drive_file_id)
     transcription = transcribe(audio_bytes, drive_file_id=drive_file_id)
     extracted = extract(transcription.text, drive_file_id=drive_file_id)
-    task_id = post_task(extracted, drive_file_id=drive_file_id)
+    posted = post_task(extracted, drive_file_id=drive_file_id)
     archive_audio(drive_file_id)
     return {
         "drive_file_id": drive_file_id,
-        "asana_task_id": task_id,
+        "asana_task_id": posted.gid,
+        "asana_task_created": posted.created,
+        "asana_task_title": (extracted.title or "").strip() or posted.gid,
+        "asana_task_url": posted.url,
         "needs_review": extracted.needs_review,
         "transcription_cost_usd": float(
             getattr(transcription, "cost_usd_estimate", None) or 0.0
@@ -337,7 +326,7 @@ def voicenotes_ingest() -> dict[str, Any]:
         # reporting it keeps "off the success path" from meaning
         # "invisible".
         cleanup_findings: list[dict[str, Any]] = []
-        cleanup_notices: list[str] = []
+        cleanup_outcomes: list[dict[str, Any]] = []
         try:
             cleanup_summary = voicenotes_cleanup.fn()
             cleanup_failed = int(cleanup_summary.get("failed", 0) or 0)
@@ -348,21 +337,33 @@ def voicenotes_ingest() -> dict[str, Any]:
             )
             cleanup_buckets = int(cleanup_summary.get("buckets_trashed", 0) or 0)
             if cleanup_trashed:
-                # Removing the operator's audio was the one thing this
-                # cog did that produced no notification — only a Railway
-                # log line nobody reads on a good day. It rides in the
-                # run's existing message rather than a second one, per
-                # the one-message-per-run rule. The 30-day window is
-                # named because that is the operator's chance to undo it.
-                notice = (
-                    f"retention: trashed {cleanup_trashed} recording(s) "
-                    f"archived before "
-                    f"{cleanup_summary.get('cutoff_date') or 'the retention window'}"
+                # Removing the operator's audio was the one thing this cog
+                # did that produced no notification — only a Railway log
+                # line nobody reads on a good day. It rode in the run's
+                # message as a bespoke "notice", which was the right
+                # instinct and the wrong place: deleting a recording is an
+                # outcome, the same kind of thing as creating a task, and
+                # the library now has the word for it. It still rides in
+                # the run's existing message rather than a second one.
+                cutoff = cleanup_summary.get("cutoff_date") or "the retention window"
+                cleanup_outcomes.append(
+                    {
+                        "op": REMOVED,
+                        "kind": "recording",
+                        "item": (
+                            f"{cleanup_trashed} archived before {cutoff} "
+                            "(in shared drive trash for 30 days)"
+                        ),
+                    }
                 )
                 if cleanup_buckets:
-                    notice += f" and {cleanup_buckets} emptied date folder(s)"
-                notice += " — recoverable from shared drive trash for 30 days"
-                cleanup_notices.append(notice)
+                    cleanup_outcomes.append(
+                        {
+                            "op": REMOVED,
+                            "kind": "date folder",
+                            "item": f"{cleanup_buckets} emptied",
+                        }
+                    )
             if cleanup_failed:
                 cleanup_findings.append(
                     {
@@ -410,30 +411,42 @@ def voicenotes_ingest() -> dict[str, Any]:
         # would make every cycle look like a pipeline failure while the
         # pipeline is fine. The cleanup finding rides along instead, so
         # the failure is visible in Pipeline Health at its own severity.
-        success = len(failures) == 0
         findings: list[dict[str, Any]] = [
             {
                 "category": "pipeline",
                 "severity": "ERROR",
                 "message": fail["error"],
                 "drive_file_id": fail["drive_file_id"],
+                "name": fail.get("name"),
                 "failed_at_task": fail["failed_at_task"],
             }
             for fail in failures
         ]
         findings.extend(cleanup_findings)
+
+        # What this run made exist, which is what a person opening the
+        # channel actually wants from a voice note. A replayed file whose
+        # task was already there created nothing and says so by absence —
+        # the idempotency guard working is not news.
+        outcomes: list[dict[str, Any]] = [
+            {
+                "op": CREATED,
+                "kind": "asana task",
+                "item": r["asana_task_title"],
+                "link": r["asana_task_url"],
+            }
+            for r in results
+            if r.get("asana_task_created")
+        ]
+        outcomes.extend(cleanup_outcomes)
+
         emit_evaluation(
             flow_run_id=flow_run_id,
-            drive_file_id="batch",
-            success=success,
-            findings=findings,
-            # A cycle that saw no files is an idle tick and reports
-            # nothing; one that saw files reports either way.
             files_seen=files_seen,
-            notices=cleanup_notices,
-            # The headline counts files, not findings — a failed
-            # retention sweep is a finding and zero failed files.
-            files_failed=len(failures),
+            files_processed=len(results),
+            findings=findings,
+            outcomes=outcomes,
+            duration_sec=(datetime.now(UTC) - started_at).total_seconds(),
         )
 
     duration_sec = (datetime.now(UTC) - started_at).total_seconds()
