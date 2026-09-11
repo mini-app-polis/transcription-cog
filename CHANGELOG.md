@@ -1,3 +1,10 @@
+## [2.12.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.12.0...v2.12.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* stop serving prefect deployments outside production ([1f06ce8](https://github.com/mini-app-polis/transcription-cog/commit/1f06ce8b02fd503e9867eebbd2ea85c3f39b86c8))
+
 # [2.12.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.11.1...v2.12.0) (2026-09-10)
 
 
