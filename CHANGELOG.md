@@ -1,3 +1,11 @@
+# [2.13.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.12.1...v2.13.0) (2026-09-11)
+
+
+### Features
+
+* verb status and duration added ([562b500](https://github.com/mini-app-polis/transcription-cog/commit/562b5005f796d8ca795db4c03f1581a5022f3aaf))
+* verb status and duration added ([0adf7a1](https://github.com/mini-app-polis/transcription-cog/commit/0adf7a165cd587f353526560328d48626efc5095))
+
 ## [2.12.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.12.0...v2.12.1) (2026-09-11)
 
 
