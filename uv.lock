@@ -3371,7 +3371,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.8.0,<6" },
+    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.9.0,<6" },
     { name = "openai", specifier = ">=1.50" },
     { name = "prefect", specifier = ">=3.0.0,<4.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0,<3.0.0" },
