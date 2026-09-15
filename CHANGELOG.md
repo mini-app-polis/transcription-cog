@@ -1,3 +1,10 @@
+## [2.13.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.0...v2.13.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deps:** bump the python-minor-and-patch group with 4 updates ([f4a7bb1](https://github.com/mini-app-polis/transcription-cog/commit/f4a7bb1f6e97115a1bb91dfed2bd4e9296a1342d))
+
 # [2.13.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.12.1...v2.13.0) (2026-09-11)
 
 
