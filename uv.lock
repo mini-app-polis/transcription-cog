@@ -1128,7 +1128,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "5.10.2"
+version = "5.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1145,9 +1145,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/d7/1a42db50bec33e38efa6b123a78d93fb45d3a0b550c897a032a738c85d7b/miniapppolis_common_utils-5.10.2.tar.gz", hash = "sha256:f2579f2991a8bda0b66848255874cb76bc3315591de56d6af9c0393a0b43fc1b", size = 272665, upload-time = "2026-09-21T20:15:40.607Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/1d/ff5461e01ec323fd6da6c1086feb571b4ba1e93a683bc3c5bef4b8603c4b/miniapppolis_common_utils-5.11.0.tar.gz", hash = "sha256:dafb81c122af55720ec1667dcf70ed9c6840f7c8754a4ada068c4075fadad492", size = 273825, upload-time = "2026-09-22T17:16:33.137Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/f2/b2432212d2383df2184626386b3c6869794175d2ba5041e61b234e7b28fc/miniapppolis_common_utils-5.10.2-py3-none-any.whl", hash = "sha256:67331e758f5937060e004ac94c869d60bc479f3aa32925800424ad36fa53fe29", size = 105651, upload-time = "2026-09-21T20:15:39.556Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/67/e290a9b21e25825bc41c1850568690f9e2e19df386b2e0dff3ad3b66a8fc/miniapppolis_common_utils-5.11.0-py3-none-any.whl", hash = "sha256:6d4965ebd8b1c4eca49ad9b4744b0944c9d4df732ff45b1055cddd649b304c7c", size = 106401, upload-time = "2026-09-22T17:16:32.026Z" },
 ]
 
 [package.optional-dependencies]
@@ -2070,7 +2070,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.10.0,<6" },
+    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.11.0,<6" },
     { name = "openai", specifier = ">=1.50" },
     { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0,<3.0.0" },

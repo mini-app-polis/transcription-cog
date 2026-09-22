@@ -75,6 +75,16 @@ load_dotenv()
 
 LOG = log.get_logger()
 
+#: What one extraction may spend, and how many attempts it gets, passed to
+#: the shared factory rather than inherited. The library's default is 60 s,
+#: which is shorter than this pipeline's own calls: the run on record took
+#: about five minutes end to end, most of it here, because the schema allows
+#: up to 16k output tokens. The SDK's default of two retries on top would be
+#: three attempts of up to ten minutes inside a 900-second invocation, so
+#: retrying is left to the queue: a redelivery is a fresh invocation.
+_LLM_TIMEOUT_SECONDS = 600.0
+_LLM_MAX_RETRIES = 0
+
 _SUPPORTED_MIME_TYPES = {
     "application/vnd.google-apps.document",
     "text/plain",
@@ -153,7 +163,12 @@ def task_call_llm(
             f"Calling LLM: provider={cfg.llm_provider} model={cfg.llm_model}",
         )
     )
-    llm = build_llm(provider=cfg.llm_provider, model=cfg.llm_model)
+    llm = build_llm(
+        provider=cfg.llm_provider,
+        model=cfg.llm_model,
+        timeout_s=_LLM_TIMEOUT_SECONDS,
+        max_retries=_LLM_MAX_RETRIES,
+    )
     msg_dicts = build_messages(transcript_text, parsed=parsed)
     messages = [LLMMessage(role=m["role"], content=m["content"]) for m in msg_dicts]
 
