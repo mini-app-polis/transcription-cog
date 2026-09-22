@@ -1,3 +1,11 @@
+## [2.15.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.2...v2.15.3) (2026-09-22)
+
+
+### Bug Fixes
+
+* **llm:** bound the extraction call to one 600s attempt ([1cec6e3](https://github.com/mini-app-polis/transcription-cog/commit/1cec6e3f7b5a4c9c0f4f04cf2255c9473f6234d3))
+* package cleanup ([0b05f9e](https://github.com/mini-app-polis/transcription-cog/commit/0b05f9e9f97107bc965ebff56c278742efa9d1f7))
+
 ## [2.15.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.1...v2.15.2) (2026-09-22)
 
 
