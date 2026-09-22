@@ -207,7 +207,11 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 process_message(body, run_id=message_id)
         except UnprocessableMessage as exc:
             log.error("worker: unprocessable message (attempt %s): %s", attempt, exc)
-            _report_unprocessable(exc, message_id)
+            # Once, on the first receive. Every later receive fails the same
+            # way, and where it ends up — the dead-letter queue — has an
+            # alarm of its own; five reports of one bad message is noise.
+            if attempt in ("1", "?"):
+                _report_unprocessable(exc, message_id)
             failures.append({"itemIdentifier": message_id})
         except Exception:  # noqa: BLE001 — every failure is a retry
             # Already reported by the flow; see _report_unprocessable.

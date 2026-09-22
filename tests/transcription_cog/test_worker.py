@@ -223,3 +223,18 @@ def test_no_time_left_to_start_is_a_retry_not_a_run(
 
     assert result == {"batchItemFailures": [{"itemIdentifier": "m-0"}]}
     flows["wcs-transcripts"].assert_not_called()
+
+
+def test_an_unprocessable_message_is_reported_once_not_per_receive(
+    flows: dict[str, MagicMock], reported: MagicMock
+) -> None:
+    """A redelivery fails the same way; the DLQ alarm covers where it ends."""
+    event = _event("not json")
+    event["Records"][0]["attributes"]["ApproximateReceiveCount"] = "2"
+
+    result = worker.lambda_handler(event, None)
+
+    assert result == {"batchItemFailures": [{"itemIdentifier": "m-0"}]}
+    reported.assert_not_called()
+    for flow in flows.values():
+        flow.assert_not_called()
