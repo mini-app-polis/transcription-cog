@@ -1,3 +1,51 @@
+# [2.14.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.2...v2.14.0) (2026-09-22)
+
+
+### Features
+
+* migration to aws and away from prefect ([ca9ba4f](https://github.com/mini-app-polis/transcription-cog/commit/ca9ba4f2669b3f8b50cb6c93fd88216c426d8317))
+
+## [2.13.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.1...v2.13.2) (2026-09-21)
+
+
+### Bug Fixes
+
+* latest common ([a9c76d3](https://github.com/mini-app-polis/transcription-cog/commit/a9c76d31cb493fe4fbdd5491f2c09cda60a5775c))
+
+## [2.13.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.0...v2.13.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **deps:** bump the python-minor-and-patch group with 4 updates ([f4a7bb1](https://github.com/mini-app-polis/transcription-cog/commit/f4a7bb1f6e97115a1bb91dfed2bd4e9296a1342d))
+
+# [2.13.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.12.1...v2.13.0) (2026-09-11)
+
+
+### Features
+
+* verb status and duration added ([562b500](https://github.com/mini-app-polis/transcription-cog/commit/562b5005f796d8ca795db4c03f1581a5022f3aaf))
+* verb status and duration added ([0adf7a1](https://github.com/mini-app-polis/transcription-cog/commit/0adf7a165cd587f353526560328d48626efc5095))
+
+## [2.12.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.12.0...v2.12.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* stop serving prefect deployments outside production ([1f06ce8](https://github.com/mini-app-polis/transcription-cog/commit/1f06ce8b02fd503e9867eebbd2ea85c3f39b86c8))
+
+# [2.12.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.11.1...v2.12.0) (2026-09-10)
+
+
+### Bug Fixes
+
+* moving to common 5.7.1 ([35ed340](https://github.com/mini-app-polis/transcription-cog/commit/35ed340eadaa5aa3506865ad0fb085c421a9a2bf))
+
+
+### Features
+
+* **environment:** gate the Healthchecks ping outside production ([07616d4](https://github.com/mini-app-polis/transcription-cog/commit/07616d4b9611de4e85b489f3182680a36857de33))
+
 ## [2.11.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.11.0...v2.11.1) (2026-09-10)
 
 
