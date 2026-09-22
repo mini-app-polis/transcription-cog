@@ -1,3 +1,15 @@
+# [2.15.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.14.0...v2.15.0) (2026-09-22)
+
+
+### Bug Fixes
+
+* **deps:** bump the python-minor-and-patch group with 5 updates ([761ad15](https://github.com/mini-app-polis/transcription-cog/commit/761ad15c88939e0ef72c2fa73f99370075382c90))
+
+
+### Features
+
+* migration to aws and away from prefect ([1227145](https://github.com/mini-app-polis/transcription-cog/commit/12271453c50a5f4db9c3206263fbfb127eb7569d))
+
 # [2.14.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.2...v2.14.0) (2026-09-22)
 
 
