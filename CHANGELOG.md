@@ -1,3 +1,10 @@
+## [2.15.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.1...v2.15.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* **worker): report an unprocessable message once, not per receive and chore(infra:** refuse the placeholder alert email ([eff540a](https://github.com/mini-app-polis/transcription-cog/commit/eff540ac787adaa241818d66a7c562a200a56498))
+
 ## [2.15.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.0...v2.15.1) (2026-09-22)
 
 
