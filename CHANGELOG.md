@@ -1,3 +1,10 @@
+# [2.14.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.2...v2.14.0) (2026-09-22)
+
+
+### Features
+
+* migration to aws and away from prefect ([ca9ba4f](https://github.com/mini-app-polis/transcription-cog/commit/ca9ba4f2669b3f8b50cb6c93fd88216c426d8317))
+
 ## [2.13.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.13.1...v2.13.2) (2026-09-21)
 
 
