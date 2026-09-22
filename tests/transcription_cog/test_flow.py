@@ -1,7 +1,14 @@
-"""Tests for flow.py — critical path: normalization, deduplication, failure paths, output shape."""
+"""Tests for flow.py — one transcript file, end to end.
+
+The flow processes the one file a queue message names. The folder is
+still listed, because "is this file still in the input folder" is how a
+second job for a file already archived knows to do nothing.
+"""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,8 +21,6 @@ _ENV_VARS = {
     "KAIANO_API_BASE_URL": "http://localhost:8000",
     "LLM_PROVIDER": "anthropic",
     "ANTHROPIC_API_KEY": "test-anthropic-key",
-    "TASK_RETRY_DELAY_SHORT": "0",
-    "TASK_RETRY_DELAY_LONG": "0",
 }
 
 _MINIMAL_NOTES = {
@@ -28,7 +33,6 @@ _VALID_GROUP_FILENAME = "2026-04-01 Kaiano > Swingesota.txt"
 _INVALID_FILENAME = "random notes.txt"
 
 _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-_PDF_MIME = "application/pdf"
 
 
 def _drive_item(
@@ -53,141 +57,59 @@ def mock_drive_text() -> str:
     return "A" * 300
 
 
-def test_process_transcript_empty_folder(mock_env: None) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = []
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
+class _Harness:
+    """The flow's collaborators, mocked, with the run report captured."""
 
-        result = process_transcript()
+    def __init__(self) -> None:
+        self.g = MagicMock()
+        self.api = MagicMock()
+        self.llm = MagicMock()
+        self.post = MagicMock()
+        self.api.create_transcript.return_value = MagicMock(id="transcript-abc")
+        self.api.create_source.return_value = MagicMock(id="source-xyz")
+        self.llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
 
-    mock_gapi.from_env.assert_called_once()
-    mock_g.drive.get_files_in_folder.assert_called_once()
-    mock_post_eval.assert_called_once()
-    eval_args = mock_post_eval.call_args.args
-    eval_kwargs = mock_post_eval.call_args.kwargs
-    assert eval_args[1] == "SUCCESS"
-    assert "nothing to do" in eval_kwargs["text"].lower()
-    assert result["processed"] == 0
-    assert result["skipped"] == 0
-    assert result["files"] == []
+    def folder(self, *items: MagicMock) -> None:
+        self.g.drive.get_files_in_folder.return_value = list(items)
+
+    @property
+    def severity(self) -> str:
+        return self.post.call_args.args[1]
+
+    @property
+    def text(self) -> str:
+        return self.post.call_args.kwargs["text"]
 
 
-def test_process_transcript_skips_invalid_filename(mock_env: None) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _INVALID_FILENAME),
-        ]
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
+@pytest.fixture
+def harness(mock_env: None, mock_drive_text: str) -> Iterator[_Harness]:
+    h = _Harness()
+    h.g.drive.download_bytes.return_value = mock_drive_text.encode()
 
-        result = process_transcript()
+    @contextmanager
+    def _patched() -> Iterator[None]:
+        with (
+            patch("transcription_cog.flow.GoogleAPI") as gapi,
+            patch("transcription_cog.flow.SubstrateApiClient", return_value=h.api),
+            patch("transcription_cog.flow.build_llm", return_value=h.llm),
+            patch("mini_app_polis.pipeline_status.post_run_finding", h.post),
+        ):
+            gapi.from_env.return_value = h.g
+            yield
 
-    mock_g.drive.get_files_in_folder.assert_called_once()
-    mock_api.create_transcript.assert_not_called()
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    assert result["skipped"] == 1
-    assert result["processed"] == 0
-    assert result["files"][0]["reason"] == "invalid_filename"
+    with _patched():
+        yield h
 
 
-def test_process_transcript_skips_underscore_prefix(mock_env: None) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", "_2026-04-01 Kaiano > Sarah.txt"),
-        ]
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
+def test_happy_path(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
 
-        result = process_transcript()
+    result = process_transcript("file-1", run_id="msg-1")
 
-    mock_g.drive.get_files_in_folder.assert_called_once()
-    mock_api.create_transcript.assert_not_called()
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    assert result["skipped"] == 1
-    assert result["files"][0]["reason"] == "invalid_filename"
-
-
-def test_process_transcript_skips_short_transcript(mock_env: None) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = b"too short"
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-
-        result = process_transcript()
-
-    mock_g.drive.get_files_in_folder.assert_called_once()
-    mock_api.create_transcript.assert_not_called()
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    assert result["skipped"] == 1
-    assert result["files"][0]["reason"] == "transcript_too_short"
-
-
-def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
-
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="transcript-abc")
-        mock_api.create_source.return_value = MagicMock(id="source-xyz")
-
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        result = process_transcript()
-
-    mock_api.create_transcript.assert_called_once()
-    mock_api.create_source.assert_called_once()
-    mock_llm.generate_json.assert_called_once()
-    mock_post_eval.assert_called_once()
-    eval_args = mock_post_eval.call_args.args
-    assert eval_args[0] == "process-transcript"
-    assert eval_args[1] == "SUCCESS"
-    # repo + dimension are now bound by the transcription-cog shim, not
-    # passed as kwargs from flow.py — assertions on them belong in the
-    # library / shim test suite, not here.
+    harness.api.create_transcript.assert_called_once()
+    harness.api.create_source.assert_called_once()
+    harness.llm.generate_json.assert_called_once()
+    harness.g.drive.move_file.assert_called_once()
     assert result["processed"] == 1
     assert result["skipped"] == 0
     assert result["errors"] == 0
@@ -195,404 +117,165 @@ def test_process_transcript_happy_path(mock_env: None, mock_drive_text: str) -> 
     assert result["files"][0]["source_id"] == "source-xyz"
     assert result["files"][0]["schema_valid"] is True
 
-
-def test_process_transcript_passes_parsed_metadata_to_source(
-    mock_env: None, mock_drive_text: str
-) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
-
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_source.return_value = MagicMock(id="n-1")
-
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        process_transcript()
-
-    mock_api.create_source.assert_called_once()
-    mock_post_eval.assert_called_once()
-    call_kwargs = mock_api.create_source.call_args[0][0]
-    assert call_kwargs.session_type == "private_lesson"
-    assert call_kwargs.instructors_raw == ["Kaiano"]
-    assert call_kwargs.students_raw == ["Sarah"]
-    assert call_kwargs.session_date == "2026-04-01"
-    assert call_kwargs.title == "Connection"
-    assert call_kwargs.prompt_version == "2.4.0"
-    assert call_kwargs.extractor_provider == "anthropic"
-    assert call_kwargs.raw_output == _MINIMAL_NOTES
+    harness.post.assert_called_once()
+    assert harness.post.call_args.args[0] == "process-transcript"
+    assert harness.severity == "SUCCESS"
+    assert harness.post.call_args.kwargs["source"] == "flow_inline"
 
 
-def test_process_transcript_output_shape(mock_env: None, mock_drive_text: str) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+def test_the_report_carries_the_queue_message_id(harness: _Harness) -> None:
+    """Not ``local-run``: the id watcher's log and the report share."""
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
 
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_source.return_value = MagicMock(id="n-1")
+    process_transcript("file-1", run_id="msg-42")
 
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        result = process_transcript()
-
-    mock_api.create_transcript.assert_called_once()
-    mock_api.create_source.assert_called_once()
-    mock_post_eval.assert_called_once()
-    assert "processed" in result
-    assert "skipped" in result
-    assert "errors" in result
-    assert "files" in result
+    assert harness.post.call_args.kwargs["run_id"] == "msg-42"
 
 
-def test_process_transcript_skips_already_processed(
-    mock_env: None, mock_drive_text: str
-) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+def test_only_the_named_file_is_processed(harness: _Harness) -> None:
+    """Other files in the folder are other jobs."""
+    harness.folder(
+        _drive_item("file-0", _VALID_GROUP_FILENAME),
+        _drive_item("file-1", _VALID_FILENAME),
+    )
 
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.side_effect = Exception(
-            "uq_wcs_transcripts_drive_file_id unique constraint"
-        )
+    process_transcript("file-1", run_id="msg-1")
 
-        result = process_transcript()
+    harness.api.create_transcript.assert_called_once()
+    payload = harness.api.create_transcript.call_args.args[0]
+    assert payload.drive_file_id == "file-1"
+    assert payload.source_filename == _VALID_FILENAME
 
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "SUCCESS"
-    # task_store_transcript sets retries=2, so Prefect attempts the task three times
-    # before the exception reaches the flow handler (session env defaults do not
-    # override an explicit retries= on the decorator).
-    assert mock_api.create_transcript.call_count == 3
+
+def test_a_file_no_longer_in_the_folder_is_a_quiet_no_op(harness: _Harness) -> None:
+    """An earlier job for this file archived it. The guard working is not news."""
+    harness.folder(_drive_item("file-0", _VALID_GROUP_FILENAME))
+
+    result = process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_transcript.assert_not_called()
+    harness.g.drive.move_file.assert_not_called()
+    assert result["files"][0]["reason"] == "not_in_input_folder"
+    harness.post.assert_called_once()
+    assert harness.severity == "SUCCESS"
+    assert harness.post.call_args.kwargs["notable"] is False
+
+
+def test_invalid_filename_is_skipped_and_reported(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", _INVALID_FILENAME))
+
+    result = process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_transcript.assert_not_called()
+    assert harness.severity == "WARN"
     assert result["skipped"] == 1
+    assert result["files"][0]["reason"] == "invalid_filename"
+
+
+def test_underscore_prefix_is_an_invalid_filename(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", "_2026-04-01 Kaiano > Sarah.txt"))
+
+    result = process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_transcript.assert_not_called()
+    assert result["files"][0]["reason"] == "invalid_filename"
+
+
+def test_a_short_transcript_is_skipped(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
+    harness.g.drive.download_bytes.return_value = b"too short"
+
+    result = process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_transcript.assert_not_called()
+    assert harness.severity == "WARN"
+    assert result["files"][0]["reason"] == "transcript_too_short"
+
+
+def test_parsed_metadata_reaches_the_source(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
+
+    process_transcript("file-1", run_id="msg-1")
+
+    payload = harness.api.create_source.call_args.args[0]
+    assert payload.session_date == "2026-04-01"
+    assert payload.instructors_raw == ["Kaiano"]
+    assert payload.students_raw == ["Sarah"]
+    assert payload.title == "Connection"
+
+
+def test_an_already_processed_transcript_is_a_note(harness: _Harness) -> None:
+    """The unique constraint on drive_file_id is the dedup guard (ADR-002)."""
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
+    harness.api.create_transcript.side_effect = RuntimeError(
+        "duplicate key value violates unique constraint "
+        '"uq_wcs_transcripts_drive_file_id"'
+    )
+
+    result = process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_source.assert_not_called()
     assert result["files"][0]["reason"] == "already_processed"
+    assert harness.severity == "SUCCESS"
 
 
-def test_process_transcript_continues_after_failure(
-    mock_env: None, mock_drive_text: str
+def test_an_unsupported_file_type_is_reported(harness: _Harness) -> None:
+    """A .docx stays in the inbox until a person moves it, so it is an issue."""
+    harness.folder(_drive_item("file-doc", "meeting notes.docx", _DOCX_MIME))
+
+    result = process_transcript("file-doc", run_id="msg-1")
+
+    harness.api.create_transcript.assert_not_called()
+    assert result["files"][0]["reason"] == "unsupported_file_type"
+    assert harness.severity == "WARN"
+    assert "unsupported_file_type" in harness.text
+    assert "meeting notes.docx" in harness.text
+    assert _DOCX_MIME in harness.text
+
+
+def test_a_failure_is_reported_by_file_and_raised(harness: _Harness) -> None:
+    """Raised, so the worker hands the message back; reported first, naming the file."""
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
+
+    with (
+        patch(
+            "transcription_cog.flow._process_one",
+            side_effect=RuntimeError("drive read exploded"),
+        ),
+        pytest.raises(RuntimeError, match="drive read exploded"),
+    ):
+        process_transcript("file-1", run_id="msg-1")
+
+    harness.post.assert_called_once()
+    # The library grades it; what matters here is that it is not a success.
+    assert harness.severity != "SUCCESS"
+    assert "processing_failed" in harness.text
+    assert _VALID_FILENAME in harness.text
+    assert "RuntimeError" in harness.text
+    assert harness.post.call_args.kwargs["run_id"] == "msg-1"
+
+
+def test_a_failure_before_the_file_is_found_is_still_reported(
+    harness: _Harness,
 ) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-            _drive_item("file-2", _VALID_GROUP_FILENAME),
-        ]
-        mock_g.drive.download_bytes.side_effect = [
-            RuntimeError("drive error"),
-            mock_drive_text.encode(),
-        ]
+    """A Drive listing that fails is this run's failure too."""
+    harness.g.drive.get_files_in_folder.side_effect = RuntimeError("drive is down")
 
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_source.return_value = MagicMock(id="n-1")
+    with pytest.raises(RuntimeError, match="drive is down"):
+        process_transcript("file-1", run_id="msg-1")
 
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        result = process_transcript()
-
-    mock_api.create_transcript.assert_called_once()
-    mock_api.create_source.assert_called_once()
-    mock_llm.generate_json.assert_called_once()
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    assert result["processed"] == 1
-    assert result["skipped"] == 0
-    assert result["errors"] == 1
+    harness.post.assert_called_once()
+    # The library grades it; what matters here is that it is not a success.
+    assert harness.severity != "SUCCESS"
+    assert "drive is down" in harness.text
 
 
-def test_process_transcript_mixed_batch_invalid_then_valid(
-    mock_env: None, mock_drive_text: str
-) -> None:
-    """TEST-003: a skip in one file does not prevent valid files later
-    in the same batch from processing end-to-end."""
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-bad", _INVALID_FILENAME),
-            _drive_item("file-good", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
+def test_an_invalid_extraction_is_stored_and_flagged(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
+    harness.llm.generate_json.return_value = MagicMock(output_json={"title": 7})
 
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_source.return_value = MagicMock(id="n-1")
+    result = process_transcript("file-1", run_id="msg-1")
 
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        result = process_transcript()
-
-    # The valid file completed the full pipeline.
-    mock_api.create_transcript.assert_called_once()
-    mock_api.create_source.assert_called_once()
-
-    # One skipped, one processed — not one-then-abort.
-    assert result["processed"] == 1
-    assert result["skipped"] == 1
-    assert result["errors"] == 0
-
-    # Run eval is WARN because one file was skipped for a data reason
-    # (invalid_filename).
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-
-    # Per-file result shape.
-    by_file = {r["file"]: r for r in result["files"]}
-    assert by_file[_INVALID_FILENAME]["reason"] == "invalid_filename"
-    assert "transcript_id" in by_file[_VALID_FILENAME]
-
-
-def test_process_transcript_mixed_batch_duplicate_then_valid(
-    mock_env: None, mock_drive_text: str
-) -> None:
-    """TEST-002: a dedup skip on one drive_file_id does not prevent a
-    subsequent new file in the same batch from processing end-to-end.
-
-    Relies on Prefect's task-level retry behaviour: ``task_store_transcript``
-    has ``retries=2``, so the unique-constraint exception fires three
-    times for file-dup before the flow handler converts it into a benign
-    'already_processed' skip. The fourth ``create_transcript`` return
-    value (a real MagicMock id) is consumed by file-new, which proceeds
-    end-to-end.
-    """
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-dup", _VALID_FILENAME),
-            _drive_item("file-new", _VALID_GROUP_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
-
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-
-        # task_store_transcript has retries=2, so Prefect attempts the
-        # task three times before the exception reaches _process_one.
-        # Matches the pattern in test_process_transcript_skips_already_processed.
-        # First 3 calls (retries for file-dup) raise the unique-
-        # constraint error; the 4th (file-new) succeeds.
-        mock_api.create_transcript.side_effect = [
-            Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
-            Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
-            Exception("uq_wcs_transcripts_drive_file_id unique constraint"),
-            MagicMock(id="t-new"),
-        ]
-        mock_api.create_source.return_value = MagicMock(id="n-new")
-
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        result = process_transcript()
-
-    # file-new processed end-to-end.
-    mock_api.create_source.assert_called_once()
-
-    # One skipped, one processed.
-    assert result["processed"] == 1
-    assert result["skipped"] == 1
-    assert result["errors"] == 0
-
-    # Run eval is SUCCESS — already_processed is recorded with
-    # RunReport.note, which counts without escalating severity.
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "SUCCESS"
-
-    # Per-file result shape.
-    by_file = {r["file"]: r for r in result["files"]}
-    assert by_file[_VALID_FILENAME]["reason"] == "already_processed"
-    assert "transcript_id" in by_file[_VALID_GROUP_FILENAME]
-
-
-def test_process_transcript_posts_run_evaluation(
-    mock_env: None, mock_drive_text: str
-) -> None:
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
-
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_source.return_value = MagicMock(id="n-1")
-
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        process_transcript()
-
-    mock_post_eval.assert_called_once()
-    call_args = mock_post_eval.call_args.args
-    call_kwargs = mock_post_eval.call_args.kwargs
-    assert call_args[0] == "process-transcript"
-    assert call_args[1] == "SUCCESS"
-    assert call_kwargs.get("source") == "flow_inline"
-    assert "text" in call_kwargs
-    # repo + dimension are bound by the transcription-cog shim.
-
-
-def test_unsupported_file_type_is_reported(
-    mock_env: None, mock_drive_text: str
-) -> None:
-    """A .docx in the inbox makes the run WARN and names the file."""
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow.build_llm") as mock_build_llm,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-doc", "meeting notes.docx", mime_type=_DOCX_MIME),
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_g.drive.download_bytes.return_value = mock_drive_text.encode()
-
-        mock_api = MagicMock()
-        mock_api_cls.return_value = mock_api
-        mock_api.create_transcript.return_value = MagicMock(id="t-1")
-        mock_api.create_source.return_value = MagicMock(id="n-1")
-
-        mock_llm = MagicMock()
-        mock_build_llm.return_value = mock_llm
-        mock_llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
-
-        result = process_transcript()
-
-    # The supported file still went through end to end.
-    assert result["processed"] == 1
-    mock_api.create_source.assert_called_once()
-
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    text = mock_post_eval.call_args.kwargs["text"]
-    assert "unsupported_file_type" in text
-    assert "meeting notes.docx" in text
-    assert _DOCX_MIME in text
-
-
-def test_a_folder_of_only_unsupported_files_is_not_nothing_to_do(
-    mock_env: None,
-) -> None:
-    """ "processed: 0, skipped: 0" on a non-empty folder was the bug."""
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-doc", "meeting notes.docx", mime_type=_DOCX_MIME),
-            _drive_item("file-pdf", "scan.pdf", mime_type=_PDF_MIME),
-        ]
-        mock_api_cls.return_value = MagicMock()
-
-        result = process_transcript()
-
-    assert result["processed"] == 0
-    assert result["files"] == []
-
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    text = mock_post_eval.call_args.kwargs["text"]
-    assert "nothing to do" not in text.lower()
-    assert "unsupported_file_type=2" in text
-    assert "meeting notes.docx" in text
-    assert "scan.pdf" in text
-
-
-def test_run_report_names_the_file_that_failed(mock_env: None) -> None:
-    """The message says which file, not just that a count went up."""
-    with (
-        patch("transcription_cog.flow.GoogleAPI") as mock_gapi,
-        patch("transcription_cog.flow.SubstrateApiClient") as mock_api_cls,
-        patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post_eval,
-        patch("transcription_cog.flow._process_one") as mock_process_one,
-    ):
-        mock_g = MagicMock()
-        mock_gapi.from_env.return_value = mock_g
-        mock_g.drive.get_files_in_folder.return_value = [
-            _drive_item("file-1", _VALID_FILENAME),
-        ]
-        mock_api_cls.return_value = MagicMock()
-        mock_process_one.side_effect = RuntimeError("drive read exploded")
-
-        result = process_transcript()
-
-    assert result["errors"] == 1
-    mock_post_eval.assert_called_once()
-    assert mock_post_eval.call_args.args[1] == "WARN"
-    text = mock_post_eval.call_args.kwargs["text"]
-    assert "processing_failed" in text
-    assert _VALID_FILENAME in text
-    assert "RuntimeError" in text
+    harness.api.create_source.assert_called_once()
+    assert result["files"][0]["schema_valid"] is False
+    assert "schema_invalid" in harness.text

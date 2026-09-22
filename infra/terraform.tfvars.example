@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+#
+# Only what Doppler does not hold. The secrets and ids come from Doppler
+# through ./tf, which refuses to run if any of them is also set here —
+# terraform.tfvars wins over the environment, which is how deejay-cog's
+# first apply shipped this file's placeholders. See README.md.
+
+alert_email = "you@example.com"
+
+# Account-level resources evaluator-cog's state owns. Already false by
+# default in this directory; pinned here so the intent is written down.
+create_github_oidc_provider = false
+create_api_producer         = false
+create_account_budget       = false

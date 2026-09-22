@@ -85,7 +85,7 @@ class TestCounting:
     def test_idle_sweep_reports_nothing_attempted(self, patch_drive):
         """Nothing past retention is not the same as nothing working."""
         patch_drive(_drive(children=[_folder("d1")], old_files=[]))
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert summary["attempted"] == 0
         assert summary["trashed"] == 0
         assert summary["failed"] == 0
@@ -100,7 +100,7 @@ class TestCounting:
                 old_files=[],
             )
         )
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert summary["date_folders_scanned"] == 1
         # The stray was never walked, and the dated bucket is drained
         # via list_files (measured by bucket date), not the legacy
@@ -112,7 +112,7 @@ class TestCounting:
         drive = patch_drive(
             _drive(children=[_folder("d1")], old_files=[_file("a"), _file("b")])
         )
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert summary["trashed"] == 2
         assert summary["failed"] == 0
         assert summary["attempted"] == 2
@@ -131,7 +131,7 @@ class TestDatedBuckets:
                 bucket_files=[_file("a"), _file("b")],
             )
         )
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert summary["trashed"] == 2
         assert summary["buckets_trashed"] == 1
         assert summary["failed"] == 0
@@ -146,7 +146,7 @@ class TestDatedBuckets:
                 bucket_files=[_file("a")],
             )
         )
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert summary["attempted"] == 0
         assert summary["buckets_trashed"] == 0
         assert summary["date_folders_scanned"] == 1
@@ -163,7 +163,7 @@ class TestDatedBuckets:
                 trash_side_effect=PermissionError("insufficientFilePermissions"),
             )
         )
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert summary["failed"] == 1
         assert summary["buckets_trashed"] == 0
 
@@ -180,7 +180,7 @@ class TestReporting:
             )
         )
         with caplog.at_level("ERROR"):
-            summary = voicenotes_cleanup.fn()
+            summary = voicenotes_cleanup()
 
         assert summary["trashed"] == 0
         assert summary["failed"] == 2
@@ -199,7 +199,7 @@ class TestReporting:
             )
         )
         with caplog.at_level("WARNING"):
-            summary = voicenotes_cleanup.fn()
+            summary = voicenotes_cleanup()
 
         assert (summary["trashed"], summary["failed"]) == (1, 1)
         assert "cleanup.degraded" in caplog.text
@@ -208,7 +208,7 @@ class TestReporting:
     def test_clean_sweep_is_reported_as_success(self, patch_drive, caplog):
         patch_drive(_drive(children=[_folder("d1")], old_files=[_file("a")]))
         with caplog.at_level("INFO"):
-            summary = voicenotes_cleanup.fn()
+            summary = voicenotes_cleanup()
 
         assert summary["failed"] == 0
         assert "cleanup.success" in caplog.text
@@ -223,9 +223,9 @@ class TestReporting:
                 trash_side_effect=PermissionError("insufficientFilePermissions"),
             )
         )
-        summary = voicenotes_cleanup.fn()
+        summary = voicenotes_cleanup()
         assert "insufficientFilePermissions" in summary["first_error"]
 
     def test_no_error_recorded_when_everything_worked(self, patch_drive):
         patch_drive(_drive(children=[_folder("d1")], old_files=[_file("a")]))
-        assert voicenotes_cleanup.fn()["first_error"] is None
+        assert voicenotes_cleanup()["first_error"] is None

@@ -30,15 +30,8 @@ class Config:
     llm_provider: LLMProvider
     llm_model: str
     kaiano_api_base_url: str
-    healthchecks_url: str
-    sentry_dsn: str
     logging_level: str
     min_transcript_chars: int = 200
-    # Task retry delays — sourced from env so tests can set to 0 (TEST-013)
-    task_retry_delay_short: int = 30
-    task_retry_delay_long: int = 60
-    # HTTP timeout for external pings (TEST-013)
-    healthcheck_timeout_seconds: int = 5
 
     @property
     def default_models(self) -> dict[str, str]:
@@ -65,11 +58,6 @@ def load_config() -> Config:
         llm_provider=provider,
         llm_model=model,
         kaiano_api_base_url=_require("KAIANO_API_BASE_URL"),
-        healthchecks_url=os.getenv("HEALTHCHECKS_URL", ""),
-        sentry_dsn=os.getenv("SENTRY_DSN_NOTES_INGEST_COG", ""),
         logging_level=os.getenv("LOGGING_LEVEL", "INFO"),
         min_transcript_chars=int(os.getenv("MIN_TRANSCRIPT_CHARS", "200")),
-        task_retry_delay_short=int(os.getenv("TASK_RETRY_DELAY_SHORT", "30")),
-        task_retry_delay_long=int(os.getenv("TASK_RETRY_DELAY_LONG", "60")),
-        healthcheck_timeout_seconds=int(os.getenv("HEALTHCHECK_TIMEOUT_SECONDS", "5")),
     )

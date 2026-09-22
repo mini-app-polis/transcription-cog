@@ -1,26 +1,19 @@
-"""Prefect task: download audio file from Drive."""
+"""Download audio file from Drive."""
 
 from __future__ import annotations
 
-from prefect import task
-
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
-from transcription_cog.voicenotes.config import settings
 
 _logger = get_logger("voicenotes-cog")
 
 
-@task(
-    name="download_audio",
-    retries=settings.task_retries,
-    retry_delay_seconds=settings.task_retry_delays_seconds,
-)
 def download_audio(drive_file_id: str) -> bytes:
     """Pull the audio file content from Drive.
 
-    Returns the raw bytes; caller hands them to Whisper. Errors
-    propagate to Prefect's retry handling.
+    Returns the raw bytes; caller hands them to Whisper. The Drive
+    facade retries transient errors itself; anything past that
+    propagates, and the queue redelivers the job.
     """
     _logger.info(
         "voicenotes.download.start",

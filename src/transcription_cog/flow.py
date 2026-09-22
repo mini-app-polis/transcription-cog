@@ -1,11 +1,13 @@
-"""Prefect flow for transcription-cog.
+"""WCS lesson transcripts: one Drive file, end to end.
 
-Entry point: process_transcript()
+Entry point: process_transcript(drive_file_id, run_id=...)
 
-Triggered by watcher-cog when a new transcript file lands in the
-configured Google Drive input folder. Scans the folder and processes
-all files found. No parameters required — all config comes from env vars
-via Doppler → Railway.
+One queue message is one file. watcher-cog names each file that lands in
+the configured Google Drive input folder, the API enqueues one job per
+file, and the Lambda worker (``worker.py``) calls this. It used to be a
+Prefect flow that swept the whole folder; a sweep of a few transcripts
+outlived Lambda's 900-second ceiling, one file does not. See
+docs/decisions/ADR-007-lambda-behind-sqs.md.
 
 Filename convention (required):
     YYYY-MM-DD [instructors] > [students or organization].ext
@@ -14,10 +16,10 @@ Filename convention (required):
 Files that do not match the convention are skipped with a warning and
 left in the input folder for manual renaming.
 
-Flow steps:
-  Per file:
-    1. Scan input folder for supported transcript files
-    2. Validate filename against naming convention
+Steps:
+    1. Find the file in the input folder. Gone means an earlier job for
+       the same file already archived it: nothing to do, and not news.
+    2. Validate the MIME type and the filename convention
     3. Read transcript text from Drive
     4. Guard: validate length
     5. Store raw transcript via api-kaianolevine-com → wcs_transcripts
@@ -27,9 +29,13 @@ Flow steps:
        wcs_source_extractions and runs compose_source synchronously to
        populate the canonical entity layer.
     8. Archive original file to processed folder
-  Per run (once, after all files):
-    9. Post one pipeline evaluation to pipeline_evaluations summarizing
-       the whole run (best-effort).
+    9. One run report, sent however the run ends.
+
+Retries: every call goes through a client that retries a transient
+failure itself — DriveFacade, KaianoApiClient, LLMClient (PIPE-007).
+A failure that outlasts those raises, and the worker hands the message
+back to the queue, which redelivers it after the visibility timeout and
+dead-letters it after max_receive_count.
 """
 
 from __future__ import annotations
@@ -43,11 +49,8 @@ from mini_app_polis import logger as log
 from mini_app_polis.google import GoogleAPI
 from mini_app_polis.llm import LLMMessage, build_llm
 from mini_app_polis.llm.errors import LLMTruncationError
-from prefect import flow, get_run_logger, task
-from prefect.concurrency.sync import concurrency
 
-from ._batch_fatal import is_batch_fatal
-from ._pipeline_eval import make_failure_hook, run_report
+from ._pipeline_eval import run_report
 from .api_client import SubstrateApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
@@ -79,42 +82,34 @@ _SUPPORTED_MIME_TYPES = {
 
 
 def _get_logger():
-    """Dual logger pattern per PIPE-006."""
-    try:
-        return get_run_logger()
-    except Exception:
-        return LOG
+    """The shared logger. Prefect's run logger went with Prefect."""
+    return LOG
 
 
-def _iter_files(g: GoogleAPI, folder_id: str) -> tuple[list[tuple], list[tuple]]:
-    """Split a folder into files this flow can process and files it cannot.
+def _find_in_folder(
+    g: GoogleAPI, folder_id: str, drive_file_id: str
+) -> tuple[str, str, str | None] | None:
+    """``(file_id, name, mime_type)`` for the file, or None if it is not there.
 
-    Returns ``(supported, rejected)``. Rejections used to be a bare
-    ``continue`` inside a generator, which meant a .docx or .pdf dropped
-    in the inbox produced a run reporting "processed: 0, skipped: 0" —
-    a clean sweep of a folder that was not empty. The file is not
-    archived either, so it stays there and the same silent run repeats
-    every time watcher-cog fires.
+    Listed rather than fetched by id, because "is it still in the input
+    folder" is the question: a file that has left it was archived by an
+    earlier job for the same file, and processing it again would re-run the
+    extraction for nothing — the API would upsert the same transcript and
+    replace its active extraction. The folder holds a handful of files at
+    most.
     """
-    supported: list[tuple] = []
-    rejected: list[tuple] = []
     for item in g.drive.get_files_in_folder(folder_id, include_folders=False):
+        file_id = item.id if hasattr(item, "id") else item.get("id")
+        if file_id != drive_file_id:
+            continue
+        name = item.name if hasattr(item, "name") else item.get("name")
         mime_type = (
             item.mime_type if hasattr(item, "mime_type") else item.get("mimeType")
         )
-        file_id = item.id if hasattr(item, "id") else item.get("id")
-        name = item.name if hasattr(item, "name") else item.get("name")
-        if not file_id:
-            rejected.append(("", name or "<unnamed>", mime_type))
-            continue
-        if mime_type in _SUPPORTED_MIME_TYPES:
-            supported.append((file_id, name or file_id, mime_type))
-        else:
-            rejected.append((file_id, name or file_id, mime_type))
-    return supported, rejected
+        return file_id, name or file_id, mime_type
+    return None
 
 
-@task(retries=2)
 def task_read_transcript(g: GoogleAPI, file_id: str, mime_type: str) -> str:
     """Read transcript text from Drive."""
     logger = _get_logger()
@@ -122,7 +117,6 @@ def task_read_transcript(g: GoogleAPI, file_id: str, mime_type: str) -> str:
     return read_transcript_text(g, file_id, mime_type)
 
 
-@task(retries=2)
 def task_store_transcript(
     api: SubstrateApiClient,
     raw_text: str,
@@ -146,7 +140,6 @@ def task_store_transcript(
     return response.id
 
 
-@task(retries=2)
 def task_call_llm(
     cfg: Config,
     transcript_text: str,
@@ -199,7 +192,6 @@ def task_call_llm(
     return extraction, schema_valid
 
 
-@task(retries=2)
 def task_store_source(
     api: SubstrateApiClient,
     transcript_id: str,
@@ -240,7 +232,6 @@ def task_store_source(
     return response.id
 
 
-@task
 def task_archive_file(
     g: GoogleAPI,
     file_id: str,
@@ -279,9 +270,7 @@ def _process_one(
         return {"skipped": True, "reason": "invalid_filename", "file": file_name}
 
     # Step 2: read transcript
-    raw_text = task_read_transcript.with_options(
-        retry_delay_seconds=cfg.task_retry_delay_short
-    )(g, file_id, mime_type)
+    raw_text = task_read_transcript(g, file_id, mime_type)
     raw_text = raw_text.strip()
 
     # Step 3: length guard
@@ -296,9 +285,7 @@ def _process_one(
 
     # Step 4: store raw transcript
     try:
-        transcript_id = task_store_transcript.with_options(
-            retry_delay_seconds=cfg.task_retry_delay_short
-        )(api, raw_text, file_name, file_id)
+        transcript_id = task_store_transcript(api, raw_text, file_name, file_id)
     except Exception as exc:
         if (
             "uq_wcs_transcripts_drive_file_id" in str(exc)
@@ -314,15 +301,11 @@ def _process_one(
         raise
 
     # Step 5: call LLM
-    extraction, schema_valid = task_call_llm.with_options(
-        retry_delay_seconds=cfg.task_retry_delay_long
-    )(cfg, raw_text, parsed)
+    extraction, schema_valid = task_call_llm(cfg, raw_text, parsed)
 
     # Step 6: store source (creates/updates wcs_sources, writes active extraction,
     # runs compose_source on the API side)
-    source_id = task_store_source.with_options(
-        retry_delay_seconds=cfg.task_retry_delay_short
-    )(api, transcript_id, extraction, parsed, cfg)
+    source_id = task_store_source(api, transcript_id, extraction, parsed, cfg)
 
     # Step 7: archive
     task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
@@ -335,172 +318,126 @@ def _process_one(
     }
 
 
-# Pre-built Prefect on_failure / on_crashed hook that posts a single
-# flow_hook finding (WARN for Failed, ERROR for Crashed). The body lives
-# in mini_app_polis.pipeline_status; this cog just supplies its name and
-# repo identity. Replaces the old hand-rolled _emit_terminal_failure
-# which talked to SubstrateApiClient.post_run_evaluation directly.
-_emit_terminal_failure = make_failure_hook("process-transcript")
+def process_transcript(drive_file_id: str, *, run_id: str | None = None) -> dict:
+    """Process one transcript file from the input folder, end to end.
 
+    ``run_id`` is the queue message id when the Lambda worker runs this,
+    passed rather than resolved: ``get_run_id()`` only knew Prefect's ids.
 
-@flow(
-    name="process-transcript",
-    description=(
-        "Scan the WCS notes input folder and process all transcript files found. "
-        "No parameters required — triggered by watcher-cog when new files are dropped. "
-        "Files must follow the naming convention: "
-        "'YYYY-MM-DD Instructor > Student/Org - Topic.ext'"
-    ),
-    on_failure=[_emit_terminal_failure],
-    on_crashed=[_emit_terminal_failure],
-)
-def process_transcript() -> dict:
-    """Main Prefect flow — scans input folder and processes all transcripts found.
-
-    All configuration comes from environment variables via Doppler → Railway.
-    Triggered by watcher-cog; can also be run manually from Prefect UI with no input.
-
-    The concurrency slot 'notes-ingest' (limit 1) ensures only one run can hold
-    the folder scan and processing lock at a time. A second run triggered while
-    the first is active will block at the slot until the first run completes,
-    including archiving all files. This prevents duplicate LLM calls on the same
-    file when watcher-cog fires mid-run.
+    Raises when the file could not be processed, so the worker returns the
+    message to the queue. The run report is sent first, however the run
+    ends, and it names the file.
 
     Returns:
         Dict with counts of processed, skipped, and failed files (errors),
-        plus per-file result entries.
+        plus the file's result entry — the shape the folder sweep returned,
+        for one file.
     """
     logger = _get_logger()
 
-    # notable=True because this deployment has no cron — it runs only
-    # because watcher-cog fired it, so every run had a reason and none of
-    # them is an idle tick to keep quiet. That includes a run that finds
-    # nothing: the watcher saying "2 new files" and this flow finding none
-    # is a mismatch, and it is invisible unless the empty run says so.
-    with (
-        concurrency("notes-ingest", occupy=1),
-        run_report("process-transcript", notable=True) as report,
-    ):
-        logger.info(
-            log.with_log_prefix(log.LOG_START, "Scanning input folder for transcripts")
-        )
-
+    # notable=True because every run was asked for: watcher named this
+    # file. The one quiet outcome is a file already gone from the folder,
+    # which is an earlier job for the same file having finished — the
+    # idempotency guard working, sent below as not notable.
+    with run_report("process-transcript", notable=True, run_id=run_id) as report:
         cfg = load_config()
         g = GoogleAPI.from_env()
         api = SubstrateApiClient()
 
-        files, rejected = _iter_files(g, cfg.notes_input_folder_id)
+        found = _find_in_folder(g, cfg.notes_input_folder_id, drive_file_id)
+        if found is None:
+            logger.info(
+                log.with_log_prefix(
+                    log.LOG_WARNING,
+                    f"File {drive_file_id} is not in the input folder — "
+                    "already archived, or moved by hand. Nothing to do.",
+                )
+            )
+            report.note("not_in_input_folder", drive_file_id)
+            report.send(notable=False)
+            return {
+                "processed": 0,
+                "skipped": 1,
+                "errors": 0,
+                "files": [
+                    {
+                        "skipped": True,
+                        "reason": "not_in_input_folder",
+                        "file": drive_file_id,
+                    }
+                ],
+            }
 
-        for _fid, rejected_name, rejected_mime in rejected:
+        file_id, file_name, mime_type = found
+        if mime_type not in _SUPPORTED_MIME_TYPES:
             # An issue, not a note: this file will sit in the inbox until
             # a person moves it, and nothing else in the system will ever
             # mention it.
             report.issue(
                 "unsupported_file_type",
-                rejected_name,
-                detail=str(rejected_mime or "unknown"),
+                file_name,
+                detail=str(mime_type or "unknown"),
             )
+            return {
+                "processed": 0,
+                "skipped": 1,
+                "errors": 0,
+                "files": [
+                    {
+                        "skipped": True,
+                        "reason": "unsupported_file_type",
+                        "file": file_name,
+                    }
+                ],
+            }
 
-        if not files:
-            logger.info("No transcript files found in input folder")
-            return {"processed": 0, "skipped": 0, "files": []}
+        logger.info(log.with_log_prefix(log.LOG_START, f"Processing: {file_name!r}"))
+        try:
+            result = _process_one(g, api, cfg, file_id, file_name, mime_type, logger)
+        except Exception as exc:
+            # Named here, because the report's own record of the exception
+            # carries its type and not the file. Re-raised so the message
+            # goes back to the queue.
+            report.issue(
+                "processing_failed",
+                file_name,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+            logger.exception(
+                log.with_log_prefix(
+                    log.LOG_FAILURE, f"Failed processing: {file_name!r}"
+                )
+            )
+            raise
 
-        logger.info(
-            log.with_log_prefix(log.LOG_START, f"Found {len(files)} file(s) to process")
-        )
-
-        results: list[dict] = []
-        processed = 0
-        skipped = 0
-        errors = 0
-        # Saved batch-fatal exception (Prefect task timeout / cancel).
-        # See transcription_cog/_batch_fatal.py — when set, stop the loop
-        # and re-raise below so the flow transitions Failed and Prefect's
-        # flow-level retry picks up on the next worker. The report records
-        # the exception and sends partial work on its way out.
-        batch_fatal_exc: BaseException | None = None
-
-        for file_id, file_name, mime_type in files:
+        if result.get("skipped"):
+            reason = str(result.get("reason") or "skipped")
+            # already_processed is the idempotency guard doing its job —
+            # counted so the totals add up, never escalated. The other two
+            # mean a file was dropped and nobody will notice unless this
+            # says so.
+            if reason == "already_processed":
+                report.note(reason, file_name)
+            else:
+                report.issue(reason, file_name)
+            processed, skipped = 0, 1
+        else:
+            if result.get("schema_valid") is False:
+                report.issue("schema_invalid", file_name)
+            else:
+                report.ok()
+            # A transcript row now exists that did not before. ``ok()``
+            # counts it; only this says which one, and a count is not
+            # something you can go and look at.
+            report.created("transcript", file_name)
             logger.info(
-                log.with_log_prefix(log.LOG_START, f"Processing: {file_name!r}")
+                log.with_log_prefix(log.LOG_SUCCESS, f"Completed: {file_name!r}")
             )
-            try:
-                result = _process_one(
-                    g, api, cfg, file_id, file_name, mime_type, logger
-                )
-                results.append(result)
-                if result.get("skipped"):
-                    skipped += 1
-                    reason = str(result.get("reason") or "skipped")
-                    # already_processed is the idempotency guard doing its
-                    # job — counted so the totals add up, never escalated.
-                    # The other two mean a file was dropped and nobody
-                    # will notice unless this says so.
-                    if reason == "already_processed":
-                        report.note(reason, file_name)
-                    else:
-                        report.issue(reason, file_name)
-                else:
-                    processed += 1
-                    if result.get("schema_valid") is False:
-                        report.issue("schema_invalid", file_name)
-                    else:
-                        report.ok()
-                    # A transcript row now exists that did not before.
-                    # ``ok()`` counts it; only this says which one, and
-                    # a count is not something you can go and look at.
-                    report.created("transcript", file_name)
-                    logger.info(
-                        log.with_log_prefix(
-                            log.LOG_SUCCESS, f"Completed: {file_name!r}"
-                        )
-                    )
-            except Exception as exc:
-                errors += 1
-                report.issue(
-                    "processing_failed",
-                    file_name,
-                    detail=f"{type(exc).__name__}: {exc}",
-                )
-                if is_batch_fatal(exc):
-                    # Prefect task timeout fired / cancel signal /
-                    # worker shutdown — every remaining file would
-                    # fail the same way. Stop the loop, record the
-                    # abort, then re-raise below so the flow run
-                    # transitions Failed cleanly.
-                    logger.exception(
-                        log.with_log_prefix(
-                            log.LOG_FAILURE,
-                            f"Batch aborted at: {file_name!r}",
-                        )
-                    )
-                    batch_fatal_exc = exc
-                    break
-                logger.exception(
-                    log.with_log_prefix(
-                        log.LOG_FAILURE, f"Failed processing: {file_name!r}"
-                    )
-                )
-
-        logger.info(
-            log.with_log_prefix(
-                log.LOG_SUCCESS,
-                f"Run complete — processed: {processed}, skipped: {skipped}, errors: {errors}",
-            )
-        )
-
-        # If a Prefect task timeout / cancel aborted the batch, propagate
-        # it now. It passes through the report's context manager, which
-        # sends what the run did complete before re-raising. Re-raising is
-        # what transitions the flow run to Failed so the @flow-level retry
-        # kicks in cleanly on the next worker, rather than the cog quietly
-        # returning a partial-success summary on an infra-level failure.
-        if batch_fatal_exc is not None:
-            raise batch_fatal_exc
+            processed, skipped = 1, 0
 
         return {
             "processed": processed,
             "skipped": skipped,
-            "errors": errors,
-            "files": results,
+            "errors": 0,
+            "files": [result],
         }

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock
 
+import pytest
 from mini_app_polis.asana import AsanaClient
 
 from transcription_cog.voicenotes.models.extracted_task import ExtractedTask
@@ -308,7 +309,7 @@ class TestPostTaskHappyPath:
         monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
 
         extracted = ExtractedTask(title="Send report", description="Body.")
-        result = post_task.fn(extracted, drive_file_id="drive-abc")
+        result = post_task(extracted, drive_file_id="drive-abc")
 
         assert result.gid == "as-101"
         # The run report needs to know this task is new; a replay that
@@ -333,7 +334,7 @@ class TestPostTaskDeduplication:
         monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
 
         extracted = ExtractedTask(title="t", description="s")
-        result = post_task.fn(extracted, drive_file_id="dup-id")
+        result = post_task(extracted, drive_file_id="dup-id")
 
         assert result.gid == "as-existing"
         assert result.created is False
@@ -345,8 +346,76 @@ class TestPostTaskDeduplication:
         fake = _fake_asana(find_returns="as-existing")
         monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
 
-        post_task.fn(
+        post_task(
             ExtractedTask(title="t", description="s", labels=["errand"]),
             drive_file_id="dup-id",
         )
         fake.find_or_create_tag.assert_not_called()
+
+
+class TestPostTaskRetries:
+    """A transient Asana failure is retried where it happens (PIPE-007).
+
+    Prefect's task retries used to cover this. Queue redelivery would
+    download, transcribe and extract the note again for one 503.
+    """
+
+    def test_a_transient_failure_is_retried(self, monkeypatch):
+        from mini_app_polis.asana import AsanaAPIError
+
+        fake = _fake_asana(find_returns=None, create_returns="as-7")
+        fake.create_task.side_effect = [
+            AsanaAPIError(503, "unavailable", "/tasks"),
+            "as-7",
+        ]
+        monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
+        monkeypatch.setattr(post_task_mod.settings, "task_retries", 2)
+
+        result = post_task(ExtractedTask(title="t", description="s"), "drive-1")
+
+        assert result.gid == "as-7"
+        assert result.created is True
+        assert fake.create_task.call_count == 2
+
+    def test_a_retry_looks_again_before_creating(self, monkeypatch):
+        """A create that timed out may have landed; the retry must find it."""
+        from mini_app_polis.asana import AsanaAPIError
+
+        fake = _fake_asana()
+        fake.find_task_by_external_id.side_effect = [None, "as-landed"]
+        fake.create_task.side_effect = AsanaAPIError(0, "timeout", "/tasks")
+        monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
+        monkeypatch.setattr(post_task_mod.settings, "task_retries", 2)
+
+        result = post_task(ExtractedTask(title="t", description="s"), "drive-1")
+
+        assert result.gid == "as-landed"
+        assert result.created is False
+        assert fake.create_task.call_count == 1
+
+    def test_an_auth_failure_is_not_retried(self, monkeypatch):
+        """A revoked token fails the same way every time."""
+        from mini_app_polis.asana import AsanaAuthError
+
+        fake = _fake_asana()
+        fake.create_task.side_effect = AsanaAuthError("401")
+        monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
+        monkeypatch.setattr(post_task_mod.settings, "task_retries", 3)
+
+        with pytest.raises(AsanaAuthError):
+            post_task(ExtractedTask(title="t", description="s"), "drive-1")
+
+        assert fake.create_task.call_count == 1
+
+    def test_retries_stop_at_the_configured_count(self, monkeypatch):
+        from mini_app_polis.asana import AsanaAPIError
+
+        fake = _fake_asana()
+        fake.create_task.side_effect = AsanaAPIError(503, "unavailable", "/tasks")
+        monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: fake)
+        monkeypatch.setattr(post_task_mod.settings, "task_retries", 2)
+
+        with pytest.raises(AsanaAPIError):
+            post_task(ExtractedTask(title="t", description="s"), "drive-1")
+
+        assert fake.create_task.call_count == 3

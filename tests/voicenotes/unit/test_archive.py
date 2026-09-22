@@ -70,7 +70,7 @@ class TestArchiveAudio:
         # load time.
         monkeypatch.setattr(archive_mod, "get_drive_client", lambda: fake)
 
-        result = archive_audio.fn("file-1")
+        result = archive_audio("file-1")
 
         assert result == "day-id"
         assert fake.ensure_subfolder.call_count == 2

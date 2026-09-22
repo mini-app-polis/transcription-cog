@@ -1,14 +1,11 @@
-"""Prefect task: extract structured task fields from raw transcript via Claude."""
+"""Extract structured task fields from raw transcript via Claude."""
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from prefect import task
-
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.claude_client import get_claude_client
-from transcription_cog.voicenotes.config import settings
 from transcription_cog.voicenotes.models.extracted_task import ExtractedTask
 
 _logger = get_logger("voicenotes-cog")
@@ -32,19 +29,6 @@ def _empty_transcript_fallback(transcript: str) -> ExtractedTask:
     )
 
 
-@task(
-    name="extract",
-    retries=settings.extract_task_retries,
-    retry_delay_seconds=settings.extract_task_retry_delays_seconds,
-    # ``timeout_seconds`` is the outer guard against a stuck Claude
-    # call holding the worker through a Railway redeploy. The Anthropic
-    # SDK also has its own per-request timeout
-    # (``claude_request_timeout_seconds``); this Prefect-level cap
-    # additionally bounds the SDK's own internal retries so an
-    # overloaded provider can't keep one worker pinned indefinitely.
-    # See voicenotes/config.py for the layering rationale.
-    timeout_seconds=settings.claude_task_timeout_seconds,
-)
 def extract(
     transcript: str,
     today: date | None = None,
@@ -54,9 +38,11 @@ def extract(
     """Run extraction prompt; return structured ExtractedTask.
 
     The Claude client itself handles JSON-parse retries and falls back
-    to ``needs_review=True`` on total parse failure. This task lets
-    transport-level errors propagate so Prefect's retry policy can
-    take over.
+    to ``needs_review=True`` on total parse failure, and the Anthropic
+    SDK retries a transient transport error. What outlasts that — a
+    long 529 "overloaded" spell — propagates, and the queue redelivers
+    the job after its visibility timeout, which is a longer backoff
+    than the Prefect retries this replaced.
 
     Empty / whitespace-only transcripts are short-circuited locally
     without calling Claude.

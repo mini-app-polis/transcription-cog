@@ -16,9 +16,10 @@ decision), **Decision** (what change is being made), and
 
 ## Index
 
-- [ADR-001: Guard folder scan and writes with a Prefect concurrency slot](./ADR-001-prefect-concurrency-slot.md)
+- [ADR-001: Guard folder scan and writes with a Prefect concurrency slot](./ADR-001-prefect-concurrency-slot.md) — superseded by ADR-007
 - [ADR-002: Skip duplicates by unique constraint, defer possible_duplicate_ prefix](./ADR-002-duplicate-handling-strategy.md)
 - [ADR-003: Use LLM schema validity as the pipeline_evaluations signal](./ADR-003-llm-output-as-pipeline-evaluation-signal.md)
-- [ADR-004: Merge voicenotes-cog into transcription-cog](./ADR-004-voicenotes-merge.md)
+- [ADR-004: Merge voicenotes-cog into transcription-cog](./ADR-004-voicenotes-merge.md) — partly superseded by ADR-007
 - [ADR-005: New extraction prompt and write path](./ADR-005-new-extraction-prompt-and-write-path.md)
 - [ADR-006: Move voicenotes task capture from Todoist to Asana](./ADR-006-todoist-to-asana.md)
+- [ADR-007: Run on Lambda behind SQS, one file per job, not Prefect on Railway](./ADR-007-lambda-behind-sqs.md)

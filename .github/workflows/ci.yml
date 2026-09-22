@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, dev]
   pull_request:
+    branches: [main, dev]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,46 +17,21 @@ jobs:
   # mini-app-polis/.github so the pinned tool versions and the gating
   # decisions are in one place; see that repo's README for the inputs.
   security:
-    uses: mini-app-polis/.github/.github/workflows/security.yml@v2
+    uses: mini-app-polis/.github/.github/workflows/security.yml@v3
     with:
       language: python
       package-manager: uv
 
+  # Lock check, lint, format and tests, from the shared workflow so every
+  # cog's `test` stage is the same stage. See mini-app-polis/.github. The
+  # voicenotes Settings read their env at import; tests/conftest.py seeds
+  # it before anything is collected, so no env block is needed here.
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      # CD-020. `uv sync` without --locked silently re-resolves when the
-      # lockfile and pyproject.toml disagree, so a stale lock passes CI and
-      # then fails the deploy, where `uv sync --locked` refuses the drift.
-      # Checked here because this is where the failure is cheap to fix.
-      - name: Verify the lockfile matches pyproject
-        run: uv lock --check
-
-      - run: uv sync --all-extras
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run mypy src/
-      - name: Run tests
-        # The voicenotes sub-pipeline imports a pydantic-settings ``Settings``
-        # model at module import time (see voicenotes/config.py). Tests seed
-        # defaults in tests/voicenotes/conftest.py via os.environ.setdefault
-        # before any voicenotes module loads, but seeding them here as well
-        # is defense-in-depth against import-order changes. No real secrets:
-        # tests use mocks, respx, and the in-memory Prefect harness.
-        env:
-          OPENAI_API_KEY: test
-          ANTHROPIC_API_KEY: test
-          TODOIST_API_TOKEN: test
-          TODOIST_INBOX_PROJECT_ID: test
-          GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID: test
-        run: uv run pytest --cov=transcription_cog --cov-report=term-missing
+    uses: mini-app-polis/.github/.github/workflows/python-test.yml@v3
+    with:
+      pytest-args: "--cov=transcription_cog --cov-report=term-missing"
 
   release:
-    name: Release
     needs: [test, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -63,38 +39,37 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      tag: ${{ steps.released.outputs.tag }}
+
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # uv + Python are required by the @semantic-release/exec step,
-      # which runs `uv lock` after sed-bumping pyproject.toml so the
-      # lockfile's record of THIS package's own version stays in sync
-      # with the released version. Without this, every post-release
-      # `uv sync` produces a dirty lockfile diff and developers loop
-      # on "fix: lock" commits. Same fix as deejay-cog / voicenotes-cog.
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
-      - uses: actions/setup-node@v7
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
-
       - name: Install semantic-release plugins
         run: |
           npm install --no-save \
             semantic-release \
             @semantic-release/changelog \
-            @semantic-release/commit-analyzer \
             @semantic-release/exec \
             @semantic-release/git \
             @semantic-release/github \
+            @semantic-release/commit-analyzer \
             @semantic-release/release-notes-generator
 
       - name: Release
@@ -102,12 +77,42 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
 
-  # Conformance is graded when the repository changes, and this is where
-  # that is said. The evaluation runs after this job ends, so what the job
-  # reports is whether the request landed — never what was found.
-  evaluate:
+      # semantic-release tags the release commit it leaves at HEAD. No tag
+      # there means the push carried nothing releasable, and nothing new
+      # needs deploying.
+      - name: Record the release tag
+        id: released
+        run: echo "tag=$(git tag --points-at HEAD --list 'v*' | head -n1)" >> "$GITHUB_OUTPUT"
+
+  # The worker is deployed here, as a job, rather than by a workflow's own
+  # trigger: a release published with GITHUB_TOKEN starts no workflows, so
+  # `on: release` would never fire and the Lambda would drift behind main.
+  deploy:
     needs: release
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: needs.release.outputs.tag != ''
+    permissions:
+      id-token: write
+      contents: read
+    uses: mini-app-polis/.github/.github/workflows/lambda-deploy.yml@v3
+    with:
+      ref: ${{ needs.release.outputs.tag }}
+      # These three match infra/worker.tf; the deploy refuses a function
+      # whose architecture differs.
+      handler: transcription_cog.worker.lambda_handler
+      architecture: arm64
+      python-version: "3.11"
+      role-arn: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      region: ${{ vars.AWS_REGION }}
+      function-name: ${{ vars.AWS_FUNCTION_NAME }}
+
+  # Conformance is graded on each release, after that release is running.
+  # Sequential with deploy, as in every Lambda cog: a release that did not
+  # deploy is not graded as though it had, and a push that cut no release
+  # has nothing new to grade. The evaluation runs after this job ends, so
+  # what the job reports is whether the request landed — never what was
+  # found.
+  evaluate:
+    needs: deploy
     uses: mini-app-polis/.github/.github/workflows/evaluate.yml@v3
     secrets:
       api-key: ${{ secrets.CI_VALIDATOR_API_KEY }}

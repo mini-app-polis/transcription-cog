@@ -1,32 +1,16 @@
-"""Prefect task: transcribe audio via Whisper."""
+"""Transcribe audio via Whisper."""
 
 from __future__ import annotations
-
-from prefect import task
 
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.whisper_client import (
     TranscriptionResult,
     get_whisper_client,
 )
-from transcription_cog.voicenotes.config import settings
 
 _logger = get_logger("voicenotes-cog")
 
 
-@task(
-    name="transcribe",
-    retries=settings.task_retries,
-    retry_delay_seconds=settings.task_retry_delays_seconds,
-    # ``timeout_seconds`` is the outer guard against a stuck Whisper
-    # call holding the worker through a Railway redeploy. The OpenAI
-    # SDK also has its own per-request timeout
-    # (``whisper_request_timeout_seconds``); this Prefect-level cap
-    # additionally bounds the SDK's own internal retries so a flapping
-    # provider can't keep one worker pinned indefinitely. See
-    # voicenotes/config.py for the layering rationale.
-    timeout_seconds=settings.whisper_task_timeout_seconds,
-)
 def transcribe(
     audio_bytes: bytes,
     *,

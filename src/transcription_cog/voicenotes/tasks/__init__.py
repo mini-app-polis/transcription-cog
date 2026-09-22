@@ -1,5 +1,5 @@
-"""Prefect tasks composing the voicenotes-cog flows.
+"""The steps composing the voicenotes flows.
 
-Tasks are intentionally thin wrappers around clients; business logic stays
-in the clients so it's testable independently of Prefect.
+Steps are intentionally thin wrappers around clients; business logic stays
+in the clients so it's testable independently of the flow.
 """

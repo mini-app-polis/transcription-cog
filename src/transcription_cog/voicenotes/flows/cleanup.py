@@ -1,9 +1,10 @@
 """Cleanup flow: trash archived audio older than retention window.
 
 Trigger model: this flow runs at the end of every ``voicenotes_ingest``
-invocation (see ``flows/ingest.py``) — there is no cron schedule.
-Cleanup-mode dispatch via the router is preserved so an operator can
-still trigger a manual sweep from the Prefect UI if needed.
+invocation (see ``flows/ingest.py``) — there is no cron schedule. The
+``voicenotes-cleanup`` mode is kept so an operator can still ask for a
+sweep on its own: ``POST /v1/transcription/runs`` with
+``{"mode": "voicenotes-cleanup"}``.
 
 That coupling is deliberate, and it has a consequence worth stating
 plainly rather than discovering: **retention advances with use.**
@@ -14,8 +15,8 @@ with no sweep, and archived audio can sit past
 therefore a floor on how long audio is kept, not a ceiling. Deleting
 promptly was never the point — bounding how much accumulates was — and
 a scheduled sweep was considered and rejected rather than overlooked.
-An operator who wants the archive drained during a quiet stretch runs
-``voicenotes-cleanup`` from the Prefect UI.
+An operator who wants the archive drained during a quiet stretch asks
+for ``voicenotes-cleanup`` through the API.
 
 The flow walks ``voice-inbox/processed/`` and trashes archived audio
 older than ``ARCHIVE_RETENTION_DAYS`` days.
@@ -90,19 +91,19 @@ caller can tell "nothing to do" apart from "nothing worked".
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from prefect import flow, get_run_logger
-from prefect.concurrency.sync import concurrency
+from mini_app_polis import logger as log
 
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
 from transcription_cog.voicenotes.config import require_voicenotes_settings, settings
 
 _logger = get_logger("voicenotes-cog")
-_log = logging.getLogger(__name__)
+# The shared logger rather than a stdlib one: Lambda's runtime sets the
+# root logger to WARNING, and the shared logger is what gets past that.
+_log = log.get_logger()
 
 _PROCESSED_FOLDER_NAME = "processed"
 
@@ -134,27 +135,11 @@ def _bucket_archive_date(name: str | None) -> date | None:
         return None
 
 
-# Concurrency slot for cleanup. By design, the matching limit is
-# NOT created in Prefect Cloud — Prefect's ``concurrency()``
-# defaults to ``strict=False``, which means a missing limit
-# silently no-ops with a warning log. We rely on that: cleanup
-# overlaps are harmless (delete-by-modified-time is idempotent in
-# Drive), so PIPE-009-style mutex protection isn't worth a
-# precious deployment-tier slot. If a future change makes
-# cleanup overlap unsafe, create the limit in Prefect Cloud and
-# this code will start enforcing it without a code change.
-_CLEANUP_CONCURRENCY_SLOT = "voicenotes-cog-cleanup"
-
-
 def _flow_logger():
-    """PIPE-006 dual-logger: Prefect run logger inside flow, stdlib outside."""
-    try:
-        return get_run_logger()
-    except Exception:
-        return _log
+    """The shared logger. Prefect's run logger went with Prefect."""
+    return _log
 
 
-@flow(name="voicenotes-cleanup")
 def voicenotes_cleanup() -> dict[str, Any]:
     """Trash processed audio older than ``ARCHIVE_RETENTION_DAYS``.
 
@@ -180,140 +165,136 @@ def voicenotes_cleanup() -> dict[str, Any]:
     drive = get_drive_client()
     inbox_id = settings.google_drive_voice_inbox_folder_id
 
-    # Try to acquire the concurrency slot — by design, no matching
-    # limit exists in Prefect Cloud, so this is a deliberate no-op
-    # (Prefect's strict=False default just warns and proceeds). See
-    # the ``_CLEANUP_CONCURRENCY_SLOT`` comment above. If the limit
-    # is created later, this same code starts enforcing it.
-    with concurrency(_CLEANUP_CONCURRENCY_SLOT, occupy=1):
-        # Locate (or skip) the processed/ root.
-        try:
-            processed_root_id = drive.ensure_subfolder(inbox_id, _PROCESSED_FOLDER_NAME)
-        except Exception as exc:
-            _logger.error(
-                "voicenotes.cleanup.failure",
-                category="pipeline",
-                context={"error": str(exc), "stage": "ensure_processed"},
+    # No lock. Overlapping sweeps would be harmless — trashing by date is
+    # idempotent in Drive — and the worker runs one job at a time anyway.
+    # Locate (or skip) the processed/ root.
+    try:
+        processed_root_id = drive.ensure_subfolder(inbox_id, _PROCESSED_FOLDER_NAME)
+    except Exception as exc:
+        _logger.error(
+            "voicenotes.cleanup.failure",
+            category="pipeline",
+            context={"error": str(exc), "stage": "ensure_processed"},
+        )
+        raise
+
+    trashed = 0
+    failed = 0
+    buckets_trashed = 0
+    buckets_failed = 0
+    date_folders_scanned = 0
+    first_error: str | None = None
+    # Buckets dated on or after this are still inside the window.
+    cutoff_date = datetime.now(UTC).date() - timedelta(days=retention_days)
+
+    # Each immediate child of processed/ is a date bucket folder.
+    # New archives use ``YYYY-MM-DD/`` (per processing day);
+    # legacy archives use ``YYYY-MM/`` (per month) from before the
+    # daily-bucket change. Don't parse the folder name — just walk
+    # every immediate child so both layouts drain uniformly.
+    for date_folder in drive.list_files(processed_root_id):
+        date_folder_id = getattr(date_folder, "id", None)
+        if not date_folder_id:
+            continue
+        if getattr(date_folder, "mime_type", None) != _DRIVE_FOLDER_MIME:
+            # A stray file directly under processed/. Listing its
+            # children would return [] and silently inflate the
+            # scanned-bucket count.
+            _logger.warning(
+                "voicenotes.cleanup.unexpected_file_in_processed_root",
+                category="data",
+                context={
+                    "drive_file_id": date_folder_id,
+                    "name": getattr(date_folder, "name", None),
+                },
             )
-            raise
+            continue
+        date_folders_scanned += 1
 
-        trashed = 0
-        failed = 0
-        buckets_trashed = 0
-        buckets_failed = 0
-        date_folders_scanned = 0
-        first_error: str | None = None
-        # Buckets dated on or after this are still inside the window.
-        cutoff_date = datetime.now(UTC).date() - timedelta(days=retention_days)
-
-        # Each immediate child of processed/ is a date bucket folder.
-        # New archives use ``YYYY-MM-DD/`` (per processing day);
-        # legacy archives use ``YYYY-MM/`` (per month) from before the
-        # daily-bucket change. Don't parse the folder name — just walk
-        # every immediate child so both layouts drain uniformly.
-        for date_folder in drive.list_files(processed_root_id):
-            date_folder_id = getattr(date_folder, "id", None)
-            if not date_folder_id:
+        bucket_date = _bucket_archive_date(getattr(date_folder, "name", None))
+        if bucket_date is not None:
+            if bucket_date >= cutoff_date:
+                # Whole bucket is still within retention.
                 continue
-            if getattr(date_folder, "mime_type", None) != _DRIVE_FOLDER_MIME:
-                # A stray file directly under processed/. Listing its
-                # children would return [] and silently inflate the
-                # scanned-bucket count.
-                _logger.warning(
-                    "voicenotes.cleanup.unexpected_file_in_processed_root",
-                    category="data",
-                    context={
-                        "drive_file_id": date_folder_id,
-                        "name": getattr(date_folder, "name", None),
-                    },
-                )
-                continue
-            date_folders_scanned += 1
+            # Everything here was archived on bucket_date.
+            expired_files = drive.list_files(date_folder_id)
+        else:
+            # Legacy monthly bucket (or a hand-made folder): no single
+            # archive date, so fall back to per-file modifiedTime.
+            _logger.info(
+                "voicenotes.cleanup.undated_bucket",
+                category="data",
+                context={
+                    "drive_file_id": date_folder_id,
+                    "name": getattr(date_folder, "name", None),
+                },
+            )
+            expired_files = drive.list_files_older_than(
+                date_folder_id, days=retention_days
+            )
 
-            bucket_date = _bucket_archive_date(getattr(date_folder, "name", None))
-            if bucket_date is not None:
-                if bucket_date >= cutoff_date:
-                    # Whole bucket is still within retention.
-                    continue
-                # Everything here was archived on bucket_date.
-                expired_files = drive.list_files(date_folder_id)
-            else:
-                # Legacy monthly bucket (or a hand-made folder): no single
-                # archive date, so fall back to per-file modifiedTime.
+        bucket_failed = 0
+        for old_file in expired_files:
+            file_id = getattr(old_file, "id", None)
+            if not file_id:
+                continue
+            try:
+                drive.trash_file(file_id)
+                trashed += 1
                 _logger.info(
-                    "voicenotes.cleanup.undated_bucket",
-                    category="data",
+                    "voicenotes.cleanup.trashed",
+                    category="pipeline",
+                    context={
+                        "drive_file_id": file_id,
+                        "name": getattr(old_file, "name", None),
+                        "date_folder": getattr(date_folder, "name", None),
+                    },
+                )
+            except Exception as exc:
+                failed += 1
+                bucket_failed += 1
+                if first_error is None:
+                    first_error = f"{type(exc).__name__}: {exc}"
+                _logger.warning(
+                    "voicenotes.cleanup.trash_failed",
+                    category="pipeline",
+                    context={
+                        "drive_file_id": file_id,
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+
+        # The bucket is drained; retire the folder with it. Only for
+        # dated buckets, and only on a clean drain — a folder still
+        # holding a file that would not trash must stay visible.
+        if bucket_date is not None and bucket_failed == 0:
+            try:
+                drive.trash_file(date_folder_id)
+                buckets_trashed += 1
+                _logger.info(
+                    "voicenotes.cleanup.bucket_trashed",
+                    category="pipeline",
                     context={
                         "drive_file_id": date_folder_id,
                         "name": getattr(date_folder, "name", None),
+                        "files_trashed": len(expired_files),
                     },
                 )
-                expired_files = drive.list_files_older_than(
-                    date_folder_id, days=retention_days
+            except Exception as exc:
+                buckets_failed += 1
+                if first_error is None:
+                    first_error = f"{type(exc).__name__}: {exc}"
+                _logger.warning(
+                    "voicenotes.cleanup.bucket_trash_failed",
+                    category="pipeline",
+                    context={
+                        "drive_file_id": date_folder_id,
+                        "name": getattr(date_folder, "name", None),
+                        "error": str(exc),
+                        "error_type": type(exc).__name__,
+                    },
                 )
-
-            bucket_failed = 0
-            for old_file in expired_files:
-                file_id = getattr(old_file, "id", None)
-                if not file_id:
-                    continue
-                try:
-                    drive.trash_file(file_id)
-                    trashed += 1
-                    _logger.info(
-                        "voicenotes.cleanup.trashed",
-                        category="pipeline",
-                        context={
-                            "drive_file_id": file_id,
-                            "name": getattr(old_file, "name", None),
-                            "date_folder": getattr(date_folder, "name", None),
-                        },
-                    )
-                except Exception as exc:
-                    failed += 1
-                    bucket_failed += 1
-                    if first_error is None:
-                        first_error = f"{type(exc).__name__}: {exc}"
-                    _logger.warning(
-                        "voicenotes.cleanup.trash_failed",
-                        category="pipeline",
-                        context={
-                            "drive_file_id": file_id,
-                            "error": str(exc),
-                            "error_type": type(exc).__name__,
-                        },
-                    )
-
-            # The bucket is drained; retire the folder with it. Only for
-            # dated buckets, and only on a clean drain — a folder still
-            # holding a file that would not trash must stay visible.
-            if bucket_date is not None and bucket_failed == 0:
-                try:
-                    drive.trash_file(date_folder_id)
-                    buckets_trashed += 1
-                    _logger.info(
-                        "voicenotes.cleanup.bucket_trashed",
-                        category="pipeline",
-                        context={
-                            "drive_file_id": date_folder_id,
-                            "name": getattr(date_folder, "name", None),
-                            "files_trashed": len(expired_files),
-                        },
-                    )
-                except Exception as exc:
-                    buckets_failed += 1
-                    if first_error is None:
-                        first_error = f"{type(exc).__name__}: {exc}"
-                    _logger.warning(
-                        "voicenotes.cleanup.bucket_trash_failed",
-                        category="pipeline",
-                        context={
-                            "drive_file_id": date_folder_id,
-                            "name": getattr(date_folder, "name", None),
-                            "error": str(exc),
-                            "error_type": type(exc).__name__,
-                        },
-                    )
 
     attempted = trashed + failed
     summary = {

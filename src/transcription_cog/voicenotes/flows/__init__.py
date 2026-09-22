@@ -1,7 +1,9 @@
-"""Prefect flows for voicenotes-cog."""
+"""The voicenotes flows: one note end to end, and the retention sweep."""
 
 from transcription_cog.voicenotes.flows.cleanup import voicenotes_cleanup
-from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest
-from transcription_cog.voicenotes.flows.router import voicenotes_router
+from transcription_cog.voicenotes.flows.ingest import (
+    voicenotes_cleanup_run,
+    voicenotes_ingest,
+)
 
-__all__ = ["voicenotes_cleanup", "voicenotes_ingest", "voicenotes_router"]
+__all__ = ["voicenotes_cleanup", "voicenotes_cleanup_run", "voicenotes_ingest"]

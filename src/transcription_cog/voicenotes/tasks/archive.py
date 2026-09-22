@@ -1,4 +1,4 @@
-"""Prefect task: move processed audio file out of voice-inbox/ root.
+"""Move processed audio file out of voice-inbox/ root.
 
 Layout:
     voice-inbox/                  ← watcher-cog scans here
@@ -30,8 +30,6 @@ existing folders when present.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-
-from prefect import task
 
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
@@ -73,11 +71,6 @@ def _resolve_dest_folder_id() -> str:
     return drive.ensure_subfolder(processed_id, bucket)
 
 
-@task(
-    name="archive_audio",
-    retries=settings.task_retries,
-    retry_delay_seconds=settings.task_retry_delays_seconds,
-)
 def archive_audio(drive_file_id: str) -> str:
     """Move the audio file to ``processed/YYYY-MM-DD/``.
 

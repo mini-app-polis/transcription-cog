@@ -1,13 +1,11 @@
-"""Main ingest flow: scan ``voice-inbox/`` and process each new audio file.
+"""Voice notes: one audio file from ``voice-inbox/``, end to end.
 
-Triggered by watcher-cog when *any* file change is detected in the
-watched folder. Watcher fires a single generic trigger per polling
-cycle and does not pass file IDs, so this flow scans
-``voice-inbox/`` itself, processes every file at the root (skipping
-subfolders like ``processed/``), and continues across per-file
-failures.
-
-Mirrors the transcription-cog pattern.
+One queue message is one file. watcher-cog names each file that changes
+in ``voice-inbox/``, the API enqueues one job per file, and the Lambda
+worker calls :func:`voicenotes_ingest` with its id. This used to be a
+Prefect flow that swept the whole inbox; a sweep of several notes could
+outlive Lambda's 900-second ceiling, and one note cannot. See
+docs/decisions/ADR-007-lambda-behind-sqs.md.
 
 Per-file order matters:
 
@@ -17,32 +15,32 @@ Per-file order matters:
   4. post_task         ← only commit point that creates external state
   5. archive           ← MUST run after post_task; before would risk losing audio
 
-If any step before ``post_task`` fails for a file: that file stays
-in ``voice-inbox/``, watcher will re-trigger on the next cycle.
+If any step before ``post_task`` fails, the file stays in
+``voice-inbox/`` and the flow raises, so the worker hands the message
+back and the queue redelivers it.
 
-If ``post_task`` succeeds but ``archive`` fails: the next watcher
-cycle will see the file again. The post_task idempotency check
+If ``post_task`` succeeds but ``archive`` fails, the redelivered job
+sees the file again. The post_task idempotency check
 (``external.gid = voicenote.<drive_file_id>`` on the Asana task)
 prevents duplicate tasks, including for notes already completed.
 
-Per-batch ``emit_evaluation`` runs once at the end with aggregated
-results — Whisper/Claude cost is summed across files, and per-file
-failures are surfaced as findings.
+A file that is no longer in the inbox was archived by an earlier job for
+the same file — watcher asks again after a partial failure or a restart.
+That run does nothing and says so quietly.
+
+The retention sweep runs at the end of every run, best-effort, and one
+report per run carries both.
 """
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from mini_app_polis import logger as log
 from mini_app_polis.pipeline_status import CREATED, REMOVED
-from prefect import flow, get_run_logger
-from prefect.concurrency.sync import concurrency
-from prefect.context import get_run_context
 
-from transcription_cog._batch_fatal import is_batch_fatal as _is_batch_fatal
-from transcription_cog._pipeline_eval import make_failure_hook
+from transcription_cog._deadline import RunOutOfTime
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
 from transcription_cog.voicenotes.config import require_voicenotes_settings, settings
@@ -55,51 +53,16 @@ from transcription_cog.voicenotes.tasks.post_task import post_task
 from transcription_cog.voicenotes.tasks.transcribe import transcribe
 
 _logger = get_logger("voicenotes-cog")
-_log = logging.getLogger(__name__)
+# The shared logger rather than a stdlib one: Lambda's runtime sets the
+# root logger to WARNING, and the shared logger is what gets past that.
+_log = log.get_logger()
 
-# Named Prefect concurrency slot — must exist in Prefect Cloud
-# (Settings → Concurrency, limit=1) before the cog is deployed.
-# Per ecosystem-standards PIPE-009: prevents two concurrent runs
-# from scanning the same Drive folder state simultaneously and
-# double-processing the same files.
-_CONCURRENCY_SLOT = "voicenotes-cog"
-
-# Drive mime type for folders. Used to skip the ``processed/``
-# subfolder (and any others) during inbox scanning.
+# Drive mime type for folders. ``processed/`` lives inside the inbox, and
+# a folder is never a voice note.
 _DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 
-
-def _flow_logger():
-    """PIPE-006 dual-logger: Prefect run logger inside flow, stdlib outside."""
-    try:
-        return get_run_logger()
-    except Exception:
-        return _log
-
-
-def _current_flow_run_id() -> str:
-    """Best-effort fetch of the current Prefect flow run id."""
-    try:
-        ctx = get_run_context()
-        flow_run = getattr(ctx, "flow_run", None)
-        if flow_run is not None and getattr(flow_run, "id", None):
-            return str(flow_run.id)
-    except Exception:
-        pass
-    return f"local-{datetime.now(UTC).isoformat()}"
-
-
-# Prefect on_failure / on_crashed hook. This was a hand-rolled function
-# that reported every terminal state as ERROR through emit_evaluation.
-# The shared helper reports WARN for Failed and ERROR for Crashed — the
-# distinction the Prefect state already carries and the local version
-# flattened — and it is the same hook the WCS transcript flow in this
-# repo already uses, so the two pipelines now fail the same way.
-#
-# source="flow_hook" tells the Pipeline Health UI's Run Type facet that
-# the row came from a hook rather than the inline body; the helper sets
-# it. Best-effort, and documented never to raise.
-_emit_terminal_failure = make_failure_hook("voicenotes-ingest")
+#: The flow name the standalone retention sweep reports under.
+_CLEANUP_FLOW_NAME = "voicenotes-cleanup"
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +73,7 @@ _emit_terminal_failure = make_failure_hook("voicenotes-ingest")
 def _process_one_file(drive_file_id: str) -> dict[str, Any]:
     """Run the full per-file pipeline. Returns a result dict on success.
 
-    Raises whatever the underlying tasks raise — caller catches and
-    decides whether to abort the batch or continue.
+    Raises whatever the underlying steps raise.
 
     The task's title, url and whether it is new are carried back out
     alongside the gid. They were not, and the batch report could
@@ -137,7 +99,7 @@ def _process_one_file(drive_file_id: str) -> dict[str, Any]:
 
 
 def _failed_step_from_exception(exc: BaseException) -> str:
-    """Walk the traceback to identify which task raised. ``unknown`` if unclear."""
+    """Walk the traceback to identify which step raised. ``unknown`` if unclear."""
     markers = (
         ("download", "download_audio"),
         ("transcribe", "transcribe"),
@@ -155,18 +117,114 @@ def _failed_step_from_exception(exc: BaseException) -> str:
     return "unknown"
 
 
+def _find_in_inbox(drive_file_id: str) -> Any | None:
+    """The inbox entry for this file, or None if it is not there.
+
+    Listed rather than fetched by id, because "is it still in the inbox"
+    is the question: a file that has left it was archived by an earlier
+    job for the same file.
+    """
+    drive = get_drive_client()
+    for entry in drive.list_files(settings.google_drive_voice_inbox_folder_id):
+        if getattr(entry, "id", None) != drive_file_id:
+            continue
+        if getattr(entry, "mime_type", None) == _DRIVE_FOLDER_MIME:
+            return None
+        return entry
+    return None
+
+
 # ---------------------------------------------------------------------------
-# Main flow
+# Retention sweep, as report lines
 # ---------------------------------------------------------------------------
 
 
-@flow(
-    name="voicenotes-ingest",
-    on_crashed=[_emit_terminal_failure],
-    on_failure=[_emit_terminal_failure],
-)
-def voicenotes_ingest() -> dict[str, Any]:
-    """Scan ``voice-inbox/`` root and process every audio file found.
+def _run_cleanup() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run the retention sweep and return ``(findings, outcomes)`` for the report.
+
+    Never raises. Cleanup is best-effort housekeeping and must not fail an
+    otherwise-successful ingest; a sweep that failed is reported as a
+    finding at its own severity instead, so "off the success path" does
+    not mean "invisible".
+    """
+    findings: list[dict[str, Any]] = []
+    outcomes: list[dict[str, Any]] = []
+    try:
+        summary = voicenotes_cleanup()
+        failed = int(summary.get("failed", 0) or 0)
+        trashed = int(summary.get("trashed", 0) or 0)
+        _log.info(
+            f"voicenotes.flow.cleanup_completed trashed={trashed} failed={failed}"
+        )
+        buckets = int(summary.get("buckets_trashed", 0) or 0)
+        if trashed:
+            # Removing the operator's audio is an outcome, the same kind of
+            # thing as creating a task, and rides in the run's one message.
+            cutoff = summary.get("cutoff_date") or "the retention window"
+            outcomes.append(
+                {
+                    "op": REMOVED,
+                    "kind": "recording",
+                    "item": (
+                        f"{trashed} archived before {cutoff} "
+                        "(in shared drive trash for 30 days)"
+                    ),
+                }
+            )
+            if buckets:
+                outcomes.append(
+                    {
+                        "op": REMOVED,
+                        "kind": "date folder",
+                        "item": f"{buckets} emptied",
+                    }
+                )
+        if failed:
+            findings.append(
+                {
+                    "category": "pipeline",
+                    # Every deletion failing is a sweep that does not
+                    # work; some failing is a degraded one.
+                    "severity": "ERROR" if trashed == 0 else "WARN",
+                    "message": (
+                        f"retention sweep trashed {trashed} of "
+                        f"{summary.get('attempted', failed)} eligible files: "
+                        f"{summary.get('first_error') or 'see logs'}"
+                    ),
+                    "drive_file_id": "cleanup",
+                    "failed_at_task": "cleanup",
+                }
+            )
+    except Exception as exc:  # noqa: BLE001 — see docstring
+        _log.warning(f"voicenotes.flow.cleanup_failed error={exc!r}")
+        _logger.warning(
+            "voicenotes.flow.cleanup_failed",
+            category="pipeline",
+            context={"error": str(exc), "error_type": type(exc).__name__},
+        )
+        findings.append(
+            {
+                "category": "pipeline",
+                "severity": "ERROR",
+                "message": f"retention sweep raised: {exc}",
+                "drive_file_id": "cleanup",
+                "failed_at_task": "cleanup",
+            }
+        )
+    return findings, outcomes
+
+
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
+
+
+def voicenotes_ingest(
+    drive_file_id: str, *, run_id: str | None = None
+) -> dict[str, Any]:
+    """Process one voice note from ``voice-inbox/``, then sweep the archive.
+
+    ``run_id`` is the queue message id when the Lambda worker runs this.
 
     Returns
     -------
@@ -178,342 +236,193 @@ def voicenotes_ingest() -> dict[str, Any]:
             "files_seen": int,
             "duration_sec": float,
             "total_cost_usd_estimate": float,
-            "flow_run_id": str,
+            "run_id": str | None,
             "results": [<per-file success dicts>],
             "failures": [<per-file failure dicts>],
         }
 
-    Per-file failures are isolated — a bad file does not abort the
-    batch. Failed files stay in ``voice-inbox/`` for the next watcher
-    cycle to retry.
-
-    Exception classes in :data:`_BATCH_FATAL_EXC_NAMES`
-    (``TimedOut``, ``TimeoutError``, ``CancelledError``, etc.) are
-    NOT isolated — they signal infra-level trouble (Prefect task
-    timeout firing, worker shutdown mid-redeploy) where every
-    subsequent file would fail the same way. The loop records the
-    failing file, breaks immediately, still emits the batch
-    ``emit_evaluation`` row so Pipeline Health shows the abort, then
-    re-raises so Prefect transitions the flow run to Failed and the
-    flow-level retry picks it up on the new worker. This is what
-    prevents one stuck LLM call from wedging a 20-file batch behind
-    the same hang during a redeploy.
+    Raises when the note could not be processed, after its one report is
+    sent, so the worker returns the message to the queue. The report is
+    this flow's to send — the worker does not send a second.
     """
-    # Fail fast and loud if voicenotes config is missing. Module import
-    # accepts empty defaults so the parent cog can boot without
-    # voicenotes secrets — see voicenotes.config docstring and ADR-004.
-    require_voicenotes_settings()
-
-    flow_logger = _flow_logger()
     started_at = datetime.now(UTC)
-    flow_run_id = _current_flow_run_id()
-
-    flow_logger.info("voicenotes.flow.start")
+    _log.info(f"voicenotes.flow.start drive_file_id={drive_file_id}")
     _logger.info(
         "voicenotes.flow.start",
         category="pipeline",
-        context={"flow_run_id": flow_run_id},
+        context={"run_id": run_id, "drive_file_id": drive_file_id},
     )
 
-    drive = get_drive_client()
-    inbox_id = settings.google_drive_voice_inbox_folder_id
+    results: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    files_seen = 0
+    gone = False
+    # What the run died of, if it did. Held until the report is sent.
+    raised: BaseException | None = None
 
-    # Acquire named runtime concurrency slot — see PIPE-009.
-    # Deployment-level concurrency_limit=1 is insufficient on its own;
-    # the runtime slot is what actually serializes scanning of the
-    # shared Drive folder.
-    with concurrency(_CONCURRENCY_SLOT, occupy=1):
-        all_entries = drive.list_files(inbox_id)
-        # Skip subfolders (processed/, rejected/, etc.).
-        audio_files = [
-            f
-            for f in all_entries
-            if getattr(f, "mime_type", None) != _DRIVE_FOLDER_MIME
-        ]
-        files_seen = len(audio_files)
-
-        flow_logger.info(f"voicenotes.flow.scan files_seen={files_seen}")
-        _logger.info(
-            "voicenotes.flow.scan",
-            category="pipeline",
-            context={"files_seen": files_seen, "flow_run_id": flow_run_id},
-        )
-
-        results: list[dict[str, Any]] = []
-        failures: list[dict[str, Any]] = []
-        # Saved batch-fatal exception (Prefect task timeout / cancel).
-        # When set, we still finish the housekeeping below (emit
-        # evaluation, run cleanup) before re-raising so the flow
-        # transitions Failed in a recorded, observable way.
-        batch_fatal_exc: BaseException | None = None
-
-        for f in audio_files:
-            file_id = getattr(f, "id", None)
-            if not isinstance(file_id, str):
-                # Recorded rather than skipped: success is computed as
-                # `len(failures) == 0`, so a silent continue meant an
-                # audio file that was seen, never transcribed, never
-                # moved, and skipped again on every later cycle — under a
-                # SUCCESS report.
-                failures.append(
-                    {
-                        "drive_file_id": str(file_id),
-                        "name": getattr(f, "name", None),
-                        "failed_at_task": "scan",
-                        "error": "drive entry has no usable string id",
-                    }
-                )
-                continue
+    try:
+        # Fail fast and loud if voicenotes config is missing. Module
+        # import accepts empty defaults — see voicenotes.config.
+        require_voicenotes_settings()
+        entry = _find_in_inbox(drive_file_id)
+        if entry is None:
+            gone = True
+            _log.info(
+                f"voicenotes.flow.not_in_inbox drive_file_id={drive_file_id} — "
+                "already archived by an earlier job"
+            )
+        else:
+            files_seen = 1
             try:
-                results.append(_process_one_file(file_id))
+                results.append(_process_one_file(drive_file_id))
             except Exception as exc:
                 failed_at = _failed_step_from_exception(exc)
-                fatal = _is_batch_fatal(exc)
                 failures.append(
                     {
-                        "drive_file_id": file_id,
-                        "name": getattr(f, "name", None),
+                        "drive_file_id": drive_file_id,
+                        "name": getattr(entry, "name", None),
                         "failed_at_task": failed_at,
                         "error": str(exc),
                         "error_type": type(exc).__name__,
                     }
                 )
-                level_msg = "batch_aborted" if fatal else "file_failure"
-                flow_logger.error(
-                    f"voicenotes.flow.{level_msg} drive_file_id={file_id} "
+                _log.error(
+                    f"voicenotes.flow.file_failure drive_file_id={drive_file_id} "
                     f"failed_at={failed_at} error={exc!r}"
                 )
                 _logger.error(
-                    f"voicenotes.flow.{level_msg}",
+                    "voicenotes.flow.file_failure",
                     category="pipeline",
                     context={
-                        "drive_file_id": file_id,
+                        "drive_file_id": drive_file_id,
                         "failed_at_task": failed_at,
                         "error": str(exc),
                         "error_type": type(exc).__name__,
-                        "flow_run_id": flow_run_id,
-                        "fatal": fatal,
+                        "run_id": run_id,
                     },
                 )
-                if fatal:
-                    # Stop the loop now — every remaining file would
-                    # fail with the same root cause (worker timeout,
-                    # cancel, redeploy SIGTERM). Save the exception so
-                    # we can re-raise it after the batch housekeeping
-                    # runs; this gives Pipeline Health the abort record
-                    # AND lets Prefect transition the flow to Failed
-                    # so the flow-level retry picks up on a fresh
-                    # worker.
-                    batch_fatal_exc = exc
-                    break
-                # Non-fatal: bad files stay in inbox, watcher retriggers
-                # them on the next cycle. Continue with the rest of
-                # this batch.
-
-        # Opportunistic cleanup. Runs at the end of every ingest cycle
-        # so retention sweeps stay in sync with actual usage and we
-        # avoid paying for a daily cron tick that often has nothing
-        # to do. Failures here are swallowed — cleanup is best-effort
-        # housekeeping and must not fail an otherwise-successful
-        # ingest run. Called via ``.fn()`` to skip the Prefect
-        # subflow boilerplate; we just want the function body.
-        #
-        # This runs BEFORE emit_evaluation, which is a correction: the
-        # batch report used to be sent first, so cleanup's outcome had
-        # already missed the only report of the cycle and could never
-        # reach Pipeline Health no matter how badly it failed. Swallowing
-        # the exception keeps cleanup off the ingest success path;
-        # reporting it keeps "off the success path" from meaning
-        # "invisible".
-        cleanup_findings: list[dict[str, Any]] = []
-        cleanup_outcomes: list[dict[str, Any]] = []
-        try:
-            cleanup_summary = voicenotes_cleanup.fn()
-            cleanup_failed = int(cleanup_summary.get("failed", 0) or 0)
-            cleanup_trashed = int(cleanup_summary.get("trashed", 0) or 0)
-            flow_logger.info(
-                "voicenotes.flow.cleanup_completed "
-                f"trashed={cleanup_trashed} failed={cleanup_failed}"
-            )
-            cleanup_buckets = int(cleanup_summary.get("buckets_trashed", 0) or 0)
-            if cleanup_trashed:
-                # Removing the operator's audio was the one thing this cog
-                # did that produced no notification — only a Railway log
-                # line nobody reads on a good day. It rode in the run's
-                # message as a bespoke "notice", which was the right
-                # instinct and the wrong place: deleting a recording is an
-                # outcome, the same kind of thing as creating a task, and
-                # the library now has the word for it. It still rides in
-                # the run's existing message rather than a second one.
-                cutoff = cleanup_summary.get("cutoff_date") or "the retention window"
-                cleanup_outcomes.append(
-                    {
-                        "op": REMOVED,
-                        "kind": "recording",
-                        "item": (
-                            f"{cleanup_trashed} archived before {cutoff} "
-                            "(in shared drive trash for 30 days)"
-                        ),
-                    }
-                )
-                if cleanup_buckets:
-                    cleanup_outcomes.append(
-                        {
-                            "op": REMOVED,
-                            "kind": "date folder",
-                            "item": f"{cleanup_buckets} emptied",
-                        }
-                    )
-            if cleanup_failed:
-                cleanup_findings.append(
-                    {
-                        "category": "pipeline",
-                        # Every deletion failing is a sweep that does not
-                        # work; some failing is a degraded one.
-                        "severity": "ERROR" if cleanup_trashed == 0 else "WARN",
-                        "message": (
-                            f"retention sweep trashed {cleanup_trashed} of "
-                            f"{cleanup_summary.get('attempted', cleanup_failed)} "
-                            f"eligible files: "
-                            f"{cleanup_summary.get('first_error') or 'see logs'}"
-                        ),
-                        "drive_file_id": "cleanup",
-                        "failed_at_task": "cleanup",
-                    }
-                )
-        except Exception as cleanup_exc:
-            flow_logger.warning(f"voicenotes.flow.cleanup_failed error={cleanup_exc!r}")
-            _logger.warning(
-                "voicenotes.flow.cleanup_failed",
-                category="pipeline",
-                context={
-                    "flow_run_id": flow_run_id,
-                    "error": str(cleanup_exc),
-                    "error_type": type(cleanup_exc).__name__,
-                },
-            )
-            cleanup_findings.append(
-                {
-                    "category": "pipeline",
-                    "severity": "ERROR",
-                    "message": f"retention sweep raised: {cleanup_exc}",
-                    "drive_file_id": "cleanup",
-                    "failed_at_task": "cleanup",
-                }
-            )
-
-        # One aggregate report per batch, with per-file failures as
-        # lines inside it. Always called, even on empty batches — the
-        # library decides whether an idle cycle is worth a message.
-        #
-        # ``success`` stays scoped to ingest: a broken retention sweep
-        # does not mean a voice note was lost, and conflating the two
-        # would make every cycle look like a pipeline failure while the
-        # pipeline is fine. The cleanup finding rides along instead, so
-        # the failure is visible in Pipeline Health at its own severity.
-        findings: list[dict[str, Any]] = [
+                raised = exc
+    except BaseException as exc:
+        # Configuration or the inbox listing: nothing about the note
+        # itself, but still this run's failure to report.
+        failures.append(
             {
-                "category": "pipeline",
-                "severity": "ERROR",
-                "message": fail["error"],
-                "drive_file_id": fail["drive_file_id"],
-                "name": fail.get("name"),
-                "failed_at_task": fail["failed_at_task"],
+                "drive_file_id": drive_file_id,
+                "name": None,
+                "failed_at_task": "setup",
+                "error": str(exc),
+                "error_type": type(exc).__name__,
             }
-            for fail in failures
-        ]
-        findings.extend(cleanup_findings)
-
-        # What this run made exist, which is what a person opening the
-        # channel actually wants from a voice note. A replayed file whose
-        # task was already there created nothing and says so by absence —
-        # the idempotency guard working is not news.
-        outcomes: list[dict[str, Any]] = [
-            {
-                "op": CREATED,
-                "kind": "asana task",
-                "item": r["asana_task_title"],
-                "link": r["asana_task_url"],
-            }
-            for r in results
-            if r.get("asana_task_created")
-        ]
-        outcomes.extend(cleanup_outcomes)
-
-        emit_evaluation(
-            flow_run_id=flow_run_id,
-            files_seen=files_seen,
-            files_processed=len(results),
-            findings=findings,
-            outcomes=outcomes,
-            duration_sec=(datetime.now(UTC) - started_at).total_seconds(),
         )
+        raised = exc
+
+    # The sweep runs after a note that failed as well as one that
+    # succeeded — its failure is the note's, not the archive's. It does
+    # not run when the run could not even start, nor when it is out of
+    # time: what is left of the margin belongs to the report.
+    swept = (raised is None or files_seen) and not isinstance(raised, RunOutOfTime)
+    cleanup_findings, outcomes_from_cleanup = _run_cleanup() if swept else ([], [])
+
+    findings: list[dict[str, Any]] = [
+        {
+            "category": "pipeline",
+            "severity": "ERROR",
+            "message": fail["error"],
+            "drive_file_id": fail["drive_file_id"],
+            "name": fail.get("name"),
+            "failed_at_task": fail["failed_at_task"],
+        }
+        for fail in failures
+    ]
+    findings.extend(cleanup_findings)
+
+    # What this run made exist, which is what a person opening the
+    # channel actually wants from a voice note. A replayed file whose
+    # task was already there created nothing and says so by absence —
+    # the idempotency guard working is not news.
+    outcomes: list[dict[str, Any]] = [
+        {
+            "op": CREATED,
+            "kind": "asana task",
+            "item": r["asana_task_title"],
+            "link": r["asana_task_url"],
+        }
+        for r in results
+        if r.get("asana_task_created")
+    ]
+    outcomes.extend(outcomes_from_cleanup)
 
     duration_sec = (datetime.now(UTC) - started_at).total_seconds()
-    total_cost_usd = sum(r.get("transcription_cost_usd", 0.0) for r in results)
-    summary: dict[str, Any] = {
-        "files_processed": len(results),
-        "files_failed": len(failures),
-        "files_seen": files_seen,
-        "duration_sec": duration_sec,
-        "total_cost_usd_estimate": total_cost_usd,
-        "flow_run_id": flow_run_id,
-        "results": results,
-        "failures": failures,
-    }
-
-    flow_logger.info(
-        f"voicenotes.flow.success files_processed={len(results)} "
-        f"files_failed={len(failures)} duration_sec={duration_sec:.2f}"
+    emit_evaluation(
+        run_id=run_id,
+        files_seen=files_seen,
+        files_processed=len(results),
+        findings=findings,
+        outcomes=outcomes,
+        duration_sec=duration_sec,
+        # A file an earlier job already finished is the guard working.
+        # Anything else was asked for by name, and says what happened.
+        notable=not (gone and not findings and not outcomes),
     )
+
+    if raised is not None:
+        raise raised
+
+    total_cost_usd = sum(r.get("transcription_cost_usd", 0.0) for r in results)
     _logger.info(
         "voicenotes.flow.success",
         category="pipeline",
         context={
             "files_processed": len(results),
-            "files_failed": len(failures),
             "files_seen": files_seen,
             "duration_sec": duration_sec,
             "total_cost_usd_estimate": total_cost_usd,
-            "flow_run_id": flow_run_id,
+            "run_id": run_id,
         },
     )
+    return {
+        "files_processed": len(results),
+        "files_failed": len(failures),
+        "files_seen": files_seen,
+        "duration_sec": duration_sec,
+        "total_cost_usd_estimate": total_cost_usd,
+        "run_id": run_id,
+        "results": results,
+        "failures": failures,
+    }
 
-    # If a Prefect task timeout / cancel aborted the batch, propagate
-    # it now (after the housekeeping above has recorded what we did
-    # complete). Re-raising here is what transitions the flow run to
-    # Failed so the @flow-level retry kicks in cleanly on the next
-    # worker, rather than the cog quietly returning a partial-success
-    # summary on an infra-level failure.
-    if batch_fatal_exc is not None:
-        raise batch_fatal_exc
 
-    return summary
+def voicenotes_cleanup_run(*, run_id: str | None = None) -> dict[str, Any]:
+    """The retention sweep on its own, for an operator who asks for one.
 
-
-if __name__ == "__main__":
-    # Dev CLI. Defaults to scan-and-process; ``--file-id`` overrides
-    # to process a single specific file (handy for reproducing a
-    # specific failure without putting the file back in the inbox).
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run voicenotes-ingest locally.")
-    parser.add_argument(
-        "--file-id",
-        default=None,
-        help=(
-            "Optional: process a specific Drive file ID instead of "
-            "scanning the inbox. Useful for replaying a failure."
-        ),
+    Ingest runs the sweep after every note. This is the
+    ``voicenotes-cleanup`` mode: the same sweep, reported as its own run —
+    which the Prefect router's cleanup mode never did.
+    """
+    started_at = datetime.now(UTC)
+    raised: BaseException | None = None
+    try:
+        require_voicenotes_settings()
+        findings, outcomes = _run_cleanup()
+    except BaseException as exc:
+        raised = exc
+        outcomes = []
+        findings = [
+            {
+                "category": "pipeline",
+                "severity": "ERROR",
+                "message": str(exc),
+                "drive_file_id": "cleanup",
+                "failed_at_task": "setup",
+            }
+        ]
+    emit_evaluation(
+        run_id=run_id,
+        findings=findings,
+        outcomes=outcomes,
+        duration_sec=(datetime.now(UTC) - started_at).total_seconds(),
+        flow_name=_CLEANUP_FLOW_NAME,
     )
-    args = parser.parse_args()
-
-    if args.file_id:
-        result = _process_one_file(args.file_id)
-    else:
-        result = voicenotes_ingest()
-    _logger.info(
-        "voicenotes.cli.result",
-        category="pipeline",
-        context={"result": result},
-    )
+    if raised is not None:
+        raise raised
+    return {"run_id": run_id, "findings": findings, "outcomes": outcomes}
