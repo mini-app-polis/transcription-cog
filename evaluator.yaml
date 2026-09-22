@@ -7,11 +7,13 @@ deferrals:
   - rule: PY-013
     reason: >
       possible_duplicate_ prefixing is an archival-preservation pattern for
-      file-level deduplication. transcription-cog does row-level dedup via the
-      uq_wcs_transcripts_drive_file_id unique constraint in api-kaianolevine-com
-      and skips (without renaming) on conflict — the raw file still archives
-      normally on success. No duplicate file exists to prefix. Tracked as a
-      standards-side split of PY-013 into file-level vs row-level patterns.
+      file-level deduplication. transcription-cog does row-level dedup in
+      api-kaianolevine-com, which holds a UNIQUE (owner_id, drive_file_id) on
+      wcs_transcripts (uq_wcs_transcripts_owner_drive_file, migration 020) and
+      treats a duplicate POST to /v1/wcs/transcripts as a re-ingestion rather
+      than an error — the raw file still archives normally on success. No
+      duplicate file exists to prefix. Tracked as a standards-side split of
+      PY-013 into file-level vs row-level patterns.
     until: null
 
 # TEST-001/002/004 were excepted in ecosystem.yaml but pipeline-cog type
