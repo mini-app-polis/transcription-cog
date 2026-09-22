@@ -143,15 +143,8 @@ class Settings(BaseSettings):
     # healthcheck for the trigger arm, and on this side a job that fails
     # every retry lands in the dead-letter queue, whose alarm is the
     # liveness signal (infra/account.tf).
-    sentry_dsn_voicenotes: str | None = Field(
-        default=None,
-        description=(
-            "Sentry DSN for THIS cog. Suffixed with the cog name "
-            "so a shared Doppler project across the ecosystem can "
-            "hold a distinct DSN per cog without collision. "
-            "Optional in dev; required in prod."
-        ),
-    )
+    # No Sentry DSN field: both pipelines report to the one project the
+    # worker initialises at import, from SENTRY_DSN.
 
     # --- API integration (per ecosystem-standards CD-012) ---
     # ``mini_app_polis.api.KaianoApiClient`` reads these env vars

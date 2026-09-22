@@ -45,9 +45,10 @@ Mirrors deejay-cog's pattern exactly.
 **Saved:**
 - One Prefect Cloud deployment slot
 - One Railway service
-- One Sentry project (voicenotes errors now route to
-  `SENTRY_DSN_NOTES_INGEST_COG`; `SENTRY_DSN_VOICENOTES` is no longer
-  read by the runtime)
+- One Sentry project (voicenotes errors now route to the parent cog's DSN;
+  `SENTRY_DSN_VOICENOTES` is no longer read by the runtime. That DSN was
+  `SENTRY_DSN_NOTES_INGEST_COG` until the move to Lambda renamed it
+  `SENTRY_DSN` — see [ADR-007](./ADR-007-lambda-behind-sqs.md))
 - One CI release pipeline
 
 **Cost:**
