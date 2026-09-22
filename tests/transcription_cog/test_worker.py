@@ -137,6 +137,8 @@ def test_only_the_failed_record_comes_back(
     )
 
     assert result == {"batchItemFailures": [{"itemIdentifier": "m-1"}]}
+    assert [c.args for c in flows["wcs-transcripts"].call_args_list] == [("a",), ("b",)]
+    reported.assert_not_called()
 
 
 def test_a_failing_report_does_not_turn_a_retry_into_a_delete(
@@ -147,6 +149,9 @@ def test_a_failing_report_does_not_turn_a_retry_into_a_delete(
     result = worker.lambda_handler(_event("not json"), None)
 
     assert result == {"batchItemFailures": [{"itemIdentifier": "m-0"}]}
+    reported.assert_called_once()
+    for flow in flows.values():
+        flow.assert_not_called()
 
 
 @pytest.mark.parametrize("event", [{}, {"Records": []}, None, "junk"])
@@ -193,6 +198,9 @@ def test_a_run_that_outlives_the_deadline_fails_the_ordinary_way(
     assert result == {"batchItemFailures": [{"itemIdentifier": "m-0"}]}
     assert len(raised) == 1
     assert isinstance(raised[0], _deadline.RunOutOfTime)
+    flows["wcs-transcripts"].assert_called_once_with("f-1", run_id="m-0")
+    # The flow reports its own failure; the worker sends nothing more.
+    reported.assert_not_called()
 
 
 def test_the_deadline_is_cleared_after_a_run(
@@ -200,8 +208,11 @@ def test_the_deadline_is_cleared_after_a_run(
 ) -> None:
     import signal
 
-    worker.lambda_handler(_event(_body()), _Context(remaining_ms=900_000))
+    result = worker.lambda_handler(_event(_body()), _Context(remaining_ms=900_000))
 
+    assert result == {"batchItemFailures": []}
+    flows["wcs-transcripts"].assert_called_once_with("f-1", run_id="m-0")
+    reported.assert_not_called()
     assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
 
 
