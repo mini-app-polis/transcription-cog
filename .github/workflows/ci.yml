@@ -30,6 +30,8 @@ jobs:
     uses: mini-app-polis/.github/.github/workflows/python-test.yml@v3
     with:
       pytest-args: "--cov=transcription_cog --cov-report=term-missing"
+      # TEST-012: [tool.mypy] is declared, so it runs here.
+      typecheck: "uv run mypy src/"
 
   release:
     needs: [test, security]

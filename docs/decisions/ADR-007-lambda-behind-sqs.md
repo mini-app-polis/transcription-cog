@@ -117,7 +117,7 @@ which existed to abort a Prefect batch. There was no `prefect.yaml`.
   waits the SDK's 600 s default. The worker's deadline stops such a run
   before Lambda kills it, so it reports and is redelivered; the fix belongs
   in the shared library.
-- mypy no longer runs in CI: the shared `python-test.yml` stage does lint,
-  format and tests, and CD-026 allows no extra job name for it.
+- mypy runs inside the shared `python-test.yml` stage through its
+  `typecheck` input, since CD-026 allows no extra job name for it (TEST-012).
 - Rolling back is a rewrite, not a restart, deliberately — keeping the old
   runner runnable is how two consumers end up running.
