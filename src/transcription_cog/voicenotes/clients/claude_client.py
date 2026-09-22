@@ -73,16 +73,16 @@ class ClaudeClient:
 
     def __init__(self, *, anthropic_client: Anthropic | None = None) -> None:
         # ``timeout`` caps one HTTP request to Anthropic. Without it the
-        # SDK defaults to ~600 s per request, which left workers holding
-        # the socket open during Railway redeploys — SIGTERM couldn't
-        # land cleanly until either the call returned or the OS sent
-        # SIGKILL. Tests inject ``anthropic_client=`` directly and
-        # bypass this path. See voicenotes/config.py for the rationale
+        # SDK defaults to ~600 s per request, which alone would outlast
+        # the Lambda. One SDK retry rather than two, for the same reason:
+        # see the budget in voicenotes/config.py. Tests inject
+        # ``anthropic_client=`` directly and bypass this path. See voicenotes/config.py for the rationale
         # on the chosen default (small extraction prompt, 512-token
         # ceiling).
         self._anthropic = anthropic_client or Anthropic(
             api_key=settings.anthropic_api_key,
             timeout=settings.claude_request_timeout_seconds,
+            max_retries=1,
         )
         self._prompt_template = _load_extract_prompt_template()
 
@@ -97,7 +97,8 @@ class ClaudeClient:
             ExtractionResult with the parsed task and metadata.
 
         Raises:
-            anthropic.APIError on transient errors (Prefect will retry).
+            anthropic.APIError on transient errors the SDK's own retry did not
+            clear; the queue redelivers the job.
             Does NOT raise on JSON parse failure — returns a fallback
             ``ExtractedTask`` with ``needs_review=True`` instead.
         """

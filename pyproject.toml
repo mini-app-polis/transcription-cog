@@ -1,17 +1,19 @@
 [project]
 name = "transcription-cog"
 dynamic = ["version"]
-description = "Prefect pipeline cog. Two pipelines under one deployment: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → Asana)."
+description = "Lambda pipeline cog. Two pipelines under one function: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → Asana)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "miniapppolis-common-utils[llm]>=5.9.0,<6",
-    "prefect>=3.0.0,<4.0.0",
-    "psycopg2-binary>=2.9.0,<3.0.0",
+    "miniapppolis-common-utils[llm]>=5.10.0,<6",
     "pydantic>=2.0.0,<3.0.0",
     "pydantic-settings>=2.4.0,<3.0.0",
     "python-dotenv>=1.0.1,<2.0.0",
     "sentry-sdk>=2.0.0,<3.0.0",
+    # Retries a transient Asana failure at the call site (PIPE-007), which
+    # the old orchestrator's task retries used to do. Every other client
+    # retries itself.
+    "tenacity>=8.0",
     # voicenotes sub-pipeline (merged from voicenotes-cog, May 2026)
     "anthropic>=0.40",
     "openai>=1.50",
@@ -74,7 +76,3 @@ addopts = "--cov=transcription_cog --cov-report=term-missing"
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "transcription_cog.main"
-disable_error_code = ["arg-type"]

@@ -1,4 +1,4 @@
-"""Prefect task: post the extracted task to Asana."""
+"""Post the extracted task to Asana."""
 
 from __future__ import annotations
 
@@ -6,13 +6,19 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from mini_app_polis.asana import (
+    AsanaAPIError,
     AsanaClient,
     AsanaTaskInput,
     escape_rich_text,
     link,
     rich_text_body,
 )
-from prefect import task
+from tenacity import (
+    RetryCallState,
+    Retrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+)
 
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.asana_client import get_asana_client
@@ -40,8 +46,32 @@ def _today() -> date:
     return datetime.now(UTC).date()
 
 
-_TASK_RETRIES = settings.task_retries
-_TASK_RETRY_DELAYS = settings.task_retry_delays_seconds
+def _retry_delay(retry_state: RetryCallState) -> float:
+    """The configured delay before the next attempt; the last one repeats."""
+    delays = list(settings.task_retry_delays_seconds)
+    if not delays:
+        return 0.0
+    return float(delays[min(retry_state.attempt_number - 1, len(delays) - 1)])
+
+
+def _asana_retrying() -> Retrying:
+    """Retry a transient Asana failure at the call site (PIPE-007).
+
+    The shared Asana client does not retry: it raises ``AsanaAPIError``
+    for a failure worth retrying and ``AsanaAuthError`` for one that
+    cannot succeed, and leaves the choice to the caller. Prefect's task
+    retries used to make it. Queue redelivery is not a substitute — it
+    would download, transcribe and extract the note again for one 503.
+
+    Built per call rather than at import, so the settings a test seeds
+    are the ones in force.
+    """
+    return Retrying(
+        retry=retry_if_exception_type(AsanaAPIError),
+        stop=stop_after_attempt(settings.task_retries + 1),
+        wait=_retry_delay,
+        reraise=True,
+    )
 
 
 # Canonical Drive view URL for the source audio, rendered as a clickable
@@ -347,11 +377,6 @@ def tag_names_for(extracted: ExtractedTask) -> tuple[str, ...]:
     return tuple(extracted.labels)
 
 
-@task(
-    name="post_task",
-    retries=_TASK_RETRIES,
-    retry_delay_seconds=_TASK_RETRY_DELAYS,
-)
 def post_task(
     extracted: ExtractedTask,
     drive_file_id: str,
@@ -385,22 +410,21 @@ def post_task(
     client = get_asana_client()
     external_id = external_id_for(drive_file_id)
 
-    existing_id = client.find_task_by_external_id(external_id)
-    if existing_id is not None:
-        _logger.warning(
-            "voicenotes.asana_post.duplicate_skipped",
-            category="data",
-            context={
-                "drive_file_id": drive_file_id,
-                "existing_task_id": existing_id,
-            },
-        )
-        return PostedTask(gid=existing_id, created=False)
-
-    tag_gids = resolve_tag_gids(client, tag_names_for(extracted))
-    payload = compose_task_input(extracted, drive_file_id, tag_gids=tag_gids)
+    # The lookup is inside the retry, not only before it. A create that
+    # timed out may still have landed, and asking again first is what
+    # stops the retry from making a second task.
+    payload: AsanaTaskInput | None = None
     try:
-        task_id = client.create_task(payload)
+        for attempt in _asana_retrying():
+            with attempt:
+                existing_id = client.find_task_by_external_id(external_id)
+                if existing_id is None:
+                    if payload is None:
+                        tag_gids = resolve_tag_gids(client, tag_names_for(extracted))
+                        payload = compose_task_input(
+                            extracted, drive_file_id, tag_gids=tag_gids
+                        )
+                    task_id = client.create_task(payload)
     except Exception as exc:
         _logger.error(
             "voicenotes.asana_post.failure",
@@ -411,6 +435,17 @@ def post_task(
             },
         )
         raise
+
+    if existing_id is not None:
+        _logger.warning(
+            "voicenotes.asana_post.duplicate_skipped",
+            category="data",
+            context={
+                "drive_file_id": drive_file_id,
+                "existing_task_id": existing_id,
+            },
+        )
+        return PostedTask(gid=existing_id, created=False)
 
     _logger.info(
         "voicenotes.asana_post.success",

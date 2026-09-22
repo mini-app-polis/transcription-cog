@@ -1,6 +1,9 @@
 # ADR-004: Merge voicenotes-cog into transcription-cog
 
-**Status:** Accepted (May 2026)
+**Status:** Accepted (May 2026). Partly superseded 2026-09-21 by
+[ADR-007](./ADR-007-lambda-behind-sqs.md): the two pipelines still share one
+repo and one deployment, but the deployment is a Lambda function behind SQS,
+not a Prefect router on Railway.
 
 ## Context
 

@@ -11,8 +11,11 @@ Google Drive — input folder (NOTES_INPUT_FOLDER_ID)
         ▼ (1-minute poll)
 watcher-cog
         │
-        ▼ (Prefect flow run: file_id, file_name, mime_type)
-transcription-cog  ◄─── THIS COG
+        ▼ POST /v1/transcription/runs {mode, drive_file_id}, once per file
+api-kaianolevine-com
+        │
+        ▼ SQS transcription-jobs (one message = one file)
+transcription-cog  ◄─── THIS COG (Lambda)
         │
         ├─► api-kaianolevine-com  POST /v1/wcs/transcripts  →  wcs_transcripts table
         │
@@ -26,6 +29,8 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
 
 ## Flow steps
 
+0. **Find the file** — still in the input folder? Gone means an earlier job
+   for the same file archived it; nothing to do.
 1. **Read transcript** — fetch raw text from Drive (Google Doc or .txt)
 2. **Guard: length** — skip if below MIN_TRANSCRIPT_CHARS (default 200)
 3. **Store transcript** — POST raw text to `/v1/wcs/transcripts`, get `transcript_id`
@@ -35,24 +40,18 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
 
 ## Trigger
 
-`watcher-cog` detects new files in `NOTES_INPUT_FOLDER_ID` and fires a Prefect
-flow run with:
-- `file_id` — Google Drive file ID
-- `file_name` — original filename (used for source inference and LLM context)
-- `mime_type` — MIME type of the file
+`watcher-cog` detects new and modified files in `NOTES_INPUT_FOLDER_ID` and
+asks the API for one run per file: `POST /v1/transcription/runs` with
+`{"mode": "wcs-transcripts", "drive_file_id": ...}`. The API enqueues onto
+`transcription-jobs`, and the Lambda worker runs `process_transcript` with
+the file id and the queue message id as the run id. On startup watcher also
+asks for every file already in the folder.
 
-During development the flow can be triggered manually from the Prefect UI
-or via `uv run python -m transcription_cog.flow` with env vars set.
+A run that fails reports itself and raises; the queue redelivers it after
+the visibility timeout and dead-letters it after five receives.
 
-## watcher-cog configuration
-
-A `WatcherConfig` entry must be added to `watcher-cog` pointing to this flow.
-This is tracked as a separate task on `watcher-cog`.
-
-Required config:
-- Input folder: `NOTES_INPUT_FOLDER_ID`
-- Flow name: `process-transcript`
-- Deployment name: `transcription-cog`
+During development the flow can be run directly —
+`process_transcript("<drive file id>")` — with env vars set.
 
 ## Supported file types
 
@@ -98,7 +97,7 @@ Two tables on `api-kaianolevine-com`'s Railway Postgres:
 
 | Layer | Mechanism |
 |-------|-----------|
-| L1 Liveness | Healthchecks.io — HEALTHCHECKS_URL pinged on startup |
+| L1 Liveness | `transcription-dlq-not-empty` CloudWatch alarm, with an email action |
 | L2 Logs | `mini_app_polis` logger — structured JSON in production |
 | L3 Exceptions | Sentry — SENTRY_DSN, initialised before any app logic |
-| L4 Orchestration | Prefect Cloud — run history, step logs, failure alerts |
+| L4 Run history | One run report per run to Discord, under the queue message id |

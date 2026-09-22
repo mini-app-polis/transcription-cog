@@ -1,8 +1,8 @@
 """Direct unit tests for flow.py tasks — persistence and archival paths.
 
 Resolves TEST-GAP-001: task_store_transcript, task_store_source, and
-task_archive_file had no direct coverage. These tests bypass Prefect's
-task engine by calling the undecorated `.fn` attribute directly.
+task_archive_file had no direct coverage. They are plain functions now,
+so these call them directly.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from mini_app_polis.llm.errors import LLMTruncationError
 
 from transcription_cog.filename_parser import ParsedFilename
 from transcription_cog.flow import (
-    _emit_terminal_failure,
     task_archive_file,
     task_call_llm,
     task_store_source,
@@ -49,7 +48,7 @@ def test_task_store_transcript_returns_id() -> None:
     api = MagicMock()
     api.create_transcript.return_value = MagicMock(id="t-1")
 
-    result = task_store_transcript.fn(
+    result = task_store_transcript(
         api,
         raw_text="lesson content " * 50,
         source_filename="2026-04-01 Kaiano > Sarah.txt",
@@ -70,7 +69,7 @@ def test_task_store_transcript_raises_on_duplicate() -> None:
     )
 
     with pytest.raises(Exception, match="uq_wcs_transcripts_drive_file_id"):
-        task_store_transcript.fn(
+        task_store_transcript(
             api,
             raw_text="content",
             source_filename="2026-04-01 Kaiano > Sarah.txt",
@@ -99,7 +98,7 @@ def test_task_call_llm_truncation_error_is_propagated_with_clear_log(
         mock_llm.generate_json.side_effect = truncation_error
 
         with pytest.raises(LLMTruncationError, match="truncated at max_tokens"):
-            task_call_llm.fn(
+            task_call_llm(
                 cfg,
                 transcript_text="dense workshop transcript " * 200,
                 parsed=parsed,
@@ -116,7 +115,7 @@ def test_task_store_source_uses_topic_as_title() -> None:
     api = MagicMock()
     api.create_source.return_value = MagicMock(id="src-1")
 
-    result = task_store_source.fn(
+    result = task_store_source(
         api,
         transcript_id="t-1",
         extraction={"summary": "A lesson"},
@@ -150,7 +149,7 @@ def test_task_store_source_falls_back_to_extraction_title() -> None:
         raw_filename="2026-04-01 Kaiano > Sarah.txt",
     )
 
-    task_store_source.fn(
+    task_store_source(
         api,
         transcript_id="t-1",
         extraction={"title": "Extracted Title", "summary": "A lesson"},
@@ -171,7 +170,7 @@ def test_task_archive_file_moves_to_processed_folder() -> None:
         "parents": ["input-folder"],
     }
 
-    task_archive_file.fn(
+    task_archive_file(
         g,
         file_id="drive-abc",
         processed_folder_id="processed-folder",
@@ -181,95 +180,3 @@ def test_task_archive_file_moves_to_processed_folder() -> None:
     g.drive.move_file.assert_called_once_with(
         "drive-abc", new_parent_id="processed-folder"
     )
-
-
-# ── _emit_terminal_failure (on_failure / on_crashed hook) ───────────────────
-#
-# _emit_terminal_failure is now produced by make_failure_hook() from the
-# library, so its behaviour is exhaustively covered in common-python-utils'
-# test_pipeline_status. These tests only verify the integration: that the
-# hook in flow.py is wired up to the right repo/flow_name and routes
-# Failed/Crashed states through to the library.
-
-
-def _state(name: str, type_: str, message: str = "boom") -> MagicMock:
-    """Build a Prefect-shape state object for hook assertions."""
-    s = MagicMock()
-    s.name = name
-    s.type = type_
-    s.message = message
-    return s
-
-
-def _flow_run(run_id: str | None = "fr-1") -> MagicMock:
-    fr = MagicMock()
-    fr.id = run_id
-    return fr
-
-
-def test_emit_terminal_failure_failed_state_calls_library_with_warn() -> None:
-    """Prefect Failed state → library's post_run_finding called with WARN."""
-    # make_failure_hook delegates to the library's post_run_finding, which
-    # is bound at make_failure_hook construction time. Patch the library
-    # symbol at the canonical import path.
-    with patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post:
-        _emit_terminal_failure(
-            flow=MagicMock(),
-            flow_run=_flow_run(),
-            state=_state("Failed", "FAILED"),
-        )
-
-    mock_post.assert_called_once()
-    args = mock_post.call_args.args
-    kwargs = mock_post.call_args.kwargs
-    assert args[0] == "process-transcript"
-    assert args[1] == "WARN"
-    assert kwargs.get("repo") == "transcription-cog"
-    assert kwargs.get("source") == "flow_hook"
-
-
-def test_emit_terminal_failure_crashed_state_calls_library_with_error() -> None:
-    """Prefect Crashed state → library's post_run_finding called with ERROR."""
-    with patch("mini_app_polis.pipeline_status.post_run_finding") as mock_post:
-        _emit_terminal_failure(
-            flow=MagicMock(),
-            flow_run=_flow_run(),
-            state=_state("Crashed", "CRASHED", message="worker SIGKILL"),
-        )
-
-    mock_post.assert_called_once()
-    args = mock_post.call_args.args
-    kwargs = mock_post.call_args.kwargs
-    assert args[1] == "ERROR"
-    assert kwargs.get("source") == "flow_hook"
-
-
-def test_emit_terminal_failure_swallows_post_error() -> None:
-    """If the underlying POST raises, the hook must not bubble.
-
-    Best-effort semantics are owned by the library, but the make_failure_hook
-    wrapper also has its own try/except. We verify by mocking the
-    library to raise, calling the hook, and asserting both that the hook
-    actually invoked the library once (so we know the failure path was
-    exercised and didn't silently short-circuit) and that the call
-    completed without re-raising. Satisfies TEST-011's "no test without
-    verification" rule.
-    """
-    with patch(
-        "mini_app_polis.pipeline_status.post_run_finding",
-        side_effect=RuntimeError("API down"),
-    ) as mock_post:
-        # Should not raise.
-        _emit_terminal_failure(
-            flow=MagicMock(),
-            flow_run=_flow_run(),
-            state=_state("Failed", "FAILED"),
-        )
-
-    # Verify the failure path was actually exercised: the library was
-    # invoked exactly once, and the raised RuntimeError was swallowed
-    # by the make_failure_hook wrapper (we got here without re-raise).
-    mock_post.assert_called_once()
-    args = mock_post.call_args.args
-    assert args[0] == "process-transcript"
-    assert args[1] == "WARN"

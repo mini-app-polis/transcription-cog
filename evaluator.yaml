@@ -60,5 +60,6 @@ exemptions:
       module.
 
   # NB: voicenotes-cog also held a CD-010 (Healthchecks.io ping) exemption.
-  # That exemption no longer applies in this repo — main.py:124-132 pings
-  # Healthchecks.io on startup, so the dead-man's switch is in place.
+  # It does not apply here. On Lambda, CD-010's liveness layer is the
+  # dead-letter-queue alarm with an action, declared in infra/account.tf
+  # (ADR-009 in ecosystem-standards; ADR-007 here).

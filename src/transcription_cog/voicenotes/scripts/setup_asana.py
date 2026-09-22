@@ -51,6 +51,9 @@ _RULE = "-" * 72
 
 def _get(path: str, *, api_token: str, params: dict[str, Any] | None = None) -> Any:
     """GET ``path`` and return the unwrapped ``data`` member."""
+    # no-retry: a one-time interactive operator script. A failed call
+    # prints why and exits, and the operator re-runs it; a silent retry
+    # would only delay the message they are waiting to read.
     response = httpx.get(
         f"{_API_BASE}{path}",
         headers={"Authorization": f"Bearer {api_token}"},

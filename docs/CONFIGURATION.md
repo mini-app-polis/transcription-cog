@@ -1,7 +1,9 @@
 # Configuration — transcription-cog
 
-All configuration is via environment variables. Secrets are managed via
-Doppler → Railway. See `.env.example` for the full list of required keys.
+All configuration is via environment variables. Secrets are managed in
+Doppler and reach the Lambda function through `infra/tf` — never through
+`terraform.tfvars`. See `.env.example` for the full list of keys and
+`infra/worker.tf` for what the function is given.
 
 ## Required variables
 
@@ -13,19 +15,21 @@ Doppler → Railway. See `.env.example` for the full list of required keys.
 | `ANTHROPIC_API_KEY` | Anthropic API key (required if `LLM_PROVIDER=anthropic`) |
 | `KAIANO_API_BASE_URL` | Base URL of `api-kaianolevine-com` (e.g. `https://api.kaianolevine.com`) |
 | `TRANSCRIPTION_COG_API_KEY` | This cog's own named API key. Sent directly as `Authorization: Bearer` on every internal request — no token exchange. The API matches it to identify this cog, so the audit trail records which cog acted. |
-| `PREFECT_API_KEY` | Prefect Cloud API key |
-| `PREFECT_API_URL` | Prefect Cloud workspace URL |
 
 ## Optional variables
+
+On Lambda, only what `infra/worker.tf` sets reaches the function. The
+optional settings below other than the request timeouts are passed through
+from Doppler when present (`var.tuning`); anything else takes its code
+default.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LLM_PROVIDER` | `anthropic` | LLM provider: `anthropic` or `openai` |
 | `LLM_MODEL` | provider default | Model name. Defaults: `claude-sonnet-4-6` (Anthropic), `gpt-4.1-mini` (OpenAI) |
-| `OPENAI_API_KEY` | — | Required only if `LLM_PROVIDER=openai` |
+| `OPENAI_API_KEY` | — | Whisper, for voice notes. Also the WCS extraction's key if `LLM_PROVIDER=openai` |
 | `MIN_TRANSCRIPT_CHARS` | `200` | Minimum transcript length to process |
-| `SENTRY_DSN` | — | Sentry project DSN. Error tracking disabled if absent |
-| `HEALTHCHECKS_URL` | — | Healthchecks.io ping URL. Liveness monitoring disabled if absent |
+| `SENTRY_DSN` | — | Sentry project DSN, for both pipelines. Error tracking disabled if absent |
 | `LOGGING_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR` |
 
 ## Session type taxonomy
@@ -50,12 +54,12 @@ manually via `wcs.kaianolevine.com` or directly via the API.
 
 - Project: `transcription-cog`
 - Environments: `development`, `production`
-- Syncs to: Railway (via Doppler → Railway native sync)
+- Reaches the Lambda function through `infra/tf`, which reads Doppler into
+  Terraform's environment. Lambda caps the whole environment at 4 KB; `./tf`
+  prints the total.
 
 ## Notes on secret rotation
 
-`PREFECT_API_KEY` is used only at startup to connect to Prefect Cloud.
-If rotated, restart the Railway service after updating Doppler.
-
-Prefect Blocks (if used for flow-level secrets) are managed directly in
-Prefect Cloud and are not synced from Doppler. Update manually on rotation.
+The function reads its environment at cold start. After rotating a secret
+in Doppler, re-apply with `./tf plan -out tfplan && ./tf apply tfplan` from
+`infra/`; the next invocation picks it up.

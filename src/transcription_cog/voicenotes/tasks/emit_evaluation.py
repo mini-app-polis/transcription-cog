@@ -1,4 +1,4 @@
-"""Prefect task: report what the voicenotes batch did.
+"""Report what the voicenotes batch did.
 
 What a voice-note batch did is run status, not a finding. A finding is
 something an evaluator graded against a revision of the standards
@@ -33,13 +33,11 @@ by the library, never raised. Notification is observability, not the
 source of truth — a flaky api-kaianolevine-com must not turn a
 successful voice-note ingest into a failure.
 
-**Severity.** Any flagged file or failed sweep makes the run WARN. There
-is no ERROR here on purpose: ERROR means the flow itself died, which is
-a Prefect state this task does not have and must not guess at. The
-``on_failure`` / ``on_crashed`` hook in :mod:`..flows.ingest` reports
-that case with the state that caused it. A batch that finished with two
-of five files failed is a WARN — a completed run with results worth a
-human look, which is exactly what the library documents WARN to mean.
+**Severity.** Any flagged file or failed sweep makes the run WARN, which
+the library documents as a completed run with results worth a human look.
+A run whose file failed is still reported through here, with the failure
+as a finding, before the flow re-raises for the queue to redeliver it:
+the flow owns its one report, so the worker does not send a second.
 """
 
 from __future__ import annotations
@@ -47,11 +45,9 @@ from __future__ import annotations
 from typing import Any
 
 from mini_app_polis.pipeline_status import CREATED, REMOVED, UPDATED, RunReport
-from prefect import task
 
 from transcription_cog._pipeline_eval import REPO
 from transcription_cog.voicenotes._shared import get_logger
-from transcription_cog.voicenotes.config import settings
 
 _logger = get_logger("voicenotes-cog")
 
@@ -84,6 +80,8 @@ _OPS = {CREATED, UPDATED, REMOVED}
 
 def build_report(
     *,
+    flow_name: str = _FLOW_NAME,
+    run_id: str | None = None,
     files_seen: int = 0,
     files_processed: int = 0,
     findings: list[dict[str, Any]] | None = None,
@@ -93,7 +91,7 @@ def build_report(
     """Fold one batch outcome into a :class:`RunReport`.
 
     Separate from :func:`emit_evaluation` so the message this run would
-    send can be asserted without a Prefect task run or a delivery stub.
+    send can be asserted without a delivery stub.
 
     ``files_seen`` is carried as a counter rather than the headline
     because it is not the same number as the work done, and the gap
@@ -106,9 +104,10 @@ def build_report(
     rather than five lines.
     """
     report = RunReport(
-        flow_name=_FLOW_NAME,
+        flow_name=flow_name,
         repo=REPO,
         duration_sec=duration_sec,
+        run_id=run_id,
     )
     report.ok(files_processed)
     report.count("seen", files_seen)
@@ -144,27 +143,24 @@ def build_report(
     return report
 
 
-@task(
-    name="emit_evaluation",
-    retries=settings.extract_task_retries,
-    retry_delay_seconds=settings.extract_task_retry_delays_seconds,
-)
 def emit_evaluation(
-    flow_run_id: str,
+    run_id: str | None,
     files_seen: int = 0,
     files_processed: int = 0,
     findings: list[dict[str, Any]] | None = None,
     outcomes: list[dict[str, Any]] | None = None,
     duration_sec: float | None = None,
     source: str = _SOURCE_FLOW_INLINE,
+    *,
+    flow_name: str = _FLOW_NAME,
+    notable: bool = True,
 ) -> None:
-    """Report this batch's outcome as one notification.
+    """Report this run's outcome as one notification.
 
     Args:
-        flow_run_id: Prefect flow run identifier. The library resolves its
-            own run id from the Prefect runtime; this is kept on the
-            signature for existing call sites and logged locally.
-        files_seen: How many audio files the scan found.
+        run_id: The queue message id this run is. Passed rather than
+            resolved: the library's fallback only knew Prefect's ids.
+        files_seen: How many audio files the run found to work on.
         files_processed: How many came through the pipeline cleanly.
         findings: Per-file failure dicts — ``failed_at_task``, ``name`` or
             ``drive_file_id``, and ``message``. Each becomes an issue,
@@ -176,15 +172,18 @@ def emit_evaluation(
             measured here because this task runs at the end of the flow,
             long after the clock started.
         source: ``"flow_inline"`` for the end-of-flow emission.
+        flow_name: ``voicenotes-ingest``, or ``voicenotes-cleanup`` for an
+            operator's standalone retention sweep.
+        notable: False only for a run with nothing to say — a file an
+            earlier job had already archived.
 
-    A run that recorded any outcome is notable by that fact, so a batch
+    A run that recorded any outcome is notable by that fact, so a run
     that created a task reaches the channel without the flow having to
-    say it is worth sending. A triggered scan that found nothing is still
-    marked notable here: the watcher fired for a reason, and "it fired
-    and there was nothing there" is the mismatch worth surfacing rather
-    than the one worth hiding.
+    say it is worth sending.
     """
     report = build_report(
+        flow_name=flow_name,
+        run_id=run_id,
         files_seen=files_seen,
         files_processed=files_processed,
         findings=findings,
@@ -196,7 +195,7 @@ def emit_evaluation(
         "voicenotes.emit_evaluation.start",
         category="api",
         context={
-            "flow_run_id": flow_run_id,
+            "run_id": run_id,
             "files_seen": files_seen,
             "files_processed": files_processed,
             "outcome_count": len(outcomes or []),
@@ -204,17 +203,17 @@ def emit_evaluation(
         },
     )
 
-    # The library is best-effort and does not raise, but this task runs
-    # inside the flow's housekeeping. Reporting on a batch must never be
-    # the reason the batch is recorded as failed, so the guarantee is
-    # enforced here rather than assumed.
+    # The library is best-effort and does not raise, but this runs inside
+    # the flow's housekeeping. Reporting on a run must never be the reason
+    # the run is recorded as failed, so the guarantee is enforced here
+    # rather than assumed.
     try:
-        result = report.send(notable=True, source=source)
+        result = report.send(notable=notable, source=source)
     except Exception as exc:  # noqa: BLE001 - see comment above
         _logger.error(
             "voicenotes.emit_evaluation.failed",
             category="api",
-            context={"flow_run_id": flow_run_id, "error": repr(exc)},
+            context={"run_id": run_id, "error": repr(exc)},
         )
         return
 
@@ -222,7 +221,7 @@ def emit_evaluation(
         "voicenotes.emit_evaluation.done",
         category="api",
         context={
-            "flow_run_id": flow_run_id,
+            "run_id": run_id,
             "sent": result.sent,
             "suppressed": result.suppressed,
             "failed": result.failed,

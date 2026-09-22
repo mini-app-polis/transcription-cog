@@ -48,15 +48,17 @@ class WhisperClient:
         # one using the configured API key.
         #
         # ``timeout`` caps one HTTP request to OpenAI. Without it the
-        # SDK defaults to ~600 s per request, which left workers holding
-        # the socket open during Railway redeploys — SIGTERM couldn't
-        # land cleanly until either the call returned or the OS sent
-        # SIGKILL. Tests inject ``openai_client=`` directly and bypass
+        # SDK defaults to ~600 s per request, which alone would outlast
+        # the Lambda. Tests inject ``openai_client=`` directly and bypass
         # this path. See voicenotes/config.py for the chosen default
         # (sized for the longest realistic voice-note audio).
         self._openai = openai_client or OpenAI(
             api_key=settings.openai_api_key,
             timeout=settings.whisper_request_timeout_seconds,
+            # One retry, not the SDK's two: a voice note has to fit in one
+            # Lambda invocation, and a third Whisper attempt at the full
+            # timeout would not. See the budget in voicenotes/config.py.
+            max_retries=1,
         )
 
     def transcribe(
@@ -76,7 +78,7 @@ class WhisperClient:
             TranscriptionResult.
 
         Raises:
-            openai.APIError on API errors (Prefect will retry).
+            openai.APIError on API errors the SDK's own retry did not clear.
         """
         _logger.info(
             "whisper.start",

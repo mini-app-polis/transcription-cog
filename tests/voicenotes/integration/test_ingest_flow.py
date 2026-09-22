@@ -1,31 +1,21 @@
-"""End-to-end integration test for the ingest flow body.
+"""End-to-end integration test for the voicenotes flows.
 
 All external clients (Drive, Whisper, Claude, Asana,
-api-kaianolevine-com) are mocked. Exercises the full ingest flow
-body end-to-end — scan inbox → for each file: download → transcribe
-→ extract → post → archive — plus the aggregate emit_evaluation.
+api-kaianolevine-com) are mocked. Exercises one note end to end — find
+it in the inbox → download → transcribe → extract → post → archive —
+plus the retention sweep and the one report each run sends.
 
 Covers:
   - TEST-001 normalization: a plain transcript flows through and lands
     as an Asana task with the normalized title.
   - TEST-002 deduplication: a file whose external id already exists in
-    Asana skips create_task but still archives.
-  - TEST-003 per-file failure isolation: when Whisper fails on one
-    file, that file is NOT archived (stays in inbox for retrigger),
-    but other files in the same batch still process. The batch flow
-    does not raise.
+    Asana skips create_task but still archives; a file an earlier job
+    already archived is a quiet no-op.
+  - TEST-003 failure: when Whisper fails, the file is NOT archived
+    (it stays in the inbox), the run reports the failure, and the flow
+    raises so the queue redelivers the job.
   - TEST-004 output shape: the flow returns the documented summary
     dict.
-  - TEST-005 empty inbox: the flow handles an empty inbox cleanly,
-    emits a heartbeat evaluation, and returns zero counts.
-
-Why ``voicenotes_ingest.fn(...)`` rather than ``voicenotes_ingest(...)``:
-the latter goes through Prefect's in-memory test harness server, a
-known source of 503 flakes on POST /api/flow_runs/ once enough
-harness state accumulates across tests. We're verifying our flow
-body's wiring, not Prefect's runtime — using ``.fn`` calls the
-underlying function directly. Real flow-runtime coverage happens at
-the live deploy smoke test.
 """
 
 from __future__ import annotations
@@ -46,7 +36,10 @@ from transcription_cog.voicenotes.clients import (
 from transcription_cog.voicenotes.clients.whisper_client import TranscriptionResult
 from transcription_cog.voicenotes.flows import cleanup as cleanup_mod
 from transcription_cog.voicenotes.flows import ingest as ingest_mod
-from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest
+from transcription_cog.voicenotes.flows.ingest import (
+    voicenotes_cleanup_run,
+    voicenotes_ingest,
+)
 from transcription_cog.voicenotes.tasks import (
     archive as archive_mod,
 )
@@ -195,9 +188,8 @@ def stub_clients(monkeypatch, claude_message):
 class TestIngestHappyPath:
     """TEST-001 + TEST-004: end-to-end normalization + output shape."""
 
-    def test_returns_summary_dict_and_processes_each_audio_file(self, stub_clients):
-        """One audio file → one full pipeline run + documented summary shape."""
-        result = voicenotes_ingest.fn()
+    def test_returns_summary_dict_and_processes_the_file(self, stub_clients):
+        result = voicenotes_ingest("drive-abc", run_id="msg-1")
 
         # TEST-004: documented summary shape.
         assert set(result.keys()) >= {
@@ -206,29 +198,24 @@ class TestIngestHappyPath:
             "files_seen",
             "duration_sec",
             "total_cost_usd_estimate",
-            "flow_run_id",
+            "run_id",
             "results",
             "failures",
         }
-        # 1 audio file + 1 subfolder; only the audio file is processed.
+        assert result["run_id"] == "msg-1"
         assert result["files_seen"] == 1
         assert result["files_processed"] == 1
         assert result["files_failed"] == 0
         assert result["failures"] == []
         assert isinstance(result["duration_sec"], float)
 
-        # The per-file result reflects the processed file.
         (file_result,) = result["results"]
         assert file_result["drive_file_id"] == "drive-abc"
         assert file_result["asana_task_id"] == "as-100"
         assert file_result["needs_review"] is False
 
-        # Each external dependency was called for the one file. Drive's
-        # ``list_files`` is called twice per ingest cycle: once to scan
-        # the inbox at the top of ``voicenotes_ingest``, once by the
-        # opportunistic cleanup at the end (walking ``processed/``).
-        # Assert the inbox scan happened by checking the inbox folder
-        # id appears in the call args; the cleanup scan is incidental.
+        # Drive's ``list_files`` is called twice: once to find the note in
+        # the inbox, once by the retention sweep walking ``processed/``.
         from transcription_cog.voicenotes.config import settings as _settings
 
         assert stub_clients.drive.list_files.call_count == 2
@@ -242,151 +229,141 @@ class TestIngestHappyPath:
         stub_clients.asana.create_task.assert_called_once()
         stub_clients.drive.move_file.assert_called_once()
 
-    def test_subfolders_are_skipped(self, stub_clients):
-        """Only files (non-folder mime type) are processed."""
+        # One report, naming the task it created.
+        stub_clients.kaiano.notify.assert_called_once()
+        stub_clients.kaiano.post.assert_not_called()
+
+    def test_only_the_named_file_is_processed(self, stub_clients):
+        """Other files in the inbox are other jobs."""
         stub_clients.drive.list_files.return_value = [
-            _drive_folder("f1", "processed"),
-            _drive_folder("f2", "rejected"),
+            _drive_file("drive-other"),
+            _drive_file("drive-abc"),
         ]
 
-        result = voicenotes_ingest.fn()
+        voicenotes_ingest("drive-abc", run_id="msg-1")
+
+        stub_clients.drive.download_file.assert_called_once_with("drive-abc")
+
+    def test_a_folder_is_never_a_voice_note(self, stub_clients):
+        result = voicenotes_ingest("processed-folder", run_id="msg-1")
 
         assert result["files_seen"] == 0
-        assert result["files_processed"] == 0
         stub_clients.drive.download_file.assert_not_called()
 
 
 class TestIngestDeduplication:
-    """TEST-002: a file already posted to Asana → no duplicate."""
+    """TEST-002: nothing is done twice."""
 
     def test_skips_create_when_marker_already_present(self, stub_clients):
         """Existing task in Asana → no duplicate create, but archive still runs."""
         stub_clients.asana.find_task_by_external_id.return_value = "as-existing"
 
-        result = voicenotes_ingest.fn()
+        result = voicenotes_ingest("drive-abc", run_id="msg-1")
 
         assert result["files_processed"] == 1
         (file_result,) = result["results"]
         assert file_result["asana_task_id"] == "as-existing"
         stub_clients.asana.create_task.assert_not_called()
-        # Archive still runs — file should still move out of the inbox so
-        # watcher-cog stops re-triggering on the same file.
+        # Archive still runs, so the file leaves the inbox.
         stub_clients.drive.move_file.assert_called_once()
+
+    def test_a_file_already_archived_is_a_quiet_no_op(self, stub_clients):
+        """watcher asks again after a partial failure or a restart.
+
+        The note has left the inbox, so an earlier job finished it. The run
+        does nothing and sends nothing: the guard working is not news.
+        """
+        stub_clients.drive.list_files.return_value = [
+            _drive_folder("processed-folder", "processed"),
+        ]
+
+        result = voicenotes_ingest("drive-abc", run_id="msg-2")
+
+        assert result["files_seen"] == 0
+        assert result["files_failed"] == 0
+        stub_clients.drive.download_file.assert_not_called()
+        stub_clients.asana.create_task.assert_not_called()
+        stub_clients.kaiano.notify.assert_not_called()
 
 
 class TestIngestFailurePath:
-    """TEST-003: per-file failure stays per-file; batch keeps going."""
+    """TEST-003: a failed note is reported, left in the inbox, and raised."""
 
-    def test_whisper_failure_isolates_to_one_file_and_skips_archive(self, stub_clients):
-        """Two-file batch with one Whisper failure → only the good file is archived."""
-        # Two files: whisper fails on the first, succeeds on the second.
-        stub_clients.drive.list_files.return_value = [
-            _drive_file("drive-bad"),
-            _drive_file("drive-good"),
-        ]
-        successes = [
-            RuntimeError("whisper boom"),
-            TranscriptionResult(
-                text="remind me to follow up",
-                audio_duration_sec=10.0,
-                cost_usd_estimate=0.001,
-            ),
-        ]
-        stub_clients.whisper.transcribe.side_effect = successes
+    def test_whisper_failure_is_reported_skips_archive_and_raises(self, stub_clients):
+        stub_clients.whisper.transcribe.side_effect = RuntimeError("whisper boom")
 
-        # Batch must NOT raise — bad file is isolated.
-        result = voicenotes_ingest.fn()
+        with pytest.raises(RuntimeError, match="whisper boom"):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
 
-        assert result["files_seen"] == 2
-        assert result["files_processed"] == 1
-        assert result["files_failed"] == 1
-        assert result["results"][0]["drive_file_id"] == "drive-good"
-        (failure,) = result["failures"]
-        assert failure["drive_file_id"] == "drive-bad"
-        assert failure["failed_at_task"] == "transcribe"
-        assert "whisper boom" in failure["error"]
+        # Not archived: the file stays in the inbox for the redelivered job.
+        stub_clients.drive.move_file.assert_not_called()
+        stub_clients.asana.create_task.assert_not_called()
+        # Reported once, before the raise — the worker sends nothing more.
+        stub_clients.kaiano.notify.assert_called_once()
 
-        # The bad file was NOT archived (must stay in inbox for retrigger).
-        archived_ids = {
-            call.args[0] for call in stub_clients.drive.move_file.call_args_list
-        }
-        assert "drive-bad" not in archived_ids
-        assert "drive-good" in archived_ids
-        # And no Asana task was created for the bad file.
-        assert stub_clients.asana.create_task.call_count == 1
+    def test_the_report_names_the_step_that_failed(self, stub_clients, monkeypatch):
+        emit = MagicMock()
+        monkeypatch.setattr(ingest_mod, "emit_evaluation", emit)
+        stub_clients.whisper.transcribe.side_effect = RuntimeError("whisper boom")
 
+        with pytest.raises(RuntimeError):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
 
-class TestIngestUnusableEntry:
-    """A Drive row the scanner cannot use is still a file that was there."""
+        kwargs = emit.call_args.kwargs
+        assert kwargs["run_id"] == "msg-1"
+        assert kwargs["files_seen"] == 1
+        assert kwargs["files_processed"] == 0
+        (finding,) = [f for f in kwargs["findings"] if f["failed_at_task"] != "cleanup"]
+        assert finding["failed_at_task"] == "transcribe"
+        assert "whisper boom" in finding["message"]
+        assert kwargs["notable"] is True
 
-    def test_entry_without_a_string_id_lands_in_failures(
+    def test_the_retention_sweep_still_runs_after_a_failed_note(self, stub_clients):
+        stub_clients.whisper.transcribe.side_effect = RuntimeError("whisper boom")
+
+        with pytest.raises(RuntimeError):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
+
+        # The inbox lookup, then the sweep's walk of processed/.
+        assert stub_clients.drive.list_files.call_count == 2
+
+    def test_out_of_time_skips_the_sweep_and_still_reports(self, stub_clients):
+        """What is left of the margin belongs to the report, not the archive."""
+        from transcription_cog._deadline import RunOutOfTime
+
+        stub_clients.whisper.transcribe.side_effect = RunOutOfTime("stopped")
+
+        with pytest.raises(RunOutOfTime):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
+
+        # Only the inbox lookup: the sweep's walk of processed/ never ran.
+        assert stub_clients.drive.list_files.call_count == 1
+        stub_clients.kaiano.notify.assert_called_once()
+
+    def test_missing_configuration_is_reported_and_raised(
         self, stub_clients, monkeypatch
     ):
-        """success = len(failures) == 0 must not stay True."""
+        from transcription_cog.voicenotes.config import settings as _settings
+
+        monkeypatch.setattr(_settings, "openai_api_key", "")
+
+        with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
+
+        stub_clients.drive.download_file.assert_not_called()
+        stub_clients.kaiano.notify.assert_called_once()
+
+
+class TestCleanupRun:
+    """The retention sweep asked for on its own reports as its own run."""
+
+    def test_reports_under_its_own_flow_name(self, stub_clients, monkeypatch):
         emit = MagicMock()
         monkeypatch.setattr(ingest_mod, "emit_evaluation", emit)
 
-        stub_clients.drive.list_files.return_value = [
-            SimpleNamespace(id=None, name="no-id.m4a", mime_type="audio/mp4"),
-            _drive_file("drive-good"),
-        ]
+        voicenotes_cleanup_run(run_id="msg-9")
 
-        result = voicenotes_ingest.fn()
-
-        assert result["files_seen"] == 2
-        assert result["files_processed"] == 1
-        assert result["files_failed"] == 1
-        (failure,) = result["failures"]
-        assert failure["name"] == "no-id.m4a"
-        assert failure["failed_at_task"] == "scan"
-
-        # The usable file in the same batch still processed.
-        stub_clients.drive.download_file.assert_called_once_with("drive-good")
-
-        # And the batch did not report itself clean. There is no longer a
-        # success flag to check: the report carries the failure as a
-        # finding and counts one of the two files as processed, which is
-        # what the message is built from.
         emit.assert_called_once()
-        kwargs = emit.call_args.kwargs
-        assert kwargs["files_seen"] == 2
-        assert kwargs["files_processed"] == 1
-        (batch_finding,) = [
-            f for f in kwargs["findings"] if f["failed_at_task"] == "scan"
-        ]
-        assert "no usable string id" in batch_finding["message"]
-
-        # The file that did work is announced by name, which is the whole
-        # point of the outcome verb — the run said "1 file(s) seen" and
-        # nothing about the Asana task before this.
-        (created,) = kwargs["outcomes"]
-        assert created["kind"] == "asana task"
-        assert created["item"] == "Send floor trials report to Mark"
-        assert created["link"].endswith("/as-100")
-
-        # And how long it took, on every report.
-        assert kwargs["duration_sec"] >= 0
-
-
-class TestIngestEmptyInbox:
-    """TEST-005: empty inbox emits a heartbeat evaluation, returns zeros."""
-
-    def test_empty_inbox_still_notifies(self, stub_clients):
-        """Empty inbox → zero counts, and a notification saying so.
-
-        There is no cron on this deployment: the flow ran because
-        watcher-cog fired it. So an empty inbox is not an idle cycle, it
-        is the watcher and this flow disagreeing about what is in the
-        folder — which stays invisible unless the empty run reports it.
-
-        It writes no row either way; run status stopped being a finding.
-        """
-        stub_clients.drive.list_files.return_value = []
-
-        result = voicenotes_ingest.fn()
-
-        assert result["files_seen"] == 0
-        assert result["files_processed"] == 0
-        assert result["files_failed"] == 0
-        stub_clients.kaiano.notify.assert_called_once()
-        stub_clients.kaiano.post.assert_not_called()
+        assert emit.call_args.kwargs["flow_name"] == "voicenotes-cleanup"
+        assert emit.call_args.kwargs["run_id"] == "msg-9"
+        stub_clients.drive.download_file.assert_not_called()

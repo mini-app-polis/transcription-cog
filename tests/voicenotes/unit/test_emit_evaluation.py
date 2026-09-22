@@ -62,12 +62,12 @@ class TestSeverity:
         assert report.severity == "WARN"
 
     def test_a_failed_batch_is_warn_not_error(self) -> None:
-        """ERROR means the flow died, and this task cannot know that.
+        """A flagged file makes the run WARN — results worth a human look.
 
         The old adapter reported every batch with a failed file as ERROR.
-        A run that completed and flagged some files is a WARN — results
-        worth a human look — and the on_failure hook owns the case where
-        the flow itself went down, with the Prefect state that caused it.
+        The failure is carried as a finding either way, and the queue's
+        redelivery and dead-letter alarm are what escalate a file that
+        keeps failing.
         """
         report = build_report(
             files_seen=2,
@@ -209,34 +209,46 @@ class TestEmitEvaluation:
     def test_sends_once(self) -> None:
         with patch(_SEND) as send:
             send.return_value = MagicMock(sent=1, suppressed=0, failed=0)
-            emit_evaluation.fn(flow_run_id="run-1", files_seen=2, files_processed=2)
+            emit_evaluation(run_id="run-1", files_seen=2, files_processed=2)
         send.assert_called_once()
 
-    def test_every_run_is_notable(self) -> None:
-        """This deployment has no cron, so there are no idle runs to skip."""
+    def test_every_run_is_notable_by_default(self) -> None:
+        """Every run was asked for by name, so there are no idle runs to skip."""
         with patch(_SEND) as send:
             send.return_value = MagicMock(sent=1, suppressed=0, failed=0)
-            emit_evaluation.fn(flow_run_id="run-1", files_seen=4, files_processed=4)
+            emit_evaluation(run_id="run-1", files_seen=4, files_processed=4)
         assert send.call_args.kwargs["notable"] is True
 
-    def test_empty_scan_still_reports(self) -> None:
-        """The mismatch case, and the reason this is unconditional.
+    def test_empty_run_still_reports(self) -> None:
+        """Notability is the flow's call, not a count's.
 
-        The flow only runs because watcher-cog fired it. An empty scan
-        therefore means the watcher saw files and this run found none —
-        a race, a filter, or a bug. Gating on files_seen would silence
-        exactly that run and leave the watcher's "2 new" unanswered.
+        Gating on files_seen here would silence a run that found nothing
+        where watcher said there was something. The flow passes
+        notable=False for the one case that is not news — a file an
+        earlier job already archived.
         """
         with patch(_SEND) as send:
             send.return_value = MagicMock(sent=1, suppressed=0, failed=0)
-            emit_evaluation.fn(flow_run_id="run-1", files_seen=0, files_processed=0)
+            emit_evaluation(run_id="run-1", files_seen=0, files_processed=0)
         assert send.call_args.kwargs["notable"] is True
+
+    def test_a_quiet_run_can_say_so(self) -> None:
+        with patch(_SEND) as send:
+            send.return_value = MagicMock(sent=1, suppressed=0, failed=0)
+            emit_evaluation(run_id="run-1", notable=False)
+        assert send.call_args.kwargs["notable"] is False
+
+    def test_the_report_carries_the_run_id_and_flow_name(self) -> None:
+        """The queue message id, not the library's ``local-run`` fallback."""
+        report = build_report(run_id="msg-9", flow_name="voicenotes-cleanup")
+        assert report.run_id == "msg-9"
+        assert report.flow_name == "voicenotes-cleanup"
 
     def test_source_override_is_forwarded(self) -> None:
         with patch(_SEND) as send:
             send.return_value = MagicMock(sent=1, suppressed=0, failed=0)
-            emit_evaluation.fn(
-                flow_run_id="run-1",
+            emit_evaluation(
+                run_id="run-1",
                 files_seen=1,
                 files_processed=0,
                 findings=[_failure("terminal: worker died")],
@@ -248,8 +260,8 @@ class TestEmitEvaluation:
         """Three failed files, one notification."""
         with patch(_SEND) as send:
             send.return_value = MagicMock(sent=1, suppressed=0, failed=0)
-            emit_evaluation.fn(
-                flow_run_id="run-1",
+            emit_evaluation(
+                run_id="run-1",
                 files_seen=3,
                 files_processed=0,
                 findings=[
@@ -261,17 +273,15 @@ class TestEmitEvaluation:
     def test_swallows_library_exception(self) -> None:
         """The library is best-effort; a raise here must not fail the flow.
 
-        Reporting on a batch must never be the reason the batch is
-        recorded as failed. The task returning normally *is* the
+        Reporting on a run must never be the reason the run is recorded
+        as failed. The task returning normally *is* the
         assertion that nothing propagated — a raise would surface as this
         test erroring, so there is no need to catch it by hand. The call
         is verified as well, so a version of this that silently stopped
         reporting would fail rather than pass.
         """
         with patch(_SEND, side_effect=RuntimeError("boom")) as send:
-            result = emit_evaluation.fn(
-                flow_run_id="run-1", files_seen=1, files_processed=1
-            )
+            result = emit_evaluation(run_id="run-1", files_seen=1, files_processed=1)
 
         assert result is None
         send.assert_called_once()

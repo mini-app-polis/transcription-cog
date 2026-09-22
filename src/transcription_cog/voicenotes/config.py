@@ -10,7 +10,7 @@ The voicenotes-specific required fields (``openai_api_key``,
 ``asana_inbox_project_id``, ``google_drive_voice_inbox_folder_id``)
 are declared with empty-string
 defaults rather than ``Field(...)``-required. This is deliberate:
-transcription-cog ships as a single Railway service hosting two
+transcription-cog ships as a single deployment hosting two
 unrelated pipelines, and Doppler may have voicenotes secrets configured
 only after the merge deploy. Hard-requiring them at module import would
 crash the entire deployment — including ``wcs-transcripts`` mode, which
@@ -140,9 +140,9 @@ class Settings(BaseSettings):
 
     # --- Observability ---
     # No Healthchecks.io ping here: watcher-cog already has its own
-    # healthcheck for the trigger arm, and Prefect Cloud's "flow run
-    # failed" / "missed scheduled run" alerts cover the gap on this
-    # side without a separate dead-man's switch.
+    # healthcheck for the trigger arm, and on this side a job that fails
+    # every retry lands in the dead-letter queue, whose alarm is the
+    # liveness signal (infra/account.tf).
     sentry_dsn_voicenotes: str | None = Field(
         default=None,
         description=(
@@ -192,47 +192,23 @@ class Settings(BaseSettings):
 
     # --- Operational delays (TEST-013) ---
     # Sourced from settings so tests can override to zero without
-    # touching source. Production defaults below mirror the original
-    # hardcoded literals.
+    # touching source.
     task_retries: int = Field(
         default=3,
         ge=0,
-        description="Default Prefect task retry count for ingest tasks.",
+        description=(
+            "Retries for a transient Asana failure when posting a task "
+            "(tenacity, in tasks/post_task.py). Every other call goes "
+            "through a client that retries itself."
+        ),
     )
-    # ``list[float]`` (not ``list[int]``) because Prefect's
-    # ``@task(retry_delay_seconds=...)`` typing is ``list[float] | ...``
-    # and ``list[int]`` is invariant in PEP-484 — mypy refuses the
-    # assignment. Pydantic coerces ``[5, 15, 30]`` from env into floats
-    # transparently, and Prefect treats integer-valued floats the same
-    # as ints at runtime, so this is a zero-cost type fix.
     task_retry_delays_seconds: list[float] = Field(
         default=[5.0, 15.0, 30.0],
         description=(
-            "Per-attempt retry delay (seconds) for ingest tasks. "
+            "Delay (seconds) before each Asana retry; the last repeats. "
             "Length should match task_retries."
         ),
     )
-    extract_task_retries: int = Field(
-        default=5,
-        ge=0,
-        description=(
-            "Retry count for the Claude extraction task. "
-            "Sized to ride out Anthropic 529 'overloaded' capacity "
-            "blips, which can persist for several minutes — short "
-            "retry budgets here drop voice notes on the floor."
-        ),
-    )
-    extract_task_retry_delays_seconds: list[float] = Field(
-        default=[30.0, 60.0, 120.0, 300.0, 600.0],
-        description=(
-            "Retry delays (seconds) for the Claude extraction task. "
-            "Exponential-ish backoff from 30s up to 10 minutes, "
-            "totaling ~18min across 5 retries. Length matches "
-            "extract_task_retries; Prefect reuses the last delay if "
-            "the list is shorter than retries."
-        ),
-    )
-
     # HTTP client default timeout for outbound API calls (Asana,
     # Drive, etc.). Surfaced in settings so tests can override to a
     # tiny value without monkeypatching, per TEST-013.
@@ -242,21 +218,20 @@ class Settings(BaseSettings):
         description="Default HTTP timeout for outbound API calls.",
     )
 
-    # --- LLM request + task timeouts ---
-    # Two layers protect against the "deploy mid-LLM-call" hang. Without
-    # these, a redeploy that lands while a worker is waiting on an LLM
-    # response leaves the old process holding the socket open up to the
-    # Anthropic/OpenAI SDK default of ~600 s (10 min), well past
-    # Railway's SIGKILL grace window — so the run is force-killed in an
-    # unclean state instead of cooperatively shutting down. The Prefect
-    # task timeout on top lets Prefect cancel a hung task even if the
-    # SDK retries internally.
+    # --- LLM request timeouts ---
+    # One voice note must fit in one Lambda invocation (900 s), SDK
+    # retries included, with room for Drive, Asana and the retention
+    # sweep. Without a timeout the SDKs default to ~600 s per request.
     #
-    # Layering: request < task. The per-request value caps one HTTP
-    # call; the per-task value caps the whole attempt including SDK
-    # internal retries. The Anthropic/OpenAI SDKs default to ~2
-    # internal retries, so task ≈ request × (1 + SDK retries) leaves
-    # room for one retry plus headroom.
+    # Budget: Whisper at 240 s × 2 attempts (max_retries=1 on the client)
+    # is 480 s. Claude at 60 s × 2 attempts (max_retries=1), twice when
+    # the first answer does not parse, is 240 s. 720 s worst case, leaving
+    # ~180 s for Drive, Asana and the retention sweep — and Asana's own
+    # worst case, every tenacity attempt timing out, is ~130 s of that.
+    # The sum can exceed 900 s only when everything is failing at once;
+    # the worker stops a run 30 s before the timeout so it still reports.
+    # Raising either means re-doing this sum against the function's
+    # timeout in infra/variables.tf.
     claude_request_timeout_seconds: float = Field(
         default=60.0,
         ge=1.0,
@@ -270,39 +245,15 @@ class Settings(BaseSettings):
         ),
     )
     whisper_request_timeout_seconds: float = Field(
-        default=300.0,
+        default=240.0,
         ge=1.0,
         description=(
             "Per-HTTP-request timeout (seconds) for OpenAI Whisper SDK "
             "calls from whisper_client.py. Whisper processes audio in "
             "proportion to length; voice notes are typically <5 min of "
-            "audio, but operators occasionally record longer dictation. "
-            "5 min covers the realistic upper bound without leaving the "
-            "worker socket open indefinitely."
+            "audio. Part of the one-invocation budget above."
         ),
     )
-    claude_task_timeout_seconds: float = Field(
-        default=180.0,
-        ge=1.0,
-        description=(
-            "Prefect task timeout (seconds) for the extract task. Lets "
-            "Prefect cancel a stuck task even if the Anthropic SDK is "
-            "internally retrying. Sized at ~3× claude_request to allow "
-            "one SDK retry cycle plus headroom."
-        ),
-    )
-    whisper_task_timeout_seconds: float = Field(
-        default=600.0,
-        ge=1.0,
-        description=(
-            "Prefect task timeout (seconds) for the transcribe task. "
-            "Sized at ~2× whisper_request — one SDK retry on top of the "
-            "longest legitimate audio file we expect. Long enough to "
-            "succeed on real traffic, short enough to free the worker "
-            "for the next attempt before a redeploy stalls the pipeline."
-        ),
-    )
-
     environment: str = Field(default="production")
 
 
@@ -377,7 +328,8 @@ def require_voicenotes_settings(cfg: Settings | None = None) -> Settings:
         env_names = ", ".join(name.upper() for name in missing)
         raise RuntimeError(
             "voicenotes mode invoked but required configuration is missing. "
-            f"Populate the following env vars in Doppler / Railway: {env_names}. "
+            f"Populate the following env vars in Doppler and re-apply infra/: "
+            f"{env_names}. "
             "See .env.example for descriptions, or "
             "docs/decisions/ADR-004-voicenotes-merge.md for the merge context."
         )
