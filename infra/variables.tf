@@ -246,8 +246,8 @@ variable "tuning" {
     voice note fits in one invocation, and an old Doppler value would
     break that budget. They live in code (voicenotes/config.py).
   DESC
-  type    = map(string)
-  default = {}
+  type        = map(string)
+  default     = {}
 
   validation {
     condition = alltrue([

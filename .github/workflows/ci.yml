@@ -32,6 +32,8 @@ jobs:
       pytest-args: "--cov=transcription_cog --cov-report=term-missing"
       # TEST-012: [tool.mypy] is declared, so it runs here.
       typecheck: "uv run mypy src/"
+      # fmt and validate only; applying stays on the workstation.
+      terraform-dir: infra
 
   release:
     needs: [test, security]
