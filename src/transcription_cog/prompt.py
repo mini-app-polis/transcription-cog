@@ -20,7 +20,17 @@ Prompt versioning:
 
 from __future__ import annotations
 
+from typing import Literal, TypedDict
+
 from .filename_parser import ParsedFilename
+
+
+class PromptMessage(TypedDict):
+    """One message of the extraction prompt, before it becomes an LLMMessage."""
+
+    role: Literal["system", "user"]
+    content: str
+
 
 PROMPT_VERSION = "2.4.0"
 
@@ -619,7 +629,7 @@ GENERAL:
 def build_messages(
     transcript_text: str,
     parsed: ParsedFilename,
-) -> list[dict[str, str]]:
+) -> list[PromptMessage]:
     """Return a provider-neutral message list for transcript → extraction.
 
     The system prompt embeds the filename-parsed metadata as ground truth.
