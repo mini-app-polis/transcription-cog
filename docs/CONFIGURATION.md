@@ -1,9 +1,10 @@
 # Configuration — transcription-cog
 
 All configuration is via environment variables. Secrets are managed in
-Doppler and reach the Lambda function through `infra/tf` — never through
-`terraform.tfvars`. See `.env.example` for the full list of keys and
-`infra/worker.tf` for what the function is given.
+Doppler, synced to SSM Parameter Store, and loaded by the Lambda worker at
+cold start — they never pass through Terraform. See `.env.example` for the
+full list of keys, and `cogs.tf` in mini-app-polis/infra for which ones the
+function loads (required and optional).
 
 ## Required variables
 
@@ -18,10 +19,10 @@ Doppler and reach the Lambda function through `infra/tf` — never through
 
 ## Optional variables
 
-On Lambda, only what `infra/worker.tf` sets reaches the function. The
-optional settings below other than the request timeouts are passed through
-from Doppler when present (`var.tuning`); anything else takes its code
-default.
+On Lambda, only the names listed for transcription in mini-app-polis/infra
+`cogs.tf` are loaded. The optional settings below other than the request
+timeouts are loaded from Doppler when present (`ssm_optional_parameters`);
+anything absent takes its code default.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -52,14 +53,13 @@ manually via `wcs.kaianolevine.com` or directly via the API.
 
 ## Doppler project structure
 
-- Project: `transcription-cog`
-- Environments: `development`, `production`
-- Reaches the Lambda function through `infra/tf`, which reads Doppler into
-  Terraform's environment. Lambda caps the whole environment at 4 KB; `./tf`
-  prints the total.
+- Project: `mini-app-polis-ecosystem`, configs `dev` and `prd`
+- `prd` syncs to SSM Parameter Store under `/mini-app-polis/prd/`; the worker
+  loads its listed names at cold start. Local runs use `doppler run`.
 
 ## Notes on secret rotation
 
-The function reads its environment at cold start. After rotating a secret
-in Doppler, re-apply with `./tf plan -out tfplan && ./tf apply tfplan` from
-`infra/`; the next invocation picks it up.
+The worker loads its secrets at cold start. After rotating one in Doppler
+the sync updates Parameter Store within moments, but warm instances keep
+the old value until they are recycled — the next deploy, or any
+configuration change, forces a cold start.

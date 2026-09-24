@@ -32,8 +32,6 @@ jobs:
       pytest-args: "--cov=transcription_cog --cov-report=term-missing"
       # TEST-012: every Python repo typechecks in CI, against its [tool.mypy].
       typecheck: "uv run mypy src/"
-      # fmt and validate only; applying stays on the workstation.
-      terraform-dir: infra
 
   release:
     needs: [test, security]
@@ -100,7 +98,7 @@ jobs:
     uses: mini-app-polis/.github/.github/workflows/lambda-deploy.yml@v3
     with:
       ref: ${{ needs.release.outputs.tag }}
-      # These three match infra/worker.tf; the deploy refuses a function
+      # These three match this cog's block in mini-app-polis/infra cogs.tf; the deploy refuses a function
       # whose architecture differs.
       handler: transcription_cog.worker.lambda_handler
       architecture: arm64
