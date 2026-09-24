@@ -93,11 +93,12 @@ of all environment variables.
 
 ## Deployment
 
-A Lambda function behind an SQS queue, both declared in [`infra/`](infra/README.md)
-and applied with Terraform from a workstation. CI's `deploy` job ships the
-code of each release through the shared `lambda-deploy.yml`; Terraform owns
-the function's configuration. Secrets reach the function through
-`infra/tf`, which reads them from Doppler.
+A Lambda function behind an SQS queue, both declared in [`mini-app-polis/infra`](https://github.com/mini-app-polis/infra).
+CI's `deploy` job ships the code of each release through the shared
+`lambda-deploy.yml`; Terraform owns the function's configuration. Secrets are
+synced from Doppler to SSM Parameter Store and loaded by the worker at cold
+start (`mini_app_polis.ssm_secrets`); `cogs.tf` in the infra repository lists
+which ones by name.
 
 ### Prerequisites
 
@@ -105,9 +106,9 @@ the function's configuration. Secrets reach the function through
    033 (the `transcription-trigger` role).
 2. **watcher-cog** — the `wcs-notes` and `voice-notes` watchers post once
    per changed file, with `mode=wcs-transcripts` and `mode=voicenotes`.
-3. **infra/** applied, and the GitHub repository variables
+3. **mini-app-polis/infra** applied, and the GitHub repository variables
    `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `AWS_FUNCTION_NAME` set from
-   `terraform output`.
+   `terraform output cogs` there.
 
 ### Observability
 
@@ -169,5 +170,4 @@ docs/
   PIPELINE.md       ecosystem flow diagram and storage schema
   CONFIGURATION.md  every environment variable documented
 
-infra/              queue, dead-letter queue, alarm, function, deploy role
 ```
