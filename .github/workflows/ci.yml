@@ -30,7 +30,7 @@ jobs:
     uses: mini-app-polis/.github/.github/workflows/python-test.yml@v3
     with:
       pytest-args: "--cov=transcription_cog --cov-report=term-missing"
-      # TEST-012: [tool.mypy] is declared, so it runs here.
+      # TEST-012: every Python repo typechecks in CI, against its [tool.mypy].
       typecheck: "uv run mypy src/"
       # fmt and validate only; applying stays on the workstation.
       terraform-dir: infra

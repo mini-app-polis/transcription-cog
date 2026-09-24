@@ -109,14 +109,11 @@ def _find_in_folder(
     most.
     """
     for item in g.drive.get_files_in_folder(folder_id, include_folders=False):
-        file_id = item.id if hasattr(item, "id") else item.get("id")
-        if file_id != drive_file_id:
+        # DriveFile, typed by the shared library. The dict branches this
+        # replaced were for a listing shape it has not returned for a while.
+        if item.id != drive_file_id:
             continue
-        name = item.name if hasattr(item, "name") else item.get("name")
-        mime_type = (
-            item.mime_type if hasattr(item, "mime_type") else item.get("mimeType")
-        )
-        return file_id, name or file_id, mime_type
+        return item.id, item.name or item.id, item.mime_type
     return None
 
 
