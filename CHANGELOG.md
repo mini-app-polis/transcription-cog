@@ -1,3 +1,10 @@
+# [2.16.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.3...v2.16.0) (2026-09-24)
+
+
+### Features
+
+* load worker secrets from SSM Parameter Store ([717d6ee](https://github.com/mini-app-polis/transcription-cog/commit/717d6ee2ee294edddb5fe72a2a604c9beeaf2ddc))
+
 ## [2.15.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.2...v2.15.3) (2026-09-22)
 
 
