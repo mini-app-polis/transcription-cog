@@ -5,7 +5,7 @@ description = "Lambda pipeline cog. Two pipelines under one function: WCS lesson
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "miniapppolis-common-utils[llm]>=5.11.0,<6",
+    "miniapppolis-common-utils[llm]>=5.13.1,<6",
     "pydantic>=2.0.0,<3.0.0",
     "pydantic-settings>=2.4.0,<3.0.0",
     "python-dotenv>=1.0.1,<2.0.0",

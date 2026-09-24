@@ -36,6 +36,15 @@ data "aws_iam_policy_document" "worker" {
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["${aws_cloudwatch_log_group.worker.arn}:*"]
   }
+
+  # Its own secrets, by name (secrets.tf). GetParameters and nothing wider:
+  # not GetParametersByPath, which would reach every secret Doppler syncs.
+  # No KMS grant — SecureStrings under the AWS-managed aws/ssm key are
+  # decryptable by any principal in the account that may read them via SSM.
+  statement {
+    actions   = ["ssm:GetParameters"]
+    resources = local.ssm_parameter_arns
+  }
 }
 
 resource "aws_iam_role_policy" "worker" {
@@ -120,29 +129,16 @@ resource "aws_lambda_function" "worker" {
   # 1: runs are serialised. See var.reserved_concurrency.
   reserved_concurrent_executions = var.reserved_concurrency
 
-  # Lambda caps the whole map at 4 KB, keys included, and the service
-  # account JSON is most of it. An apply that exceeds it fails with an
-  # error naming the limit; README.md says how to check before applying.
-  # The tuning map is merged in, not listed: a setting Doppler does not
-  # hold must stay unset rather than arrive as "", which the config reads
-  # as a value (an empty model name, a retention of zero days).
+  # Configuration only. Secrets are not here: the SSM_* entries name the
+  # parameters the worker loads itself at cold start (secrets.tf).
   environment {
-    variables = merge(var.tuning, {
-      KAIANO_API_BASE_URL                = var.kaiano_api_base_url
-      TRANSCRIPTION_COG_API_KEY          = var.transcription_cog_api_key
-      GOOGLE_CREDENTIALS_JSON            = var.google_credentials_json
-      ANTHROPIC_API_KEY                  = var.anthropic_api_key
-      OPENAI_API_KEY                     = var.openai_api_key
-      ASANA_ACCESS_TOKEN                 = var.asana_access_token
-      ASANA_WORKSPACE_ID                 = var.asana_workspace_id
-      ASANA_INBOX_PROJECT_ID             = var.asana_inbox_project_id
-      ASANA_INBOX_SECTION_ID             = var.asana_inbox_section_id
-      NOTES_INPUT_FOLDER_ID              = var.notes_input_folder_id
-      NOTES_PROCESSED_FOLDER_ID          = var.notes_processed_folder_id
-      GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID = var.google_drive_voice_inbox_folder_id
-      SENTRY_DSN                         = var.sentry_dsn
-      ENVIRONMENT                        = "production"
-    })
+    variables = {
+      KAIANO_API_BASE_URL     = var.kaiano_api_base_url
+      ENVIRONMENT             = "production"
+      SSM_PREFIX              = local.ssm_prefix
+      SSM_PARAMETERS          = jsonencode(local.ssm_parameters)
+      SSM_OPTIONAL_PARAMETERS = jsonencode(local.ssm_optional_parameters)
+    }
   }
 
   depends_on = [aws_cloudwatch_log_group.worker]
