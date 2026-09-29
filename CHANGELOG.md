@@ -1,3 +1,10 @@
+## [2.16.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.0...v2.16.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **deps:** ship common 5.14.1 and oauthlib 4.0.0 (CVE-2026-49265) ([5b43c34](https://github.com/mini-app-polis/transcription-cog/commit/5b43c342641e09b0d41a712c331d8e67b8445d6e))
+
 # [2.16.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.15.3...v2.16.0) (2026-09-24)
 
 
