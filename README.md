@@ -141,11 +141,9 @@ Commit message format:
 src/transcription_cog/
   __init__.py       package init
   config.py         typed config from env vars (WCS pipeline)
-  models.py         Pydantic models for all external data
   schema.py         LLM JSON schema for structured notes output
   prompt.py         LLM system + user message builder
   drive.py          Google Drive read + archive helpers (WCS pipeline)
-  api_client.py     typed client for api-kaianolevine-com
   flow.py           process_transcript — one WCS transcript file
   worker.py         Lambda entrypoint: one queue message, one run
   voicenotes/       voice sticky-note sub-pipeline (merged from voicenotes-cog)

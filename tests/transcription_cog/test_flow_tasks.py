@@ -7,6 +7,8 @@ so these call them directly.
 
 from __future__ import annotations
 
+import datetime as dt
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +21,9 @@ from transcription_cog.flow import (
     task_store_source,
     task_store_transcript,
 )
+
+#: What the API returns as a transcript id, and so what the flow hands on.
+TRANSCRIPT_ID = "5f0c6a3e-8f4b-4d0e-9b1a-2c3d4e5f6a7b"
 
 
 def _parsed() -> ParsedFilename:
@@ -46,7 +51,7 @@ def _cfg() -> MagicMock:
 
 def test_task_store_transcript_returns_id() -> None:
     api = MagicMock()
-    api.create_transcript.return_value = MagicMock(id="t-1")
+    api.create_wcs_transcript.return_value = MagicMock(id="t-1")
 
     result = task_store_transcript(
         api,
@@ -56,15 +61,15 @@ def test_task_store_transcript_returns_id() -> None:
     )
 
     assert result == "t-1"
-    api.create_transcript.assert_called_once()
-    payload = api.create_transcript.call_args[0][0]
+    api.create_wcs_transcript.assert_called_once()
+    payload = api.create_wcs_transcript.call_args[0][0]
     assert payload.drive_file_id == "drive-abc"
     assert payload.source_filename == "2026-04-01 Kaiano > Sarah.txt"
 
 
 def test_task_store_transcript_raises_on_duplicate() -> None:
     api = MagicMock()
-    api.create_transcript.side_effect = Exception(
+    api.create_wcs_transcript.side_effect = Exception(
         "uq_wcs_transcripts_drive_file_id unique constraint"
     )
 
@@ -113,32 +118,33 @@ def test_task_call_llm_truncation_error_is_propagated_with_clear_log(
 
 def test_task_store_source_uses_topic_as_title() -> None:
     api = MagicMock()
-    api.create_source.return_value = MagicMock(id="src-1")
+    api.create_wcs_source.return_value = MagicMock(id="src-1")
 
     result = task_store_source(
         api,
-        transcript_id="t-1",
+        transcript_id=TRANSCRIPT_ID,
         extraction={"summary": "A lesson"},
         parsed=_parsed(),
         cfg=_cfg(),
     )
 
     assert result == "src-1"
-    payload = api.create_source.call_args[0][0]
+    payload = api.create_wcs_source.call_args[0][0]
     assert payload.title == "Connection"
-    assert payload.transcript_id == "t-1"
+    assert payload.transcript_id == uuid.UUID(TRANSCRIPT_ID)
+    assert payload.session_date == dt.date(2026, 4, 1)
     assert payload.instructors_raw == ["Kaiano"]
     assert payload.students_raw == ["Sarah"]
     assert payload.session_type == "private_lesson"
     assert payload.extractor_model == "claude-sonnet-4-6"
     assert payload.extractor_provider == "anthropic"
     assert payload.prompt_version == "2.4.0"
-    assert payload.raw_output == {"summary": "A lesson"}
+    assert payload.raw_output.model_dump(exclude_unset=True) == {"summary": "A lesson"}
 
 
 def test_task_store_source_falls_back_to_extraction_title() -> None:
     api = MagicMock()
-    api.create_source.return_value = MagicMock(id="src-1")
+    api.create_wcs_source.return_value = MagicMock(id="src-1")
     parsed = ParsedFilename(
         recording_date="2026-04-01",
         instructors=["Kaiano"],
@@ -151,13 +157,13 @@ def test_task_store_source_falls_back_to_extraction_title() -> None:
 
     task_store_source(
         api,
-        transcript_id="t-1",
+        transcript_id=TRANSCRIPT_ID,
         extraction={"title": "Extracted Title", "summary": "A lesson"},
         parsed=parsed,
         cfg=_cfg(),
     )
 
-    payload = api.create_source.call_args[0][0]
+    payload = api.create_wcs_source.call_args[0][0]
     assert payload.title == "Extracted Title"
 
 
