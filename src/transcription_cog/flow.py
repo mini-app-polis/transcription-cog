@@ -40,27 +40,36 @@ dead-letters it after max_receive_count.
 
 from __future__ import annotations
 
+import datetime as dt
+import uuid
 from importlib.metadata import PackageNotFoundError, version
 
 import sentry_sdk
 from dotenv import load_dotenv
 from jsonschema import ValidationError, validate
 from mini_app_polis import logger as log
+from mini_app_polis.api import KaianoApiClient
+from mini_app_polis.api.contract import (
+    WcsExtractionRawOutput,
+    WcsSourceCreate,
+    WcsTranscriptCreate,
+)
 from mini_app_polis.google import GoogleAPI
 from mini_app_polis.llm import LLMMessage, build_llm
 from mini_app_polis.llm.errors import LLMTruncationError
 
 from ._pipeline_eval import run_report
-from .api_client import SubstrateApiClient
 from .config import Config, load_config
 from .drive import archive_file, infer_source_type, read_transcript_text
 from .filename_parser import FilenameParseError, ParsedFilename, parse_filename
-from .models import (
-    SourceCreatePayload,
-    TranscriptCreatePayload,
-)
 from .prompt import PROMPT_VERSION, build_messages
 from .schema import EXTRACTION_SCHEMA
+
+#: This cog's name in api-kaianolevine-com's identity_registry.MACHINES. The
+#: shared client derives TRANSCRIPTION_COG_API_KEY from it, and the API
+#: derives the same variable from the same name, so the key identifies this
+#: cog and the audit trail records which cog wrote.
+MACHINE_NAME = "transcription-cog"
 
 
 def _extractor_version() -> str:
@@ -125,7 +134,7 @@ def task_read_transcript(g: GoogleAPI, file_id: str, mime_type: str) -> str:
 
 
 def task_store_transcript(
-    api: SubstrateApiClient,
+    api: KaianoApiClient,
     raw_text: str,
     source_filename: str,
     drive_file_id: str,
@@ -136,15 +145,15 @@ def task_store_transcript(
     logger.info(
         log.with_log_prefix(log.LOG_START, f"Storing transcript: {source_filename}")
     )
-    payload = TranscriptCreatePayload(
+    payload = WcsTranscriptCreate(
         raw_text=raw_text,
         source_type=source_type,  # type: ignore[arg-type]
         source_filename=source_filename,
         drive_file_id=drive_file_id,
     )
-    response = api.create_transcript(payload)
+    response = api.create_wcs_transcript(payload)
     logger.info(f"Transcript stored: {response.id}")
-    return response.id
+    return str(response.id)
 
 
 def task_call_llm(
@@ -205,7 +214,7 @@ def task_call_llm(
 
 
 def task_store_source(
-    api: SubstrateApiClient,
+    api: KaianoApiClient,
     transcript_id: str,
     extraction: dict,
     parsed: ParsedFilename,
@@ -223,11 +232,11 @@ def task_store_source(
     """
     logger = _get_logger()
     title = parsed.topic or extraction.get("title") or None
-    payload = SourceCreatePayload(
-        transcript_id=transcript_id,
+    payload = WcsSourceCreate(
+        transcript_id=uuid.UUID(transcript_id),
         title=title,
-        session_date=parsed.recording_date,
-        session_type=parsed.session_type,  # type: ignore[arg-type]
+        session_date=dt.date.fromisoformat(parsed.recording_date),
+        session_type=parsed.session_type,
         instructors_raw=parsed.instructors,
         students_raw=parsed.students,
         organization=parsed.organization,
@@ -237,11 +246,11 @@ def task_store_source(
         extractor_model=cfg.llm_model,
         extractor_provider=cfg.llm_provider,
         prompt_version=PROMPT_VERSION,
-        raw_output=extraction,
+        raw_output=WcsExtractionRawOutput.model_validate(extraction),
     )
-    response = api.create_source(payload)
+    response = api.create_wcs_source(payload)
     logger.info(log.with_log_prefix(log.LOG_SUCCESS, f"Source stored: {response.id}"))
-    return response.id
+    return str(response.id)
 
 
 def task_archive_file(
@@ -256,7 +265,7 @@ def task_archive_file(
 
 def _process_one(
     g: GoogleAPI,
-    api: SubstrateApiClient,
+    api: KaianoApiClient,
     cfg: Config,
     file_id: str,
     file_name: str,
@@ -354,7 +363,7 @@ def process_transcript(drive_file_id: str, *, run_id: str | None = None) -> dict
     with run_report("process-transcript", notable=True, run_id=run_id) as report:
         cfg = load_config()
         g = GoogleAPI.from_env()
-        api = SubstrateApiClient()
+        api = KaianoApiClient.from_env(MACHINE_NAME)
 
         found = _find_in_folder(g, cfg.notes_input_folder_id, drive_file_id)
         if found is None:

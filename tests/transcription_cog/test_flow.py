@@ -7,11 +7,13 @@ second job for a file already archived knows to do nothing.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterator
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from transcription_cog.flow import process_transcript
 
@@ -27,6 +29,10 @@ _MINIMAL_NOTES = {
     "title": "Test lesson",
     "summary": "A test lesson about leading.",
 }
+
+#: The API's transcript and source ids are UUIDs; the flow reports them as text.
+_TRANSCRIPT_ID = "5f0c6a3e-8f4b-4d0e-9b1a-2c3d4e5f6a7b"
+_SOURCE_ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
 
 _VALID_FILENAME = "2026-04-01 Kaiano > Sarah - Connection.txt"
 _VALID_GROUP_FILENAME = "2026-04-01 Kaiano > Swingesota.txt"
@@ -65,8 +71,8 @@ class _Harness:
         self.api = MagicMock()
         self.llm = MagicMock()
         self.post = MagicMock()
-        self.api.create_transcript.return_value = MagicMock(id="transcript-abc")
-        self.api.create_source.return_value = MagicMock(id="source-xyz")
+        self.api.create_wcs_transcript.return_value = MagicMock(id=_TRANSCRIPT_ID)
+        self.api.create_wcs_source.return_value = MagicMock(id=_SOURCE_ID)
         self.llm.generate_json.return_value = MagicMock(output_json=_MINIMAL_NOTES)
 
     def folder(self, *items: MagicMock) -> None:
@@ -90,11 +96,12 @@ def harness(mock_env: None, mock_drive_text: str) -> Iterator[_Harness]:
     def _patched() -> Iterator[None]:
         with (
             patch("transcription_cog.flow.GoogleAPI") as gapi,
-            patch("transcription_cog.flow.SubstrateApiClient", return_value=h.api),
+            patch("transcription_cog.flow.KaianoApiClient") as api_client,
             patch("transcription_cog.flow.build_llm", return_value=h.llm),
             patch("mini_app_polis.pipeline_status.post_run_finding", h.post),
         ):
             gapi.from_env.return_value = h.g
+            api_client.from_env.return_value = h.api
             yield
 
     with _patched():
@@ -106,15 +113,15 @@ def test_happy_path(harness: _Harness) -> None:
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_transcript.assert_called_once()
-    harness.api.create_source.assert_called_once()
+    harness.api.create_wcs_transcript.assert_called_once()
+    harness.api.create_wcs_source.assert_called_once()
     harness.llm.generate_json.assert_called_once()
     harness.g.drive.move_file.assert_called_once()
     assert result["processed"] == 1
     assert result["skipped"] == 0
     assert result["errors"] == 0
-    assert result["files"][0]["transcript_id"] == "transcript-abc"
-    assert result["files"][0]["source_id"] == "source-xyz"
+    assert result["files"][0]["transcript_id"] == _TRANSCRIPT_ID
+    assert result["files"][0]["source_id"] == _SOURCE_ID
     assert result["files"][0]["schema_valid"] is True
 
     harness.post.assert_called_once()
@@ -141,8 +148,8 @@ def test_only_the_named_file_is_processed(harness: _Harness) -> None:
 
     process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_transcript.assert_called_once()
-    payload = harness.api.create_transcript.call_args.args[0]
+    harness.api.create_wcs_transcript.assert_called_once()
+    payload = harness.api.create_wcs_transcript.call_args.args[0]
     assert payload.drive_file_id == "file-1"
     assert payload.source_filename == _VALID_FILENAME
 
@@ -153,7 +160,7 @@ def test_a_file_no_longer_in_the_folder_is_a_quiet_no_op(harness: _Harness) -> N
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_transcript.assert_not_called()
+    harness.api.create_wcs_transcript.assert_not_called()
     harness.g.drive.move_file.assert_not_called()
     assert result["files"][0]["reason"] == "not_in_input_folder"
     harness.post.assert_called_once()
@@ -166,7 +173,7 @@ def test_invalid_filename_is_skipped_and_reported(harness: _Harness) -> None:
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_transcript.assert_not_called()
+    harness.api.create_wcs_transcript.assert_not_called()
     assert harness.severity == "WARN"
     assert result["skipped"] == 1
     assert result["files"][0]["reason"] == "invalid_filename"
@@ -177,7 +184,7 @@ def test_underscore_prefix_is_an_invalid_filename(harness: _Harness) -> None:
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_transcript.assert_not_called()
+    harness.api.create_wcs_transcript.assert_not_called()
     assert result["files"][0]["reason"] == "invalid_filename"
 
 
@@ -187,7 +194,7 @@ def test_a_short_transcript_is_skipped(harness: _Harness) -> None:
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_transcript.assert_not_called()
+    harness.api.create_wcs_transcript.assert_not_called()
     assert harness.severity == "WARN"
     assert result["files"][0]["reason"] == "transcript_too_short"
 
@@ -197,8 +204,8 @@ def test_parsed_metadata_reaches_the_source(harness: _Harness) -> None:
 
     process_transcript("file-1", run_id="msg-1")
 
-    payload = harness.api.create_source.call_args.args[0]
-    assert payload.session_date == "2026-04-01"
+    payload = harness.api.create_wcs_source.call_args.args[0]
+    assert payload.session_date == dt.date(2026, 4, 1)
     assert payload.instructors_raw == ["Kaiano"]
     assert payload.students_raw == ["Sarah"]
     assert payload.title == "Connection"
@@ -207,14 +214,14 @@ def test_parsed_metadata_reaches_the_source(harness: _Harness) -> None:
 def test_an_already_processed_transcript_is_a_note(harness: _Harness) -> None:
     """The unique constraint on drive_file_id is the dedup guard (ADR-002)."""
     harness.folder(_drive_item("file-1", _VALID_FILENAME))
-    harness.api.create_transcript.side_effect = RuntimeError(
+    harness.api.create_wcs_transcript.side_effect = RuntimeError(
         "duplicate key value violates unique constraint "
         '"uq_wcs_transcripts_drive_file_id"'
     )
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_source.assert_not_called()
+    harness.api.create_wcs_source.assert_not_called()
     assert result["files"][0]["reason"] == "already_processed"
     assert harness.severity == "SUCCESS"
 
@@ -225,7 +232,7 @@ def test_an_unsupported_file_type_is_reported(harness: _Harness) -> None:
 
     result = process_transcript("file-doc", run_id="msg-1")
 
-    harness.api.create_transcript.assert_not_called()
+    harness.api.create_wcs_transcript.assert_not_called()
     assert result["files"][0]["reason"] == "unsupported_file_type"
     assert harness.severity == "WARN"
     assert "unsupported_file_type" in harness.text
@@ -271,11 +278,31 @@ def test_a_failure_before_the_file_is_found_is_still_reported(
 
 
 def test_an_invalid_extraction_is_stored_and_flagged(harness: _Harness) -> None:
+    # Fails the prompt's JSON schema (a quote needs `quote`) but not the
+    # API's contract, which is what decides whether it can be stored.
     harness.folder(_drive_item("file-1", _VALID_FILENAME))
-    harness.llm.generate_json.return_value = MagicMock(output_json={"title": 7})
+    harness.llm.generate_json.return_value = MagicMock(
+        output_json={"title": "Test lesson", "quotes": [{}]}
+    )
 
     result = process_transcript("file-1", run_id="msg-1")
 
-    harness.api.create_source.assert_called_once()
+    harness.api.create_wcs_source.assert_called_once()
     assert result["files"][0]["schema_valid"] is False
     assert "schema_invalid" in harness.text
+
+
+def test_an_extraction_the_api_would_refuse_is_never_sent(
+    harness: _Harness,
+) -> None:
+    # A title that is not text fails the contract, as it would fail the API.
+    # It fails here instead of as a 422, and the message goes back to the
+    # queue the same way.
+    harness.folder(_drive_item("file-1", _VALID_FILENAME))
+    harness.llm.generate_json.return_value = MagicMock(output_json={"title": 7})
+
+    with pytest.raises(ValidationError):
+        process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_wcs_source.assert_not_called()
+    assert "processing_failed" in harness.text

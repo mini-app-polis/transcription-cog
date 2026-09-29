@@ -50,7 +50,7 @@ def load_config() -> Config:
     model = os.getenv("LLM_MODEL", _DEFAULT_MODELS[provider])
 
     # Auth env vars (TRANSCRIPTION_COG_API_KEY) are read directly by
-    # KaianoApiClient.from_env() in api_client.py — validated there rather
+    # KaianoApiClient.from_env() in flow.py — validated there rather
     # than duplicated into Config.
     return Config(
         notes_input_folder_id=_require("NOTES_INPUT_FOLDER_ID"),

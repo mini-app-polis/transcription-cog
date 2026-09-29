@@ -1128,7 +1128,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "5.13.1"
+version = "5.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1141,13 +1141,14 @@ dependencies = [
     { name = "musicbrainzngs" },
     { name = "mutagen" },
     { name = "pyacoustid" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/92/b7ce113ef85946ad62ec61a707365ca70c2b79cad37beef286e4b5378f25/miniapppolis_common_utils-5.13.1.tar.gz", hash = "sha256:0a52cf43815e680333f8dd4ef43583dd49f6c5052db6ebabca7c0d986ceae349", size = 279310, upload-time = "2026-09-24T17:34:15.755Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/bf/6774be395fd1099b1e581191f4efc4a80156fecd95173d875c1816e40e13/miniapppolis_common_utils-5.14.1.tar.gz", hash = "sha256:6064011dfe383c195eebb1f130d7b30956263afb6afc94069c8d4269ebe45253", size = 303113, upload-time = "2026-09-29T18:58:21.664Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/eb/2754f4ff0dae9ef1dfef83e5ab0528a05087d24499d23b9a29ec7dce67d9/miniapppolis_common_utils-5.13.1-py3-none-any.whl", hash = "sha256:ed317460f041c922eec15ef8b41fb567c14ca921e0e25e3ded8be2baa1e9c625", size = 110345, upload-time = "2026-09-24T17:34:14.692Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/ba/a1a8fe76d0c8f5ad1450091fb08d595d43e152001832e76ac48294bdf9dc/miniapppolis_common_utils-5.14.1-py3-none-any.whl", hash = "sha256:3a41067865a8b59e06faa39832cac39ba06a7594244524fd2da7f1eab67d5375", size = 126250, upload-time = "2026-09-29T18:58:20.208Z" },
 ]
 
 [package.optional-dependencies]
@@ -1263,11 +1264,11 @@ wheels = [
 
 [[package]]
 name = "oauthlib"
-version = "3.3.1"
+version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0b/5f/19930f824ffeb0ad4372da4812c50edbd1434f678c90c2733e1188edfc63/oauthlib-3.3.1.tar.gz", hash = "sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9", size = 185918, upload-time = "2025-06-19T22:48:08.269Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/d8/a1bcc8ba112a627f8ffbdc212a78ce18d3ac07e91a5ca65d27918eee25a1/oauthlib-4.0.0.tar.gz", hash = "sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86", size = 187232, upload-time = "2026-09-28T06:01:18.77Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/9c/92789c596b8df838baa98fa71844d84283302f7604ed565dafe5a6b5041a/oauthlib-3.3.1-py3-none-any.whl", hash = "sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1", size = 160065, upload-time = "2025-06-19T22:48:06.508Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/f4/78229a1066068ca14fc60fb26cf7381cabe4382261392b90e5f9552722d4/oauthlib-4.0.0-py3-none-any.whl", hash = "sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd", size = 159715, upload-time = "2026-09-28T06:01:17.008Z" },
 ]
 
 [[package]]
@@ -2070,7 +2071,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.0" },
     { name = "google-auth", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.13.1,<6" },
+    { name = "miniapppolis-common-utils", extras = ["llm"], specifier = ">=5.14.1,<6" },
     { name = "openai", specifier = ">=1.50" },
     { name = "pydantic", specifier = ">=2.0.0,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0,<3.0.0" },
