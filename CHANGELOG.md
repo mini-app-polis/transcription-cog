@@ -1,3 +1,10 @@
+## [2.16.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.2...v2.16.3) (2026-09-30)
+
+
+### Bug Fixes
+
+* **deps:** patch vulnerable dependencies (urllib3, virtualenv) ([a1b9c99](https://github.com/mini-app-polis/transcription-cog/commit/a1b9c995fbb28dfe54fc3da8795dc818e010b574))
+
 ## [2.16.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.1...v2.16.2) (2026-09-29)
 
 
