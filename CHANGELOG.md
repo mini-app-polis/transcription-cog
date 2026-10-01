@@ -1,3 +1,10 @@
+## [2.16.5](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.4...v2.16.5) (2026-10-01)
+
+
+### Bug Fixes
+
+* **deps:** bump openai ([bbf017b](https://github.com/mini-app-polis/transcription-cog/commit/bbf017bb98fa9fd1cf8751980e2c461c61b6835e))
+
 ## [2.16.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.3...v2.16.4) (2026-09-30)
 
 
