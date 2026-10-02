@@ -1,3 +1,10 @@
+## [2.16.7](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.6...v2.16.7) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** bump google-auth ([57de774](https://github.com/mini-app-polis/transcription-cog/commit/57de774769786bab8e5a1efb1ee6cbfcbec227a1))
+
 ## [2.16.6](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.5...v2.16.6) (2026-10-01)
 
 
