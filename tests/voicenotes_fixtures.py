@@ -1,4 +1,9 @@
-"""Voicenotes sub-package test fixtures.
+"""Voicenotes test fixtures, shared by tests/unit/voicenotes and tests/integration/voicenotes.
+
+A plain module, not a conftest: both layers' voicenotes conftests import
+these fixtures by name, so each layer keeps them without one importing the other.
+
+Originally the voicenotes sub-package conftest.
 
 Per-test concerns only — singleton resets between tests, the
 deterministic transcript fixtures, and a defense-in-depth no-sleep

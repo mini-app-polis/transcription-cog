@@ -69,7 +69,7 @@ quote-style = "double"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration"]
 addopts = "--cov=transcription_cog --cov-report=term-missing"
 
 [tool.mypy]
