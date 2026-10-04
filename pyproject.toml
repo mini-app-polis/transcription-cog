@@ -76,3 +76,7 @@ addopts = "--cov=transcription_cog --cov-report=term-missing"
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
+
+[tool.coverage.report]
+# TEST-019: CI fails below this floor. Raise it as coverage rises; lowering it is a reviewed edit.
+fail_under = 50
