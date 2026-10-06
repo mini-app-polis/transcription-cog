@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import sentry_sdk
-from mini_app_polis import load_secrets
+from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.environment import current_environment
 
@@ -186,6 +186,14 @@ def _report_unprocessable(exc: BaseException, run_id: str) -> None:
         log.exception("worker: could not report the unprocessable message")
 
 
+def _mode_label(body: str) -> str:
+    """The message's mode, for the timing line. Never raises."""
+    try:
+        return _job_of(body).mode
+    except Exception:  # noqa: BLE001 — a label must not fail the run
+        return "unreadable"
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Run each record's job, and name the records that must come back.
 
@@ -217,21 +225,32 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         body = record.get("body") or ""
         attempt = (record.get("attributes") or {}).get("ApproximateReceiveCount", "?")
 
-        try:
-            with deadline(context):
-                process_message(body, run_id=message_id)
-        except UnprocessableMessage as exc:
-            log.error("worker: unprocessable message (attempt %s): %s", attempt, exc)
-            # Once, on the first receive. Every later receive fails the same
-            # way, and where it ends up — the dead-letter queue — has an
-            # alarm of its own; five reports of one bad message is noise.
-            if attempt in ("1", "?"):
-                _report_unprocessable(exc, message_id)
-            failures.append({"itemIdentifier": message_id})
-        except Exception:  # noqa: BLE001 — every failure is a retry
-            # Already reported by the flow; see _report_unprocessable.
-            log.exception("worker: run failed (attempt %s)", attempt)
-            failures.append({"itemIdentifier": message_id})
+        # One timing line per record: how much of the run was waiting,
+        # and on what (mini_app_polis.timing).
+        with timing.invocation(
+            cog="transcription", mode=_mode_label(body), attempt=attempt
+        ) as timed:
+            try:
+                with deadline(context):
+                    process_message(body, run_id=message_id)
+            except UnprocessableMessage as exc:
+                timed.label(outcome="unprocessable")
+                log.error(
+                    "worker: unprocessable message (attempt %s): %s", attempt, exc
+                )
+                # Once, on the first receive. Every later receive fails the same
+                # way, and where it ends up — the dead-letter queue — has an
+                # alarm of its own; five reports of one bad message is noise.
+                if attempt in ("1", "?"):
+                    _report_unprocessable(exc, message_id)
+                failures.append({"itemIdentifier": message_id})
+            except Exception:  # noqa: BLE001 — every failure is a retry
+                timed.label(outcome="failed")
+                # Already reported by the flow; see _report_unprocessable.
+                log.exception("worker: run failed (attempt %s)", attempt)
+                failures.append({"itemIdentifier": message_id})
+            else:
+                timed.label(outcome="ok")
 
     if failures:
         log.warning(
