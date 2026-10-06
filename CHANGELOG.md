@@ -1,3 +1,11 @@
+# [2.17.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.8...v2.17.0) (2026-10-06)
+
+
+### Features
+
+* **worker:** refresh settings from SSM at every invocation ([24eb7ab](https://github.com/mini-app-polis/transcription-cog/commit/24eb7ab5a7f618bee0f661337b1c06e8154e2184))
+* **worker:** refresh settings from SSM at every invocation ([29d9e74](https://github.com/mini-app-polis/transcription-cog/commit/29d9e749d2c6781e87aea5106355f2bdbf29b132))
+
 ## [2.16.8](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.7...v2.16.8) (2026-10-06)
 
 
