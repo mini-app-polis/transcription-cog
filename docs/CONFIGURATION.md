@@ -2,7 +2,8 @@
 
 All configuration is via environment variables. Secrets are managed in
 Doppler, synced to SSM Parameter Store, and loaded by the Lambda worker at
-cold start — they never pass through Terraform. See `.env.example` for the
+cold start and again at every invocation — they never pass through
+Terraform. See `.env.example` for the
 full list of keys, and `cogs.tf` in mini-app-polis/infra for which ones the
 function loads (required and optional).
 
@@ -31,7 +32,7 @@ anything absent takes its code default.
 | `OPENAI_API_KEY` | — | Whisper, for voice notes. Also the WCS extraction's key if `LLM_PROVIDER=openai` |
 | `MIN_TRANSCRIPT_CHARS` | `200` | Minimum transcript length to process |
 | `SENTRY_DSN` | — | Sentry project DSN, for both pipelines. Error tracking disabled if absent |
-| `LOGGING_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `LOGGING_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR`. Re-applied at every invocation; an unrecognised value is logged and ignored |
 
 ## Session type taxonomy
 
@@ -55,11 +56,14 @@ manually via `wcs.kaianolevine.com` or directly via the API.
 
 - Project: `mini-app-polis-ecosystem`, configs `dev` and `prd`
 - `prd` syncs to SSM Parameter Store under `/mini-app-polis/prd/`; the worker
-  loads its listed names at cold start. Local runs use `doppler run`.
+  loads its listed names at cold start and at every invocation. Local runs
+  use `doppler run`.
 
 ## Notes on secret rotation
 
-The worker loads its secrets at cold start. After rotating one in Doppler
-the sync updates Parameter Store within moments, but warm instances keep
-the old value until they are recycled — the next deploy, or any
-configuration change, forces a cold start.
+The worker reads its secrets again at the start of every invocation, so
+after rotating one in Doppler the next run uses it once the sync has updated
+Parameter Store — no deploy or cold start. If Parameter Store cannot be
+reached on a refresh, the values already loaded are kept; if the required
+ones cannot be loaded at all, every record goes back to the queue.
+`SENTRY_DSN` is the exception: it is read once, at cold start.
