@@ -1,3 +1,10 @@
+# [2.18.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.17.0...v2.18.0) (2026-10-06)
+
+
+### Features
+
+* **worker:** log per-record timing (working vs waiting, by service) ([8b831b4](https://github.com/mini-app-polis/transcription-cog/commit/8b831b41a5eeff9fef28929f344eade8cd58639c))
+
 # [2.17.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.16.8...v2.17.0) (2026-10-06)
 
 
