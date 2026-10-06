@@ -270,3 +270,24 @@ def test_settings_that_cannot_load_send_every_record_back(
     }
     for fake in flows.values():
         fake.assert_not_called()
+
+
+def test_each_record_writes_one_timing_line(
+    flows: dict[str, MagicMock],
+    reported: MagicMock,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    flows["wcs-transcripts"].side_effect = RuntimeError("truncated at max_tokens")
+
+    worker.lambda_handler(_event(_body("voicenotes"), _body()), None)
+
+    lines = [
+        json.loads(x)["timing"]
+        for x in capsys.readouterr().out.splitlines()
+        if '"timing"' in x
+    ]
+    assert [(t["labels"]["mode"], t["labels"]["outcome"]) for t in lines] == [
+        ("voicenotes", "ok"),
+        ("wcs-transcripts", "failed"),
+    ]
+    assert all(t["labels"]["cog"] == "transcription" for t in lines)
