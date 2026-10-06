@@ -1,3 +1,10 @@
+## [2.18.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.1...v2.18.2) (2026-10-06)
+
+
+### Bug Fixes
+
+* **deps:** bump the minor-and-patch group with 2 updates ([c5c5a77](https://github.com/mini-app-polis/transcription-cog/commit/c5c5a7773eb4a2a099ffbea83a44009744b8141d))
+
 ## [2.18.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.0...v2.18.1) (2026-10-06)
 
 
