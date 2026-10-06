@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import sentry_sdk
+from mini_app_polis import load_secrets
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.environment import current_environment
 
@@ -195,6 +196,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     makes this return shape mean something.
     """
     records = event.get("Records", []) if isinstance(event, dict) else []
+
+    # Settings first: a warm container would otherwise run on what it read
+    # at cold start, and a credential rotated in Doppler would keep failing
+    # until the next one. Without its settings nothing can run, so every
+    # record goes back.
+    try:
+        load_secrets(refresh=True)
+    except Exception:  # noqa: BLE001 — nothing can run without its settings
+        log.exception("worker: could not refresh settings from SSM")
+        return {
+            "batchItemFailures": [
+                {"itemIdentifier": str(r.get("messageId") or "")} for r in records
+            ]
+        }
     failures: list[dict[str, str]] = []
 
     for record in records:

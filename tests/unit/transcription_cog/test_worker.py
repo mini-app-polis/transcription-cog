@@ -238,3 +238,35 @@ def test_an_unprocessable_message_is_reported_once_not_per_receive(
     reported.assert_not_called()
     for flow in flows.values():
         flow.assert_not_called()
+
+
+def test_settings_are_refreshed_before_any_record_runs(
+    flows: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A warm container must not run on what it loaded at cold start."""
+    order: list[str] = []
+    monkeypatch.setattr(
+        worker, "load_secrets", lambda **kw: order.append(f"refresh={kw}")
+    )
+    flows["wcs-transcripts"].side_effect = lambda *_a, **_kw: order.append("run")
+
+    worker.lambda_handler(_event(_body()), None)
+
+    assert order == ["refresh={'refresh': True}", "run"]
+
+
+def test_settings_that_cannot_load_send_every_record_back(
+    flows: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def missing(**_kwargs: object) -> None:
+        raise RuntimeError("Required parameters are not in Parameter Store")
+
+    monkeypatch.setattr(worker, "load_secrets", missing)
+
+    result = worker.lambda_handler(_event(_body(), _body()), None)
+
+    assert result == {
+        "batchItemFailures": [{"itemIdentifier": "m-0"}, {"itemIdentifier": "m-1"}]
+    }
+    for fake in flows.values():
+        fake.assert_not_called()
