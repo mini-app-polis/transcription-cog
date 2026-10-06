@@ -1,3 +1,10 @@
+## [2.18.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.0...v2.18.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **deps:** pick up common 5.22.1 (throttle-aware timing) ([0956cad](https://github.com/mini-app-polis/transcription-cog/commit/0956cadeaaccd498e12308ae728bcaf40ec733cf))
+
 # [2.18.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.17.0...v2.18.0) (2026-10-06)
 
 
