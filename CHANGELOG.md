@@ -1,3 +1,10 @@
+## [2.18.5](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.4...v2.18.5) (2026-10-08)
+
+
+### Bug Fixes
+
+* **observability:** read Sentry DSN from SENTRY_DSN_COGS and tag service ([8980bd2](https://github.com/mini-app-polis/transcription-cog/commit/8980bd20a2ad494d2a2b3eccb83ab022aae0ae7a))
+
 ## [2.18.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.3...v2.18.4) (2026-10-08)
 
 
