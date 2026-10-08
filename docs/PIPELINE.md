@@ -99,5 +99,5 @@ Two tables on `api-kaianolevine-com`'s Railway Postgres:
 |-------|-----------|
 | L1 Liveness | `transcription-dlq-not-empty` CloudWatch alarm, with an email action |
 | L2 Logs | `mini_app_polis` logger — structured JSON in production |
-| L3 Exceptions | Sentry — SENTRY_DSN, initialised before any app logic |
+| L3 Exceptions | Sentry — SENTRY_DSN_COGS, initialised before any app logic |
 | L4 Run history | One run report per run to Discord, under the queue message id |

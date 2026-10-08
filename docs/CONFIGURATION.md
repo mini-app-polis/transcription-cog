@@ -31,7 +31,7 @@ anything absent takes its code default.
 | `LLM_MODEL` | provider default | Model name. Defaults: `claude-sonnet-4-6` (Anthropic), `gpt-4.1-mini` (OpenAI) |
 | `OPENAI_API_KEY` | — | Whisper, for voice notes. Also the WCS extraction's key if `LLM_PROVIDER=openai` |
 | `MIN_TRANSCRIPT_CHARS` | `200` | Minimum transcript length to process |
-| `SENTRY_DSN` | — | Sentry project DSN, for both pipelines. Error tracking disabled if absent |
+| `SENTRY_DSN_COGS` | — | Sentry project DSN, for both pipelines. Error tracking disabled if absent |
 | `LOGGING_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR`. Re-applied at every invocation; an unrecognised value is logged and ignored |
 
 ## Session type taxonomy
@@ -66,4 +66,4 @@ after rotating one in Doppler the next run uses it once the sync has updated
 Parameter Store — no deploy or cold start. If Parameter Store cannot be
 reached on a refresh, the values already loaded are kept; if the required
 ones cannot be loaded at all, every record goes back to the queue.
-`SENTRY_DSN` is the exception: it is read once, at cold start.
+`SENTRY_DSN_COGS` is the exception: it is read once, at cold start.
