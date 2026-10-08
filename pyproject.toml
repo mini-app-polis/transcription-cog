@@ -79,4 +79,4 @@ ignore_missing_imports = true
 
 [tool.coverage.report]
 # TEST-019: CI fails below this floor. Raise it as coverage rises; lowering it is a reviewed edit.
-fail_under = 50
+fail_under = 82
