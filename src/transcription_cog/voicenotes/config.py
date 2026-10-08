@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     # every retry lands in the dead-letter queue, whose alarm is the
     # liveness signal (modules/cog-worker in mini-app-polis/infra).
     # No Sentry DSN field: both pipelines report to the one project the
-    # worker initialises at import, from SENTRY_DSN.
+    # worker initialises at import, from SENTRY_DSN_COGS.
 
     # --- API integration (per ecosystem-standards CD-012) ---
     # ``mini_app_polis.api.KaianoApiClient`` reads these env vars

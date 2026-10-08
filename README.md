@@ -116,7 +116,7 @@ which ones by name.
    action (confirm the SNS subscription). There is no process to be alive
    between jobs; a job that fails every retry is what must reach a person.
 2. **Logs** — the shared structured logger, in CloudWatch.
-3. **Exceptions** — Sentry, from `SENTRY_DSN`. Voicenotes errors flow
+3. **Exceptions** — Sentry, from `SENTRY_DSN_COGS`. Voicenotes errors flow
    through the same DSN.
 4. **Run history** — every run reports to Discord under its queue message
    id, including a run that failed.
