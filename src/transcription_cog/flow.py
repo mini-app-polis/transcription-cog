@@ -45,7 +45,6 @@ import uuid
 from importlib.metadata import PackageNotFoundError, version
 
 import sentry_sdk
-from dotenv import load_dotenv
 from jsonschema import ValidationError, validate
 from mini_app_polis import logger as log
 from mini_app_polis.api import KaianoApiClient
@@ -79,8 +78,6 @@ def _extractor_version() -> str:
     except PackageNotFoundError:
         return "dev"
 
-
-load_dotenv()
 
 LOG = log.get_logger()
 

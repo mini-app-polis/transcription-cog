@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        # The process environment only: Doppler supplies it (`doppler run`
+        # locally, SSM on Lambda), and no .env file is read.
         # Avoid silently picking up unrelated env vars from the host.
         extra="ignore",
         case_sensitive=False,

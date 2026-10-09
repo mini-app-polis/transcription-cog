@@ -47,15 +47,24 @@ See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
 ### Setup
 
+Secrets come from Doppler's shared `dev` config through the
+[Doppler CLI](https://docs.doppler.com/docs/install-cli) — nothing reads a
+`.env` file, and local runs never use `prd`.
+
 ```bash
+brew install gnupg dopplerhq/cli/doppler   # once per machine
+doppler login                              # once per machine
+
 git clone git@github.com:mini-app-polis/transcription-cog.git
 cd transcription-cog
+doppler setup                              # reads doppler.yaml: mini-app-polis-ecosystem / dev
 uv sync --all-extras
 uv run pre-commit install
 uv run pre-commit run --all-files
-cp .env.example .env
-# populate .env with your values
+uv run check-doppler-keys                  # every required .env.example name is in dev
 ```
+
+Anything that needs secrets runs under `doppler run -- …`; the tests do not.
 
 ### Run tests
 
@@ -72,11 +81,11 @@ uv run ruff format src tests
 
 ### Run one file locally (development)
 
-The flows are plain functions. With a populated `.env`:
+The flows are plain functions:
 
 ```bash
-uv run python -c "from transcription_cog.flow import process_transcript; print(process_transcript('<drive file id>'))"
-uv run python -c "from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest; print(voicenotes_ingest('<drive file id>'))"
+doppler run -- uv run python -c "from transcription_cog.flow import process_transcript; print(process_transcript('<drive file id>'))"
+doppler run -- uv run python -c "from transcription_cog.voicenotes.flows.ingest import voicenotes_ingest; print(voicenotes_ingest('<drive file id>'))"
 ```
 
 Run reports are posted only in production, so a local run logs its report
