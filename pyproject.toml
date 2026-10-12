@@ -79,3 +79,10 @@ ignore_missing_imports = true
 [tool.coverage.report]
 # TEST-019: CI fails below this floor. Raise it as coverage rises; lowering it is a reviewed edit.
 fail_under = 82
+
+[tool.uv]
+# The uv every lock in the fleet is written with. setup-uv reads this in CI,
+# and an older or newer local uv refuses to run instead of rewriting the
+# lock's revision. Upgrading uv is a fleet sweep: bump this everywhere, then
+# re-lock, in commits of their own.
+required-version = "==0.13.0"
