@@ -34,6 +34,21 @@ anything absent takes its code default.
 | `SENTRY_DSN_COGS` | — | Sentry project DSN, for both pipelines. Error tracking disabled if absent |
 | `LOGGING_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR`. Re-applied at every invocation; an unrecognised value is logged and ignored |
 
+### Voice notes: bounds on one job
+
+One job has to fit in one Lambda invocation, so everything a voice-note
+job may do is capped by a setting. These are fields on the voicenotes
+`Settings` (`src/transcription_cog/voicenotes/config.py`), which holds
+the budget they add up to; like the other optional settings, Lambda
+reads them only when `cogs.tf` lists them, and uses the default
+otherwise.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLEANUP_MAX_BUCKETS_PER_RUN` | `3` | Most expired date folders one retention sweep opens, dated ones oldest first, then undated legacy monthly ones |
+| `CLEANUP_MAX_FILES_PER_RUN` | `5` | Most archived files one retention sweep tries to trash, oldest first. The sweep runs after every note, so what one leaves the next takes |
+| `CLAUDE_RETRY_WAIT_MAX_SECONDS` | `10` | Longest wait before the Anthropic SDK's one retry of the extraction call, which otherwise waits as long as `Retry-After` asks |
+
 ## Session type taxonomy
 
 `session_type` comes from the filename (`filename_parser.py`), not the LLM.

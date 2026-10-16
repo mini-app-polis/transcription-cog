@@ -207,3 +207,38 @@ class TestExtractTaskDueDateGuard:
 
 # Direct tests of the _enforce_due_date_keyword helper live in
 # test_extract.py and are exercised end-to-end via the cases above.
+
+
+class TestRetryWaitIsCapped:
+    """The SDK waits whatever ``retry-after`` asks, with no ceiling of its
+    own; the production client caps it so a run's longest path is a sum
+    of settings. These call the SDK's real wait calculation, so an SDK
+    upgrade that renames the overridden method fails here."""
+
+    @staticmethod
+    def _wait(client, headers: dict[str, str]) -> float:
+        import httpx2
+        from anthropic._models import FinalRequestOptions
+
+        options = FinalRequestOptions.construct(method="post", url="/v1/messages")
+        return client._calculate_retry_timeout(1, options, httpx2.Headers(headers))
+
+    def test_server_asked_wait_is_capped(self, monkeypatch):
+        from transcription_cog.voicenotes.clients import claude_client as mod
+
+        monkeypatch.setattr(mod.settings, "claude_retry_wait_max_seconds", 7.0)
+        sdk = mod._build_anthropic()
+        assert sdk.max_retries == 1
+        assert self._wait(sdk, {"retry-after": "3600"}) == 7.0
+
+    def test_a_shorter_wait_is_left_alone(self, monkeypatch):
+        from transcription_cog.voicenotes.clients import claude_client as mod
+
+        monkeypatch.setattr(mod.settings, "claude_retry_wait_max_seconds", 7.0)
+        assert self._wait(mod._build_anthropic(), {"retry-after": "2"}) == 2.0
+
+    def test_production_client_is_the_capped_one(self):
+        from transcription_cog.voicenotes.clients import claude_client as mod
+
+        client = ClaudeClient()
+        assert isinstance(client._anthropic, mod._CappedRetryWaitAnthropic)

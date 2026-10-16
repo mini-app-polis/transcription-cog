@@ -229,3 +229,179 @@ class TestReporting:
     def test_no_error_recorded_when_everything_worked(self, patch_drive):
         patch_drive(_drive(children=[_folder("d1")], old_files=[_file("a")]))
         assert voicenotes_cleanup()["first_error"] is None
+
+
+def _aged_file(file_id: str, *, days_ago: int):
+    """A file whose ``modifiedTime`` is ``days_ago`` before now."""
+    stamp = (datetime.now(UTC) - timedelta(days=days_ago)).strftime(
+        "%Y-%m-%dT%H:%M:%S.000Z"
+    )
+    return SimpleNamespace(
+        id=file_id, name="note.m4a", mime_type="audio/mp4", modified_time=stamp
+    )
+
+
+@pytest.fixture
+def bounds(monkeypatch):
+    """Set the sweep's two bounds for one test."""
+
+    def _apply(*, buckets: int, files: int) -> None:
+        monkeypatch.setattr(
+            cleanup_mod.settings, "cleanup_max_buckets_per_run", buckets
+        )
+        monkeypatch.setattr(cleanup_mod.settings, "cleanup_max_files_per_run", files)
+
+    return _apply
+
+
+class TestBounds:
+    """One sweep's work is capped by settings, oldest first, and what it
+    leaves is picked up by the next — the sweep runs after every note."""
+
+    def test_trashes_no_more_files_than_the_bound(self, patch_drive, bounds):
+        bounds(buckets=5, files=3)
+        drive = patch_drive(
+            _drive(
+                children=[_dated_folder("d1", days_ago=30)],
+                old_files=[],
+                bucket_files=[_file(f"f{i}") for i in range(10)],
+            )
+        )
+        summary = voicenotes_cleanup()
+        assert summary["attempted"] == 3
+        assert drive.trash_file.call_count == 3
+        assert summary["capped"] is True
+
+    def test_a_bucket_with_files_left_over_keeps_its_folder(self, patch_drive, bounds):
+        """Trashing the folder would trash the files left for next time
+        along with it, ahead of their turn and outside the bound."""
+        bounds(buckets=5, files=2)
+        drive = patch_drive(
+            _drive(
+                children=[_dated_folder("d1", days_ago=30)],
+                old_files=[],
+                bucket_files=[_file("a"), _file("b"), _file("c")],
+            )
+        )
+        summary = voicenotes_cleanup()
+        assert summary["buckets_trashed"] == 0
+        trashed_ids = [c.args[0] for c in drive.trash_file.call_args_list]
+        assert "d1" not in trashed_ids
+
+    def test_opens_no_more_buckets_than_the_bound_oldest_first(
+        self, patch_drive, bounds
+    ):
+        bounds(buckets=2, files=50)
+        drive = patch_drive(
+            _drive(
+                # Drive lists newest first; the sweep must not.
+                children=[
+                    _dated_folder("newest", days_ago=10),
+                    _dated_folder("middle", days_ago=20),
+                    _dated_folder("oldest", days_ago=30),
+                ],
+                old_files=[],
+                bucket_files=[],
+            )
+        )
+        summary = voicenotes_cleanup()
+        opened = [
+            c.args[0]
+            for c in drive.list_files.call_args_list
+            if c.args[0] != "processed-root"
+        ]
+        assert opened == ["oldest", "middle"]
+        assert summary["buckets_trashed"] == 2
+        assert summary["capped"] is True
+
+    def test_dated_buckets_go_before_undated_ones(self, patch_drive, bounds):
+        """Undated legacy buckets are never trashed, so every sweep opens
+        them again. Ahead of the dated ones they would take the bound
+        every run and the dated buckets would never drain."""
+        bounds(buckets=1, files=50)
+        drive = patch_drive(
+            _drive(
+                children=[
+                    _folder("legacy", name="2026-04"),
+                    _dated_folder("d1", days_ago=30),
+                ],
+                old_files=[],
+                bucket_files=[],
+            )
+        )
+        voicenotes_cleanup()
+        assert drive.list_files_older_than.call_count == 0
+        drive.trash_file.assert_called_once_with("d1")
+
+    def test_files_go_oldest_first(self, patch_drive, bounds):
+        bounds(buckets=5, files=2)
+        drive = patch_drive(
+            _drive(
+                children=[_folder("legacy")],
+                # Drive lists newest first.
+                old_files=[
+                    _aged_file("new", days_ago=10),
+                    _aged_file("older", days_ago=20),
+                    _aged_file("oldest", days_ago=30),
+                ],
+            )
+        )
+        voicenotes_cleanup()
+        trashed_ids = [c.args[0] for c in drive.trash_file.call_args_list]
+        assert trashed_ids == ["oldest", "older"]
+
+    def test_the_next_sweep_carries_on_where_this_one_stopped(
+        self, patch_drive, bounds
+    ):
+        """What one sweep leaves, the next takes — so back-to-back sweeps,
+        as notes arrive, drain a backlog larger than the bound."""
+        bounds(buckets=5, files=2)
+        remaining = {"d1": [_file("a"), _file("b"), _file("c")]}
+        drive = MagicMock()
+        drive.ensure_subfolder.return_value = "processed-root"
+        dated = _dated_folder("d1", days_ago=30)
+
+        def _list(folder_id):
+            if folder_id == "processed-root":
+                return [dated] if "d1" in remaining else []
+            return list(remaining.get(folder_id, []))
+
+        def _trash(file_id):
+            if file_id in remaining:
+                del remaining[file_id]
+                return
+            remaining["d1"] = [f for f in remaining["d1"] if f.id != file_id]
+
+        drive.list_files.side_effect = _list
+        drive.trash_file.side_effect = _trash
+        patch_drive(drive)
+
+        first = voicenotes_cleanup()
+        assert (first["trashed"], first["buckets_trashed"], first["capped"]) == (
+            2,
+            0,
+            True,
+        )
+        second = voicenotes_cleanup()
+        assert (second["trashed"], second["buckets_trashed"], second["capped"]) == (
+            1,
+            1,
+            False,
+        )
+        assert remaining == {}
+
+    def test_an_unbounded_backlog_costs_a_bounded_sweep(self, patch_drive, bounds):
+        """The longest path is a sum of settings: one listing of
+        processed/, one per bucket opened, one trash per file tried and
+        one per folder retired — never a function of the backlog."""
+        bounds(buckets=3, files=5)
+        drive = patch_drive(
+            _drive(
+                children=[_dated_folder(f"d{i}", days_ago=30 + i) for i in range(40)],
+                old_files=[],
+                bucket_files=[_file(f"f{i}") for i in range(40)],
+            )
+        )
+        voicenotes_cleanup()
+        drive_requests = drive.list_files.call_count + drive.trash_file.call_count
+        assert drive_requests <= 1 + 2 * 3 + 5
