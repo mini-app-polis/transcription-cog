@@ -10,6 +10,17 @@ Supersedes [ADR-001](./ADR-001-prefect-concurrency-slot.md), and the
 Prefect-deployment and Railway-service parts of
 [ADR-004](./ADR-004-voicenotes-merge.md). The merge itself stands.
 
+> **Amended (Oct 2026).** Some queue numbers below are out of date. In
+> mini-app-polis/infra `cogs.tf` the function timeout is 900 s, so the
+> visibility timeout (timeout + 60) is 960 s, as below, but
+> `max_receive_count = 3`, not five: a failing file is received three
+> times, about 16 minutes apart, before it dead-letters. The timeout must
+> stay at 900 s: the voice-note LLM budget in `voicenotes/config.py` is
+> sized against it. The queue is FIFO
+> (`transcription-jobs.fifo`, one message group) with `reserved_concurrency
+> = 1`, so a burst queues rather than being throttled, and a throttled
+> receive no longer dead-letters a good file.
+
 ## Context
 
 transcription-cog held a Railway container (4 CPU, 4 GB) open to poll

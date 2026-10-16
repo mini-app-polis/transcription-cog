@@ -12,7 +12,7 @@ Behavior summary:
     ``needs_review=True`` so the pipeline never silently drops a note.
   - Defensive due-date guard (``_enforce_due_date_keyword``) drops
     Claude's due_date if the original transcript doesn't contain
-    "due" or "by". Documented in docs/PROMPT.md.
+    "due" or "by".
 """
 
 from __future__ import annotations
@@ -251,7 +251,7 @@ def _enforce_due_date_keyword(task: ExtractedTask, transcript: str) -> Extracted
     """Drop due_date if transcript doesn't contain 'due' or 'by'.
 
     Defensive against Claude hallucinating dates from implicit
-    deadlines. See docs/PROMPT.md "Tuning notes" for the rationale.
+    deadlines.
     """
     if task.due_date is None:
         return task

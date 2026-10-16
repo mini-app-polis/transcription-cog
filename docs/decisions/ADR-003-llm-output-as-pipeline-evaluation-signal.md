@@ -4,7 +4,14 @@ Date: 2026-04-20
 
 ## Status
 
-Accepted
+Accepted, amended.
+
+> **Amended (Oct 2026).** Run outcomes are no longer written to
+> `pipeline_evaluations`. Each run sends one `RunReport` (common-python-utils
+> `mini_app_polis.pipeline_status`) to `POST /v1/notify`, and no rows are
+> written; see `voicenotes/tasks/emit_evaluation.py` and `_pipeline_eval.py`.
+> Schema validity is still the quality signal and posting is still
+> best-effort; the evaluations-table mechanics below are historical.
 
 ## Context
 

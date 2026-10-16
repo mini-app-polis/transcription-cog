@@ -36,20 +36,17 @@ anything absent takes its code default.
 
 ## Session type taxonomy
 
-The LLM infers `session_type` from the transcript. Valid values:
+`session_type` comes from the filename (`filename_parser.py`), not the LLM.
+The right-hand side of ` > ` decides it:
 
 | Value | Meaning |
 |-------|---------|
-| `private_lesson` | 1-on-1 lesson where you are the student |
-| `class_taught` | Group class where you are the instructor |
-| `class_attended` | Group class where you are a student |
-| `workshop` | Convention or event workshop |
-| `coaching_session` | Performance or competition coaching |
-| `other` | Anything else |
+| `private_lesson` | One or more person names |
+| `group_class` | A known organization or event name |
 
 ## Visibility
 
-Notes default to `visibility=private`. Promotion to `public` is done
+Sources are stored with `visibility=private`. Promotion to `public` is done
 manually via `wcs.kaianolevine.com` or directly via the API.
 
 ## Doppler project structure
