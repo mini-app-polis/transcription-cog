@@ -225,6 +225,85 @@ def test_no_time_left_to_start_is_a_retry_not_a_run(
     flows["wcs-transcripts"].assert_not_called()
 
 
+def test_the_shared_run_deadline_is_set_a_request_before_the_stop(
+    flows: dict[str, MagicMock], reported: MagicMock
+) -> None:
+    """The library's retry loops stop starting attempts early enough that
+    the last one they start still ends before the worker stops the run."""
+    from mini_app_polis.deadline import remaining_seconds
+
+    seen: list[float | None] = []
+    flows["wcs-transcripts"].side_effect = lambda *_a, **_kw: seen.append(
+        remaining_seconds()
+    )
+
+    worker.lambda_handler(_event(_body()), _Context(remaining_ms=900_000))
+
+    expected = (
+        900 - _deadline.DEADLINE_MARGIN_SECONDS - (_deadline.REQUEST_HEADROOM_SECONDS)
+    )
+    assert seen == [pytest.approx(expected, abs=1)]
+    # Scoped to the run: nothing after it inherits a spent deadline.
+    assert remaining_seconds() is None
+
+
+def test_the_shared_run_deadline_never_goes_negative(
+    flows: dict[str, MagicMock], reported: MagicMock
+) -> None:
+    """Less left than the margin and the headroom: already reached, not a
+    deadline in the past that reads as more time than none."""
+    from mini_app_polis.deadline import remaining_seconds
+
+    seen: list[float | None] = []
+    flows["wcs-transcripts"].side_effect = lambda *_a, **_kw: seen.append(
+        remaining_seconds()
+    )
+    remaining_ms = int(
+        (_deadline.DEADLINE_MARGIN_SECONDS + _deadline.REQUEST_HEADROOM_SECONDS / 2)
+        * 1000
+    )
+
+    worker.lambda_handler(_event(_body()), _Context(remaining_ms=remaining_ms))
+
+    assert seen == [pytest.approx(0, abs=1)]
+
+
+def test_no_context_sets_no_shared_run_deadline(
+    flows: dict[str, MagicMock], reported: MagicMock
+) -> None:
+    from mini_app_polis.deadline import remaining_seconds
+
+    seen: list[float | None] = []
+    flows["wcs-transcripts"].side_effect = lambda *_a, **_kw: seen.append(
+        remaining_seconds()
+    )
+
+    worker.lambda_handler(_event(_body()), None)
+
+    assert seen == [None]
+
+
+def test_a_run_refused_by_the_shared_deadline_fails_like_one_stopped_at_it(
+    flows: dict[str, MagicMock], reported: MagicMock
+) -> None:
+    """RunDeadlineReached takes the RunOutOfTime path: handed back for
+    redelivery, and reported by the flow, not a second time here."""
+    from mini_app_polis.deadline import RunDeadlineReached
+
+    outcomes = []
+    for exc in (
+        _deadline.RunOutOfTime("stopped"),
+        RunDeadlineReached("Run deadline reached while listing"),
+    ):
+        flows["wcs-transcripts"].side_effect = exc
+        outcomes.append(
+            worker.lambda_handler(_event(_body()), _Context(remaining_ms=900_000))
+        )
+
+    assert outcomes == [{"batchItemFailures": [{"itemIdentifier": "m-0"}]}] * 2
+    reported.assert_not_called()
+
+
 def test_an_unprocessable_message_is_reported_once_not_per_receive(
     flows: dict[str, MagicMock], reported: MagicMock
 ) -> None:

@@ -340,6 +340,23 @@ class TestIngestFailurePath:
         assert stub_clients.drive.list_files.call_count == 1
         stub_clients.kaiano.notify.assert_called_once()
 
+    def test_a_drive_call_refused_by_the_run_deadline_skips_the_sweep_too(
+        self, stub_clients
+    ):
+        """The shared deadline is the same news a margin earlier: no time
+        left for the archive, and the report still goes."""
+        from mini_app_polis.deadline import RunDeadlineReached
+
+        stub_clients.drive.download_file.side_effect = RunDeadlineReached(
+            "Run deadline reached while downloading"
+        )
+
+        with pytest.raises(RunDeadlineReached):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
+
+        assert stub_clients.drive.list_files.call_count == 1
+        stub_clients.kaiano.notify.assert_called_once()
+
     def test_missing_configuration_is_reported_and_raised(
         self, stub_clients, monkeypatch
     ):
