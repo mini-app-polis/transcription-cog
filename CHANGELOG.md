@@ -1,3 +1,10 @@
+## [2.18.11](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.10...v2.18.11) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** require miniapppolis-common-utils 6 (>=6.0.1) ([dee1ecc](https://github.com/mini-app-polis/transcription-cog/commit/dee1ecc99734573557892dae09c908ffd3beb36c))
+
 ## [2.18.10](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.9...v2.18.10) (2026-10-15)
 
 
