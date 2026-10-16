@@ -22,6 +22,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from anthropic import Anthropic
 from pydantic import ValidationError
@@ -68,22 +69,47 @@ def _strip_json_fences(text: str) -> str:
     return text.strip()
 
 
+class _CappedRetryWaitAnthropic(Anthropic):
+    """The Anthropic SDK, with a ceiling on the wait before a retry.
+
+    The SDK sleeps for whatever a ``retry-after`` header asks, with no
+    upper bound, so a single retry could hold a run for as long as the
+    server liked. Capping that wait keeps the run's longest path a sum of
+    settings. The override is of a private SDK method; the unit test that
+    calls it fails if an SDK upgrade renames it.
+    """
+
+    retry_wait_max_seconds: float = 0.0
+
+    def _calculate_retry_timeout(self, *args: Any, **kwargs: Any) -> float:
+        wait = super()._calculate_retry_timeout(*args, **kwargs)
+        return min(wait, self.retry_wait_max_seconds)
+
+
+def _build_anthropic() -> Anthropic:
+    """The production SDK client: timeout, one retry, a capped wait."""
+    client = _CappedRetryWaitAnthropic(
+        api_key=settings.anthropic_api_key,
+        timeout=settings.claude_request_timeout_seconds,
+        max_retries=1,
+    )
+    client.retry_wait_max_seconds = settings.claude_retry_wait_max_seconds
+    return client
+
+
 class ClaudeClient:
     """Thin wrapper around Anthropic's API for the extraction call."""
 
     def __init__(self, *, anthropic_client: Anthropic | None = None) -> None:
         # ``timeout`` caps one HTTP request to Anthropic. Without it the
         # SDK defaults to ~600 s per request, which alone would outlast
-        # the Lambda. One SDK retry rather than two, for the same reason:
-        # see the budget in voicenotes/config.py. Tests inject
-        # ``anthropic_client=`` directly and bypass this path. See voicenotes/config.py for the rationale
+        # the Lambda. One SDK retry rather than two, for the same reason,
+        # and the wait before it capped: see the budget in
+        # voicenotes/config.py. Tests inject ``anthropic_client=`` directly
+        # and bypass this path. See voicenotes/config.py for the rationale
         # on the chosen default (small extraction prompt, 512-token
         # ceiling).
-        self._anthropic = anthropic_client or Anthropic(
-            api_key=settings.anthropic_api_key,
-            timeout=settings.claude_request_timeout_seconds,
-            max_retries=1,
-        )
+        self._anthropic = anthropic_client or _build_anthropic()
         self._prompt_template = _load_extract_prompt_template()
 
     def extract_task(self, transcript: str, today: date) -> ExtractionResult:

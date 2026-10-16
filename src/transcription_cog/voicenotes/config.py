@@ -183,6 +183,31 @@ class Settings(BaseSettings):
             "durable record."
         ),
     )
+    # The sweep runs after every note, so these two cap one run's share
+    # of it: what is left over is the next run's, oldest first. Each note
+    # archives one file, so a file cap of 2 or more catches up rather than
+    # merely keeping pace.
+    cleanup_max_buckets_per_run: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Most expired date folders one retention sweep opens: one Drive "
+            "listing each, plus trashing the folder once it is drained. "
+            "Dated folders go oldest first. Undated legacy monthly folders "
+            "are never trashed, so every sweep opens them again; they go "
+            "after the dated ones, and any beyond this cap wait for a sweep "
+            "with no dated backlog."
+        ),
+    )
+    cleanup_max_files_per_run: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Most archived files one retention sweep tries to trash, oldest "
+            "first. A folder with files left over is not trashed this run; "
+            "the next sweep carries on where this one stopped."
+        ),
+    )
 
     # --- Operational delays (TEST-013) ---
     # Sourced from settings so tests can override to zero without
@@ -217,13 +242,18 @@ class Settings(BaseSettings):
     # retries included, with room for Drive, Asana and the retention
     # sweep. Without a timeout the SDKs default to ~600 s per request.
     #
-    # Budget: Whisper at 240 s × 2 attempts (max_retries=1 on the client)
-    # is 480 s. Claude at 60 s × 2 attempts (max_retries=1), twice when
-    # the first answer does not parse, is 240 s. 720 s worst case, leaving
-    # ~180 s for Drive, Asana and the retention sweep — and Asana's own
-    # worst case, every tenacity attempt timing out, is ~130 s of that.
-    # The sum can exceed 900 s only when everything is failing at once;
-    # the worker stops a run 30 s before the timeout so it still reports.
+    # Budget, every request running to its timeout: Whisper at 240 s × 2
+    # attempts (max_retries=1 on the client) plus the SDK's wait between
+    # them (it honours Retry-After up to 120 s) is 600 s. Claude at 60 s × 2
+    # attempts (max_retries=1) plus a wait of at most
+    # claude_retry_wait_max_seconds, twice when the first answer does not
+    # parse, is 260 s. Asana, every tenacity attempt timing out, is ~190 s:
+    # 4 attempts × 2 requests × 10 s, 60 s of tag lookups, 50 s of waits.
+    # That is ~1,050 s before Drive, whose client library gives each
+    # request 60 s: 9 requests for the note on a cold container, and
+    # 1 + 2 × cleanup_max_buckets_per_run + cleanup_max_files_per_run for
+    # the sweep. So the sum fits only while most of it is healthy; the
+    # worker stops a run 30 s before the timeout so it still reports.
     # Raising either means re-doing this sum against the function's
     # timeout in mini-app-polis/infra cogs.tf.
     claude_request_timeout_seconds: float = Field(
@@ -236,6 +266,17 @@ class Settings(BaseSettings):
             "are usually <10 s; 60 s is a generous ceiling that still "
             "bounds the worker's exposure during a redeploy. Bump only "
             "if healthy traffic starts timing out."
+        ),
+    )
+    claude_retry_wait_max_seconds: float = Field(
+        default=10.0,
+        ge=0.0,
+        description=(
+            "Longest wait (seconds) before the Anthropic SDK's one retry. "
+            "The SDK waits whatever a Retry-After header asks, with no "
+            "ceiling of its own, which would leave the run's length to the "
+            "server; capped here, a retry that comes too early fails and the "
+            "queue redelivers the job instead. Part of the budget above."
         ),
     )
     whisper_request_timeout_seconds: float = Field(
