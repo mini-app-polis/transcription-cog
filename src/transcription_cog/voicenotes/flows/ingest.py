@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from mini_app_polis import logger as log
+from mini_app_polis.deadline import RunDeadlineReached
 from mini_app_polis.pipeline_status import CREATED, REMOVED
 
 from transcription_cog._deadline import RunOutOfTime
@@ -319,8 +320,11 @@ def voicenotes_ingest(
     # The sweep runs after a note that failed as well as one that
     # succeeded — its failure is the note's, not the archive's. It does
     # not run when the run could not even start, nor when it is out of
-    # time: what is left of the margin belongs to the report.
-    swept = (raised is None or files_seen) and not isinstance(raised, RunOutOfTime)
+    # time — stopped by the worker, or refused a Drive call by the shared
+    # run deadline: what is left of the margin belongs to the report.
+    swept = (raised is None or files_seen) and not isinstance(
+        raised, (RunOutOfTime, RunDeadlineReached)
+    )
     cleanup_findings, outcomes_from_cleanup = _run_cleanup() if swept else ([], [])
 
     findings: list[dict[str, Any]] = [

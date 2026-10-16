@@ -254,8 +254,11 @@ class Settings(BaseSettings):
     # 1 + 2 × cleanup_max_buckets_per_run + cleanup_max_files_per_run for
     # the sweep. So the sum fits only while most of it is healthy; the
     # worker stops a run 30 s before the timeout so it still reports.
-    # Raising either means re-doing this sum against the function's
-    # timeout in mini-app-polis/infra cogs.tf.
+    # A run that does not fit is not killed: the shared run deadline set in
+    # transcription_cog/_deadline.py stops the library's Drive retries
+    # before that stop, and the stop leaves room for the report. A run that
+    # comes close is flagged by the Duration alarm of mini-app-polis/infra's
+    # cog-worker module (duration_alarm_ratio in modules/cog-worker).
     claude_request_timeout_seconds: float = Field(
         default=60.0,
         ge=1.0,
