@@ -314,7 +314,7 @@ def get_google_api() -> Any:
 
 
 # ---------------------------------------------------------------------------
-# api-kaianolevine-com client (Clerk M2M auth, see CD-012)
+# api-kaianolevine-com client (named API key, see CD-012)
 # ---------------------------------------------------------------------------
 
 try:  # pragma: no cover — import-path branch
@@ -345,8 +345,8 @@ def get_kaiano_api_client(
     truth.
 
     Raises a clear error if upstream isn't installed; there's no
-    safe local fallback (silently no-op'ing POSTs to /v1/evaluations
-    would mask production drift).
+    safe local fallback (silently no-op'ing POSTs to the API would
+    mask production drift).
     """
     if _USING_UPSTREAM_API and _UpstreamKaianoApiClient is not None:
         return _UpstreamKaianoApiClient(

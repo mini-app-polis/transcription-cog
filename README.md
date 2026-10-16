@@ -4,12 +4,12 @@
 [![Version](https://img.shields.io/github/v/tag/mini-app-polis/transcription-cog?label=version)](https://github.com/mini-app-polis/transcription-cog/releases)
 
 Pipeline cog that hosts two related pipelines in **one Lambda function**
-(`transcription-worker`) behind its own SQS queue (`transcription-jobs`).
+(`transcription-worker`) behind its own FIFO SQS queue (`transcription-jobs.fifo`).
 One message is one file:
 
 | Mode (`mode=…`)         | What it does                                                       | Source folder | Sink                                  |
 | ----------------------- | ------------------------------------------------------------------ | ------------- | ------------------------------------- |
-| `wcs-transcripts`       | WCS lesson transcripts → structured notes (LLM) → Postgres        | `NOTES_INPUT_FOLDER_ID`            | `api-kaianolevine-com` (`/v1/wcs/notes`) |
+| `wcs-transcripts`       | WCS lesson transcripts → structured notes (LLM) → Postgres        | `NOTES_INPUT_FOLDER_ID`            | `api-kaianolevine-com` (`/v1/wcs/transcripts`, `/v1/wcs/sources`) |
 | `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → Asana | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | Asana board intake column             |
 | `voicenotes-cleanup`    | Manual operator sweep: trash archived audio older than retention  | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID/processed/` | (trashes in Drive)                  |
 
@@ -41,7 +41,7 @@ See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) installed
-- A `.env` file populated from `.env.example`
+- Access to Doppler's `dev` config (the names are listed in `.env.example`)
 - Google service account credentials with Drive access
 - Anthropic or OpenAI API key
 
@@ -167,11 +167,13 @@ src/transcription_cog/
 
 tests/
   conftest.py                env bootstrap
-  transcription_cog/          WCS pipeline tests
-  voicenotes/                voicenotes sub-pipeline tests
-    conftest.py              client singletons, fixtures
-    unit/
-    integration/
+  voicenotes_fixtures.py     shared voicenotes fixtures
+  unit/
+    transcription_cog/       WCS pipeline tests
+    voicenotes/              voicenotes sub-pipeline tests
+  integration/
+    transcription_cog/
+    voicenotes/
 
 docs/
   PIPELINE.md       ecosystem flow diagram and storage schema

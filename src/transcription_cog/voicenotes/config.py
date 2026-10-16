@@ -6,7 +6,7 @@ this module just reads them. Defaults are deliberately conservative.
 Validation-deferral note
 ------------------------
 The voicenotes-specific required fields (``openai_api_key``,
-``asana_access_token``, ``asana_workspace_id``,
+``anthropic_api_key``, ``asana_access_token``, ``asana_workspace_id``,
 ``asana_inbox_project_id``, ``google_drive_voice_inbox_folder_id``)
 are declared with empty-string
 defaults rather than ``Field(...)``-required. This is deliberate:
@@ -74,7 +74,10 @@ class Settings(BaseSettings):
     )
     claude_model: str = Field(
         default="claude-sonnet-4-6",
-        description="Claude model used for the extraction call. See docs/PROMPT.md.",
+        description=(
+            "Claude model used for the extraction call. The prompt is "
+            "voicenotes/prompts/extract.md."
+        ),
     )
     whisper_model: str = Field(
         default="whisper-1",
@@ -149,14 +152,12 @@ class Settings(BaseSettings):
     # --- API integration (per ecosystem-standards CD-012) ---
     # ``mini_app_polis.api.KaianoApiClient`` reads these env vars
     # itself; we surface them through Settings so all secrets flow
-    # through pydantic-settings + Doppler. The client exchanges the
-    # machine secret for a short-lived Clerk M2M opaque token,
-    # caches it until ~60s before expiry, and refreshes
-    # automatically.
+    # through pydantic-settings + Doppler. The client presents this
+    # cog's named API key directly; there is no token exchange.
     kaiano_api_base_url: str = Field(
         default="https://api.kaianolevine.com",
         description=(
-            "Base URL for api-kaianolevine-com (POST /v1/evaluations endpoint)."
+            "Base URL for api-kaianolevine-com (run reports to POST /v1/notify)."
         ),
     )
     transcription_cog_api_key: str | None = Field(
@@ -273,9 +274,8 @@ settings = get_settings()
 # ``asana_inbox_section_id`` is deliberately absent — a task with no
 # section still lands in the project, so a missing column is a cosmetic
 # problem, not a reason to refuse the run. ``anthropic_api_key`` is
-# deliberately omitted — the parent WCS pipeline has its own
-# Claude-via-mini_app_polis path that reads ANTHROPIC_API_KEY too, so
-# its absence will already be caught upstream if it matters.
+# required too: the extraction call in clients/claude_client.py uses it
+# directly, so a voice note cannot be processed without it.
 _VOICENOTES_REQUIRED_FIELDS: tuple[str, ...] = (
     "openai_api_key",
     "anthropic_api_key",
