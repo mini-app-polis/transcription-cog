@@ -1,3 +1,11 @@
+## [2.18.13](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.12...v2.18.13) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deadline:** stop shared-library retries short of the Lambda deadline ([b280c0a](https://github.com/mini-app-polis/transcription-cog/commit/b280c0a64f79235ebc1eb0efbfbddeb66fc51db4))
+* **voicenotes:** bound the retention sweep and the Claude retry wait per job ([3b78ccf](https://github.com/mini-app-polis/transcription-cog/commit/3b78ccf0f15f49a008f65c3640599bf59611ad57))
+
 ## [2.18.12](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.11...v2.18.12) (2026-10-16)
 
 
