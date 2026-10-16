@@ -1,3 +1,10 @@
+## [2.18.12](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.11...v2.18.12) (2026-10-16)
+
+
+### Bug Fixes
+
+* **voicenotes:** bound the retention sweep and the Claude retry wait per job, fix: stop shared-library retries at the run deadline ([e55bf0b](https://github.com/mini-app-polis/transcription-cog/commit/e55bf0bd66f3e13b664b9394c7f5e1aec2644bcf))
+
 ## [2.18.11](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.10...v2.18.11) (2026-10-16)
 
 
