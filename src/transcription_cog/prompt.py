@@ -643,6 +643,14 @@ students are expected.
 - When the note says two concepts are unrelated or not the same thing, say so
   explicitly in the prose ("frame is not the same as connection"), so the
   denial survives into downstream linking.
+- When the note says two names refer to the same thing, record an
+  entity_relations item with relation_kind "alias_of", "from" the name that
+  should not be used and "to" the preferred name, and say so in its prose
+  ("underarm turn is the same pattern as right side pass with underarm
+  turn"). If the note gives no preference, "to" is the name it uses most.
+- When the note says two names that might be confused are different things,
+  record relation_kind "distinct_from" between them. This undoes an earlier
+  alias_of between the same two names.
 - Do not pad: no action_items, student_observations or quotes unless the
   note itself contains them.\
 """

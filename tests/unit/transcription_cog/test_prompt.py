@@ -153,6 +153,8 @@ def test_a_note_gets_the_note_instructions() -> None:
     ]
     assert "AUTHORED NOTE, NOT A LESSON TRANSCRIPT" in system
     assert "common_mistakes" in system
+    assert '"alias_of"' in system
+    assert '"distinct_from"' in system
 
 
 def test_a_lesson_does_not_get_the_note_instructions() -> None:
