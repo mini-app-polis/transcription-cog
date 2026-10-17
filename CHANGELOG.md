@@ -1,3 +1,11 @@
+# [2.19.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.14...v2.19.0) (2026-10-17)
+
+
+### Features
+
+* ingest authored notes (… > Note) as sources with a lower length floor ([783a64c](https://github.com/mini-app-polis/transcription-cog/commit/783a64c7485364bdccd5a9025ffa83be12ca8ce9))
+* notes can declare two names the same (alias_of) or different (distinct_from) ([acd7c07](https://github.com/mini-app-polis/transcription-cog/commit/acd7c07e6dce4a0288e767b3c5b98e3488804b80))
+
 ## [2.18.14](https://github.com/mini-app-polis/transcription-cog/compare/v2.18.13...v2.18.14) (2026-10-16)
 
 
