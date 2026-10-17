@@ -155,6 +155,13 @@ def test_a_note_gets_the_note_instructions() -> None:
     assert "common_mistakes" in system
     assert '"alias_of"' in system
     assert '"distinct_from"' in system
+    assert '"facet_of"' in system
+
+
+def test_every_source_names_the_concept_not_the_point_made_about_it() -> None:
+    parsed = parse_filename("2026-04-01 Kaiano > Sarah.txt")
+    system = build_messages("transcript text", parsed=parsed)[0]["content"]
+    assert "Name the concept, not the point being made about it" in system
 
 
 def test_a_lesson_does_not_get_the_note_instructions() -> None:
