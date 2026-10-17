@@ -268,6 +268,13 @@ entities
         "left-side pass" — prefer the canonical term).
     When you substitute, note this in the prose so it stays traceable:
     "[Source phrase] — [your reasoning for translation]."
+  - **Name the concept, not the point being made about it.** When the
+    source teaches a caveat, variation, purpose or quality of an
+    established concept, the entity is that concept and the detail goes in
+    its prose: "anchor", with prose about holding the anchor in place under
+    pressure — not a new entity "anchoring in place with applied pressure".
+    Name a narrower entity only when the source treats it as a distinct,
+    named thing of its own ("coaster step", "basket whip").
   - **prose** is the instructor's framing of this entity in this lesson.
     1-3 sentences. This is the attribution prose that lands under the
     teacher's section on the entity's wiki page. Do not invent prose to
@@ -648,9 +655,15 @@ students are expected.
   should not be used and "to" the preferred name, and say so in its prose
   ("underarm turn is the same pattern as right side pass with underarm
   turn"). If the note gives no preference, "to" is the name it uses most.
+- When the note says one idea is a detail, variation or part of a broader
+  one ("a stationary anchor is just an anchor"; "directional intent belongs
+  on the anchor page"), record relation_kind "facet_of", "from" the narrower
+  name and "to" the broader one. Its page folds into the broader page.
 - When the note says two names that might be confused are different things,
-  record relation_kind "distinct_from" between them. This undoes an earlier
-  alias_of between the same two names.
+  or that an idea is its own concept rather than part of another ("X is its
+  own thing, not part of Y"), record relation_kind "distinct_from" between
+  them. This undoes an earlier alias_of or facet_of between the same two
+  names.
 - Do not pad: no action_items, student_observations or quotes unless the
   note itself contains them.\
 """

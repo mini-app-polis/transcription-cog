@@ -41,7 +41,10 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
    `2026-10-16 Kaiano > Note - Anchor is an arrival.txt`. It is a deliberate
    addition or correction by the instructor on the left, ingested exactly like a
    lesson (session type `other`, no students), with prompt instructions to record
-   corrections as such. Newer statements win downstream (wiki-curator-cog ADR-005).
+   corrections as such, and to record identity fixes as relations: `alias_of`
+   (same thing, other name), `facet_of` (a detail of a broader concept) and
+   `distinct_from` (keep apart; undoes either). Newer statements win downstream
+   (wiki-curator-cog ADR-005).
 4. **Store transcript** — POST raw text to `/v1/wcs/transcripts`, get `transcript_id`
 5. **Call LLM** — send transcript through structured prompt, get JSON extraction validated against `EXTRACTION_SCHEMA`
 6. **Store source** — POST to `/v1/wcs/sources`, get `source_id`; the API writes the source and its active extraction and runs `compose_source`
