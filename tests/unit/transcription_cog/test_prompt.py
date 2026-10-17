@@ -141,3 +141,23 @@ def test_schema_rejects_drill_purpose_missing_required_field() -> None:
     ]
     with pytest.raises(ValidationError):
         validate(instance=extraction, schema=EXTRACTION_SCHEMA)
+
+
+# ── authored notes (wiki-curator-cog ADR-005) ──
+
+
+def test_a_note_gets_the_note_instructions() -> None:
+    parsed = parse_filename("2026-10-16 Kaiano > Note - Anchor.txt")
+    system = build_messages("An anchor is an arrival, not travel.", parsed=parsed)[0][
+        "content"
+    ]
+    assert "AUTHORED NOTE, NOT A LESSON TRANSCRIPT" in system
+    assert "common_mistakes" in system
+    assert '"alias_of"' in system
+    assert '"distinct_from"' in system
+
+
+def test_a_lesson_does_not_get_the_note_instructions() -> None:
+    parsed = parse_filename("2026-04-01 Kaiano > Sarah.txt")
+    system = build_messages("transcript text", parsed=parsed)[0]["content"]
+    assert "AUTHORED NOTE" not in system

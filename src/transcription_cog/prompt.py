@@ -626,6 +626,36 @@ GENERAL:
 """
 
 
+_NOTE_ADDENDUM = """
+
+THIS SOURCE IS AN AUTHORED NOTE, NOT A LESSON TRANSCRIPT.
+The instructor named above wrote it deliberately, to add to or correct what
+the wiki says. It may be one or two sentences; that is the whole note, so do
+not treat its length as missing content. Session type "other" and the absent
+students are expected.
+- Extract every claim it makes, owned by its author, the same way you would
+  from a lesson.
+- A correction ("X is not Y, it's Z", "actually…", "I used to say…, but…")
+  is recorded as a common_mistakes item on the entity: the superseded idea as
+  the mistake, the corrected one as the correction. State the corrected idea
+  plainly in the entity's attribution prose as well, so it reads as what the
+  author now teaches.
+- When the note says two concepts are unrelated or not the same thing, say so
+  explicitly in the prose ("frame is not the same as connection"), so the
+  denial survives into downstream linking.
+- When the note says two names refer to the same thing, record an
+  entity_relations item with relation_kind "alias_of", "from" the name that
+  should not be used and "to" the preferred name, and say so in its prose
+  ("underarm turn is the same pattern as right side pass with underarm
+  turn"). If the note gives no preference, "to" is the name it uses most.
+- When the note says two names that might be confused are different things,
+  record relation_kind "distinct_from" between them. This undoes an earlier
+  alias_of between the same two names.
+- Do not pad: no action_items, student_observations or quotes unless the
+  note itself contains them.\
+"""
+
+
 def build_messages(
     transcript_text: str,
     parsed: ParsedFilename,
@@ -659,6 +689,9 @@ def build_messages(
         student_or_org_line=student_or_org_line,
         known_sections=_KNOWN_SECTIONS,
     )
+
+    if parsed.is_note:
+        system += _NOTE_ADDENDUM
 
     filename_line = f"Source filename: {parsed.raw_filename}\n\n"
     user = f"{filename_line}Transcript begins below:\n\n{transcript_text}"

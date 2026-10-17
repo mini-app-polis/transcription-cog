@@ -12,6 +12,11 @@ Rules:
     - Right side determines session type:
         - One or more person names → private_lesson
         - Organization/event name → group_class
+        - The word "Note" (or "Notes") → an authored note: session_type
+          "other", no students or organization, is_note True. A note is a
+          deliberate addition or correction to the wiki by the instructor on
+          the left, ingested the same way as a lesson (wiki-curator-cog
+          ADR-005: corrections are sources; newer statements win).
     - Case insensitive parsing throughout
     - Files that do not match are rejected with a clear reason
     - Prefix with _ to prevent ingestion (will not match date pattern)
@@ -22,6 +27,7 @@ Examples:
     2026-04-01 Kaiano > Sarah+Mike - Connection and Frame.txt
     2026-04-01 Margie+Kaiano > Sarah.txt
     2026-04-01 Margie > Kaiano.txt
+    2026-10-16 Kaiano > Note - Anchor is an arrival.txt  ← an authored note
     _2026-04-01 Kaiano > Sarah.txt  ← skipped (underscore prefix)
 """
 
@@ -40,6 +46,9 @@ _KNOWN_ORGS: list[str] = [
     "sitn",
 ]
 
+#: Right-hand values that mark an authored note rather than a lesson.
+_NOTE_MARKERS: frozenset[str] = frozenset({"note", "notes"})
+
 _DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(.+)$")
 _ARROW_RE = re.compile(r"^(.+?)\s*>\s*(.+)$")
 
@@ -56,6 +65,8 @@ class ParsedFilename:
     topic: str | None
     raw_filename: str
     all_people: list[str] = field(default_factory=list)
+    #: An authored note rather than a lesson recording (right side "Note").
+    is_note: bool = False
 
 
 class FilenameParseError(ValueError):
@@ -135,10 +146,15 @@ def parse_filename(filename: str) -> ParsedFilename:
         )
 
     right_parts = _split_names(right)
+    is_note = len(right_parts) == 1 and right_parts[0].lower() in _NOTE_MARKERS
 
-    if len(right_parts) == 1 and _is_organization(right_parts[0]):
-        session_type = "group_class"
+    if is_note:
+        session_type = "other"
         students: list[str] = []
+        organization = ""
+    elif len(right_parts) == 1 and _is_organization(right_parts[0]):
+        session_type = "group_class"
+        students = []
         organization = right_parts[0].strip()
     elif len(right_parts) > 1:
         combined = " ".join(right_parts)
@@ -166,4 +182,5 @@ def parse_filename(filename: str) -> ParsedFilename:
         topic=topic,
         raw_filename=filename,
         all_people=all_people,
+        is_note=is_note,
     )

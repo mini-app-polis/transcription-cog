@@ -32,6 +32,11 @@ class Config:
     kaiano_api_base_url: str
     logging_level: str
     min_transcript_chars: int = 200
+    #: The length floor for an authored note. Far below the transcript floor:
+    #: a correction can be one sentence, and a note is typed on purpose, so
+    #: the garbled-or-empty-recording case the transcript floor guards
+    #: against does not apply. It still refuses an empty file.
+    min_note_chars: int = 20
 
     @property
     def default_models(self) -> dict[str, str]:
@@ -60,4 +65,5 @@ def load_config() -> Config:
         kaiano_api_base_url=_require("KAIANO_API_BASE_URL"),
         logging_level=os.getenv("LOGGING_LEVEL", "INFO"),
         min_transcript_chars=int(os.getenv("MIN_TRANSCRIPT_CHARS", "200")),
+        min_note_chars=int(os.getenv("MIN_NOTE_CHARS", "20")),
     )
