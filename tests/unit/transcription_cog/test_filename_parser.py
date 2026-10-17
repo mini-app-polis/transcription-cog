@@ -129,3 +129,30 @@ def test_raw_filename_preserved() -> None:
     filename = "2026-04-01 Kaiano > Sarah - Topic.txt"
     p = parse_filename(filename)
     assert p.raw_filename == filename
+
+
+# ── authored notes (wiki-curator-cog ADR-005) ──
+
+
+@pytest.mark.parametrize("marker", ["Note", "note", "Notes", "NOTE"])
+def test_note_marker_makes_an_authored_note(marker: str) -> None:
+    result = parse_filename(f"2026-10-16 Kaiano > {marker} - Anchor is an arrival.txt")
+    assert result.is_note is True
+    assert result.session_type == "other"
+    assert result.instructors == ["Kaiano"]
+    assert result.students == []
+    assert result.organization == ""
+    assert result.topic == "Anchor is an arrival"
+
+
+def test_a_student_named_like_a_note_is_not_a_note() -> None:
+    """Only the bare word is a marker; a person's name containing it is not."""
+    result = parse_filename("2026-10-16 Kaiano > Noted.txt")
+    assert result.is_note is False
+    assert result.session_type == "private_lesson"
+
+
+def test_lessons_are_not_notes() -> None:
+    assert parse_filename("2026-04-01 Kaiano > Sarah.txt").is_note is False
+    assert parse_filename("2026-04-01 Kaiano > Swingesota.txt").is_note is False
+    assert parse_filename("2026-04-01 Kaiano > Note+Sarah.txt").is_note is False

@@ -199,6 +199,32 @@ def test_a_short_transcript_is_skipped(harness: _Harness) -> None:
     assert result["files"][0]["reason"] == "transcript_too_short"
 
 
+def test_a_short_note_is_ingested(harness: _Harness) -> None:
+    """A one-sentence correction is a whole note; the transcript floor would drop it."""
+    harness.folder(_drive_item("file-1", "2026-10-16 Kaiano > Note - Anchor.txt"))
+    harness.g.drive.download_bytes.return_value = (
+        b"An anchor is an arrival, not a backward travel."
+    )
+
+    process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_wcs_transcript.assert_called_once()
+    payload = harness.api.create_wcs_source.call_args.args[0]
+    assert payload.session_type == "other"
+    assert payload.instructors_raw == ["Kaiano"]
+    assert payload.students_raw == []
+
+
+def test_an_empty_note_is_still_skipped(harness: _Harness) -> None:
+    harness.folder(_drive_item("file-1", "2026-10-16 Kaiano > Note.txt"))
+    harness.g.drive.download_bytes.return_value = b"tbd"
+
+    result = process_transcript("file-1", run_id="msg-1")
+
+    harness.api.create_wcs_transcript.assert_not_called()
+    assert result["files"][0]["reason"] == "transcript_too_short"
+
+
 def test_parsed_metadata_reaches_the_source(harness: _Harness) -> None:
     harness.folder(_drive_item("file-1", _VALID_FILENAME))
 

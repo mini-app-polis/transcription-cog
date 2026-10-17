@@ -39,6 +39,7 @@ def test_load_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.llm_model == "claude-sonnet-4-6"
     assert cfg.logging_level == "INFO"
     assert cfg.min_transcript_chars == 200
+    assert cfg.min_note_chars == 20
 
 
 def test_load_config_openai_provider(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -291,12 +291,15 @@ def _process_one(
     raw_text = task_read_transcript(g, file_id, mime_type)
     raw_text = raw_text.strip()
 
-    # Step 3: length guard
-    if len(raw_text) < cfg.min_transcript_chars:
+    # Step 3: length guard. An authored note has its own, much lower floor:
+    # a one-sentence correction is a whole note (wiki-curator-cog ADR-005).
+    min_chars = cfg.min_note_chars if parsed.is_note else cfg.min_transcript_chars
+    if len(raw_text) < min_chars:
         logger.warning(
             log.with_log_prefix(
                 log.LOG_WARNING,
-                f"Transcript too short ({len(raw_text)} chars) — skipping {file_name!r}",
+                f"Transcript too short ({len(raw_text)} chars, minimum {min_chars}) "
+                f"— skipping {file_name!r}",
             )
         )
         return {"skipped": True, "reason": "transcript_too_short", "file": file_name}
