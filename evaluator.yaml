@@ -58,6 +58,28 @@ exemptions:
       the hand-rolled logging code is contained to this single bridge
       module.
 
+  - rule: XSTACK-005
+    reason: >
+      Scoped to ``src/transcription_cog/voicenotes/clients/``. Of the four
+      clients there, two already go through common-python-utils:
+      ``drive_client.py`` wraps ``mini_app_polis.google.GoogleAPI`` (via
+      ``_shared.get_google_api``) and adds only structured logging, and
+      ``asana_client.py`` constructs ``mini_app_polis.asana.AsanaClient``.
+      ``whisper_client.py`` calls OpenAI's audio transcription endpoint,
+      which the shared library has no facade for. ``claude_client.py`` is
+      the one client that bypasses a shared facade (``LLMClient``), and it
+      does so because the voicenotes path runs inside a single Lambda
+      invocation budget (voicenotes/config.py) that ``build_llm`` cannot
+      express today: it does not expose ``max_tokens`` (extraction is
+      capped at 512), it has no ceiling on the SDK's retry-after wait
+      (``_CappedRetryWaitAnthropic``), and ``LLMResult`` carries no token
+      usage, which the per-note cost logging reads. The client's
+      parse-retry-then-fallback path (the lost-note guarantee) also needs
+      the raw response text on a parse failure, which ``generate_json``
+      raises away. Revisit when the shared ``LLMClient`` exposes
+      ``max_tokens``, a retry-wait cap and token usage; at that point the
+      extraction call moves onto it and this exemption narrows to Whisper.
+
   # NB: voicenotes-cog also held a CD-010 (Healthchecks.io ping) exemption.
   # It does not apply here. On Lambda, CD-010's liveness layer is the
   # dead-letter-queue alarm with an action, declared by modules/cog-worker
