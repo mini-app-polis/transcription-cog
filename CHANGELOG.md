@@ -1,3 +1,10 @@
+# [2.20.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.19.1...v2.20.0) (2026-10-17)
+
+
+### Features
+
+* name the concept, not the point; facet_of in notes ([2e2d410](https://github.com/mini-app-polis/transcription-cog/commit/2e2d410053f5832be883c996bfd9a8c402e5d4db))
+
 ## [2.19.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.19.0...v2.19.1) (2026-10-17)
 
 
