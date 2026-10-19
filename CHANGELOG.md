@@ -1,3 +1,11 @@
+## [2.20.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.20.2...v2.20.3) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.7.1 ([89fc5f4](https://github.com/mini-app-polis/transcription-cog/commit/89fc5f4dc97cc8305171e67ab79b4c5a0b53700c))
+* **deps:** bump miniapppolis-common-utils to 6.8.0 ([bf49442](https://github.com/mini-app-polis/transcription-cog/commit/bf49442462b960e5b6be7eab5c3cfc98b9b788a4))
+
 ## [2.20.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.20.1...v2.20.2) (2026-10-18)
 
 
