@@ -12,11 +12,12 @@ Rules:
     - Right side determines session type:
         - One or more person names → private_lesson
         - Organization/event name → group_class
-        - The word "Note" (or "Notes") → an authored note: session_type
-          "other", no students or organization, is_note True. A note is a
-          deliberate addition or correction to the wiki by the instructor on
-          the left, ingested the same way as a lesson (wiki-curator-cog
-          ADR-005: corrections are sources; newer statements win).
+        - The word "Note" or "Correction" (singular or plural) → an authored
+          note: session_type "correction", no students or organization,
+          is_note True. A note is a deliberate addition or correction to the
+          wiki by the instructor on the left, ingested the same way as a
+          lesson (wiki-curator-cog ADR-005: corrections are sources; newer
+          statements win). Both markers mean the same kind of source.
     - Case insensitive parsing throughout
     - Files that do not match are rejected with a clear reason
     - Prefix with _ to prevent ingestion (will not match date pattern)
@@ -28,6 +29,7 @@ Examples:
     2026-04-01 Margie+Kaiano > Sarah.txt
     2026-04-01 Margie > Kaiano.txt
     2026-10-16 Kaiano > Note - Anchor is an arrival.txt  ← an authored note
+    2026-10-19 Kaiano > Correction - Underarm turn.txt   ← the same kind
     _2026-04-01 Kaiano > Sarah.txt  ← skipped (underscore prefix)
 """
 
@@ -47,7 +49,12 @@ _KNOWN_ORGS: list[str] = [
 ]
 
 #: Right-hand values that mark an authored note rather than a lesson.
-_NOTE_MARKERS: frozenset[str] = frozenset({"note", "notes"})
+_NOTE_MARKERS: frozenset[str] = frozenset(
+    {"note", "notes", "correction", "corrections"}
+)
+
+#: Session type stored for an authored note (MINI-102).
+NOTE_SESSION_TYPE = "correction"
 
 _DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(.+)$")
 _ARROW_RE = re.compile(r"^(.+?)\s*>\s*(.+)$")
@@ -65,7 +72,8 @@ class ParsedFilename:
     topic: str | None
     raw_filename: str
     all_people: list[str] = field(default_factory=list)
-    #: An authored note rather than a lesson recording (right side "Note").
+    #: An authored note rather than a lesson recording (right side "Note" or
+    #: "Correction").
     is_note: bool = False
 
 
@@ -149,7 +157,7 @@ def parse_filename(filename: str) -> ParsedFilename:
     is_note = len(right_parts) == 1 and right_parts[0].lower() in _NOTE_MARKERS
 
     if is_note:
-        session_type = "other"
+        session_type = NOTE_SESSION_TYPE
         students: list[str] = []
         organization = ""
     elif len(right_parts) == 1 and _is_organization(right_parts[0]):

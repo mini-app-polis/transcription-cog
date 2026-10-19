@@ -31,7 +31,7 @@ anything absent takes its code default.
 | `LLM_MODEL` | provider default | Model name. Defaults: `claude-sonnet-4-6` (Anthropic), `gpt-4.1-mini` (OpenAI) |
 | `OPENAI_API_KEY` | — | Whisper, for voice notes. Also the WCS extraction's key if `LLM_PROVIDER=openai` |
 | `MIN_TRANSCRIPT_CHARS` | `200` | Minimum transcript length to process |
-| `MIN_NOTE_CHARS` | `20` | Minimum length of an authored note (`… > Note - Topic`); a one-sentence correction is a whole note |
+| `MIN_NOTE_CHARS` | `20` | Minimum length of an authored note (`… > Note - Topic` or `… > Correction - Topic`); a one-sentence correction is a whole note |
 | `SENTRY_DSN_COGS` | — | Sentry project DSN, for both pipelines. Error tracking disabled if absent |
 | `LOGGING_LEVEL` | `INFO` | Log level: `DEBUG`, `INFO`, `WARN`, `ERROR`. Re-applied at every invocation; an unrecognised value is logged and ignored |
 
