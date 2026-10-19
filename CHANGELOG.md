@@ -1,3 +1,15 @@
+# [2.21.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.20.3...v2.21.0) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.9.0 ([3465f3b](https://github.com/mini-app-polis/transcription-cog/commit/3465f3b6a12a77228d136f427c7350b3f9ffeb47))
+
+
+### Features
+
+* correction session type for authored notes, and notes written on the site (MINI-102, MINI-98) ([f0cc5d4](https://github.com/mini-app-polis/transcription-cog/commit/f0cc5d48ca1e40ddd318e4aa7b898550850f5a8f))
+
 ## [2.20.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.20.2...v2.20.3) (2026-10-19)
 
 
