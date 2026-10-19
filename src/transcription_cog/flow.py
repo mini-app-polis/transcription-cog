@@ -1,6 +1,7 @@
 """WCS lesson transcripts: one Drive file, end to end.
 
-Entry point: process_transcript(drive_file_id, run_id=...)
+Entry points: process_transcript(drive_file_id, run_id=...), and
+process_note(note, run_id=...) for a note written on the site (MINI-98).
 
 One queue message is one file. watcher-cog names each file that lands in
 the configured Google Drive input folder, the API enqueues one job per
@@ -135,10 +136,14 @@ def task_store_transcript(
     raw_text: str,
     source_filename: str,
     drive_file_id: str,
+    source_type: str | None = None,
 ) -> str:
-    """Store raw transcript and return transcript_id."""
+    """Store raw transcript and return transcript_id.
+
+    ``source_type`` defaults to what the filename suggests.
+    """
     logger = _get_logger()
-    source_type = infer_source_type(source_filename)
+    source_type = source_type or infer_source_type(source_filename)
     logger.info(
         log.with_log_prefix(log.LOG_START, f"Storing transcript: {source_filename}")
     )
@@ -289,6 +294,33 @@ def _process_one(
 
     # Step 2: read transcript
     raw_text = task_read_transcript(g, file_id, mime_type)
+
+    result = _ingest(api, cfg, parsed, file_id, file_name, raw_text, logger)
+    if result.get("skipped"):
+        return result
+
+    # Step 7: archive
+    task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
+    return result
+
+
+def _ingest(
+    api: KaianoApiClient,
+    cfg: Config,
+    parsed: ParsedFilename,
+    file_id: str,
+    file_name: str,
+    raw_text: str,
+    logger,
+    *,
+    source_type: str | None = None,
+) -> dict:
+    """Store one transcript's text, extract it, and store the source.
+
+    Steps 3 to 6, shared by a Drive file and a note written on the site.
+    ``file_id`` is the transcript's drive_file_id: a Drive file's id, or the
+    id the API gave a note.
+    """
     raw_text = raw_text.strip()
 
     # Step 3: length guard. An authored note has its own, much lower floor:
@@ -306,7 +338,9 @@ def _process_one(
 
     # Step 4: store raw transcript
     try:
-        transcript_id = task_store_transcript(api, raw_text, file_name, file_id)
+        transcript_id = task_store_transcript(
+            api, raw_text, file_name, file_id, source_type
+        )
     except Exception as exc:
         if (
             "uq_wcs_transcripts_drive_file_id" in str(exc)
@@ -327,9 +361,6 @@ def _process_one(
     # Step 6: store source (creates/updates wcs_sources, writes active extraction,
     # runs compose_source on the API side)
     source_id = task_store_source(api, transcript_id, extraction, parsed, cfg)
-
-    # Step 7: archive
-    task_archive_file(g, file_id, cfg.notes_processed_folder_id, file_name)
 
     return {
         "transcript_id": transcript_id,
@@ -450,6 +481,117 @@ def process_transcript(drive_file_id: str, *, run_id: str | None = None) -> dict
             # A transcript row now exists that did not before. ``ok()``
             # counts it; only this says which one, and a count is not
             # something you can go and look at.
+            report.created("transcript", file_name)
+            logger.info(
+                log.with_log_prefix(log.LOG_SUCCESS, f"Completed: {file_name!r}")
+            )
+            processed, skipped = 1, 0
+
+        return {
+            "processed": processed,
+            "skipped": skipped,
+            "errors": 0,
+            "files": [result],
+        }
+
+
+def note_filename(note: dict) -> str:
+    """The name a note written on the site is stored and parsed under.
+
+    The same convention as a note dropped in Drive —
+    ``<date> <instructor> > Note - <title>`` — so it parses as an authored
+    note (session type ``correction``) and reads like one wherever a
+    transcript's filename is shown.
+    """
+    name = f"{note['date']} {note['instructor']} > Note"
+    title = str(note.get("title") or "").strip()
+    return f"{name} - {title}" if title else name
+
+
+def process_note(note: dict, *, run_id: str | None = None) -> dict:
+    """Process a note written on the site, end to end (MINI-98).
+
+    ``note`` is the message's ``note`` payload, as the API built it:
+    ``id`` (the transcript's drive_file_id, derived from the note's content,
+    so a redelivery or a double submit stores the same transcript again
+    rather than a second one), ``date``, ``instructor``, ``title`` and
+    ``text``. There is no Drive file: nothing to find, read or archive.
+    Otherwise it is the path an authored note from Drive takes — the note
+    prompt, the same length floor, the same source.
+
+    Raises when the note could not be processed, so the worker returns the
+    message to the queue. The run report is sent first, however the run
+    ends.
+    """
+    logger = _get_logger()
+    file_name = note_filename(note)
+
+    with run_report("process-note", notable=True, run_id=run_id) as report:
+        cfg = load_config()
+        api = KaianoApiClient.from_env(MACHINE_NAME)
+
+        try:
+            parsed = parse_filename(file_name)
+        except FilenameParseError as exc:
+            report.issue("invalid_note", file_name, detail=str(exc))
+            return {
+                "processed": 0,
+                "skipped": 1,
+                "errors": 0,
+                "files": [
+                    {"skipped": True, "reason": "invalid_note", "file": file_name}
+                ],
+            }
+        if not parsed.is_note:
+            report.issue("invalid_note", file_name, detail="does not parse as a note")
+            return {
+                "processed": 0,
+                "skipped": 1,
+                "errors": 0,
+                "files": [
+                    {"skipped": True, "reason": "invalid_note", "file": file_name}
+                ],
+            }
+
+        logger.info(
+            log.with_log_prefix(log.LOG_START, f"Processing note: {file_name!r}")
+        )
+        try:
+            result = _ingest(
+                api,
+                cfg,
+                parsed,
+                str(note["id"]),
+                file_name,
+                str(note.get("text") or ""),
+                logger,
+                source_type="manual",
+            )
+        except Exception as exc:
+            report.issue(
+                "processing_failed",
+                file_name,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+            logger.exception(
+                log.with_log_prefix(
+                    log.LOG_FAILURE, f"Failed processing: {file_name!r}"
+                )
+            )
+            raise
+
+        if result.get("skipped"):
+            reason = str(result.get("reason") or "skipped")
+            if reason == "already_processed":
+                report.note(reason, file_name)
+            else:
+                report.issue(reason, file_name)
+            processed, skipped = 0, 1
+        else:
+            if result.get("schema_valid") is False:
+                report.issue("schema_invalid", file_name)
+            else:
+                report.ok()
             report.created("transcript", file_name)
             logger.info(
                 log.with_log_prefix(log.LOG_SUCCESS, f"Completed: {file_name!r}")

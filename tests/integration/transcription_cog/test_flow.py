@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from transcription_cog.flow import process_transcript
+from transcription_cog.flow import note_filename, process_note, process_transcript
 
 _ENV_VARS = {
     "NOTES_INPUT_FOLDER_ID": "input-folder",
@@ -210,7 +210,7 @@ def test_a_short_note_is_ingested(harness: _Harness) -> None:
 
     harness.api.create_wcs_transcript.assert_called_once()
     payload = harness.api.create_wcs_source.call_args.args[0]
-    assert payload.session_type == "other"
+    assert payload.session_type == "correction"
     assert payload.instructors_raw == ["Kaiano"]
     assert payload.students_raw == []
 
@@ -331,4 +331,62 @@ def test_an_extraction_the_api_would_refuse_is_never_sent(
         process_transcript("file-1", run_id="msg-1")
 
     harness.api.create_wcs_source.assert_not_called()
+    assert "processing_failed" in harness.text
+
+
+# ── a note written on the site (MINI-98) ──
+
+_SITE_NOTE = {
+    "id": "note:0123abcd",
+    "date": "2026-10-19",
+    "instructor": "Kaiano",
+    "title": "Underarm turn",
+    "text": "A right side pass with the arm raised is the underarm turn.",
+}
+
+
+def test_a_site_note_is_named_like_a_drive_note() -> None:
+    assert note_filename(_SITE_NOTE) == "2026-10-19 Kaiano > Note - Underarm turn"
+    assert note_filename({**_SITE_NOTE, "title": " "}) == "2026-10-19 Kaiano > Note"
+
+
+def test_a_site_note_is_ingested_as_a_correction_without_drive(
+    harness: _Harness,
+) -> None:
+    result = process_note(_SITE_NOTE, run_id="msg-7")
+
+    assert result["processed"] == 1
+    transcript = harness.api.create_wcs_transcript.call_args.args[0]
+    assert transcript.drive_file_id == "note:0123abcd"
+    assert transcript.source_type == "manual"
+    assert transcript.source_filename == "2026-10-19 Kaiano > Note - Underarm turn"
+    assert transcript.raw_text == _SITE_NOTE["text"]
+    source = harness.api.create_wcs_source.call_args.args[0]
+    assert source.session_type == "correction"
+    assert source.title == "Underarm turn"
+    assert source.instructors_raw == ["Kaiano"]
+    # The note prompt, as for a note from Drive.
+    assert "authored note" in str(harness.llm.generate_json.call_args).lower()
+    # No Drive: nothing found, read or archived.
+    harness.g.drive.get_files_in_folder.assert_not_called()
+    harness.g.drive.move_file.assert_not_called()
+    assert harness.post.call_args.args[0] == "process-note"
+    assert harness.post.call_args.kwargs["run_id"] == "msg-7"
+    assert harness.severity == "SUCCESS"
+
+
+def test_a_site_note_too_short_is_reported_not_stored(harness: _Harness) -> None:
+    result = process_note({**_SITE_NOTE, "text": "too short"}, run_id="msg-8")
+
+    assert result["files"][0]["reason"] == "transcript_too_short"
+    harness.api.create_wcs_transcript.assert_not_called()
+    assert harness.severity == "WARN"
+
+
+def test_a_site_note_that_fails_goes_back_to_the_queue(harness: _Harness) -> None:
+    harness.api.create_wcs_source.side_effect = RuntimeError("API down")
+
+    with pytest.raises(RuntimeError):
+        process_note(_SITE_NOTE, run_id="msg-9")
+
     assert "processing_failed" in harness.text

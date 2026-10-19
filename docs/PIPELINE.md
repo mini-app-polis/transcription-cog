@@ -37,14 +37,21 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
 2. **Read transcript** — fetch raw text from Drive (Google Doc or .txt)
 3. **Guard: length** — skip if below MIN_TRANSCRIPT_CHARS (default 200), or MIN_NOTE_CHARS (default 20) for an authored note
 
-   An **authored note** is a file whose right-hand side is the word `Note`:
+   An **authored note** is a file whose right-hand side is the word `Note` or
+   `Correction` (singular or plural; both mean the same):
    `2026-10-16 Kaiano > Note - Anchor is an arrival.txt`. It is a deliberate
    addition or correction by the instructor on the left, ingested exactly like a
-   lesson (session type `other`, no students), with prompt instructions to record
+   lesson (session type `correction`, no students), with prompt instructions to record
    corrections as such, and to record identity fixes as relations: `alias_of`
    (same thing, other name), `facet_of` (a detail of a broader concept) and
    `distinct_from` (keep apart; undoes either). Newer statements win downstream
    (wiki-curator-cog ADR-005).
+
+   A note can also be written on the site, from a wiki page (MINI-98). The API
+   sends it as a `wcs-note` message carrying the text, and `process_note` takes
+   it through steps 3–6 under the name `<date> <instructor> > Note - <title>`,
+   with source type `manual` and the id the API derived from the note's content
+   as its `drive_file_id`. There is no Drive file to find, read or archive.
 4. **Store transcript** — POST raw text to `/v1/wcs/transcripts`, get `transcript_id`
 5. **Call LLM** — send transcript through structured prompt, get JSON extraction validated against `EXTRACTION_SCHEMA`
 6. **Store source** — POST to `/v1/wcs/sources`, get `source_id`; the API writes the source and its active extraction and runs `compose_source`

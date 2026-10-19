@@ -52,7 +52,7 @@ from mini_app_polis.sentry import init_sentry
 
 from transcription_cog._deadline import deadline
 from transcription_cog._pipeline_eval import post_run_finding
-from transcription_cog.flow import process_transcript
+from transcription_cog.flow import process_note, process_transcript
 from transcription_cog.voicenotes.flows.ingest import (
     voicenotes_cleanup_run,
     voicenotes_ingest,
@@ -68,7 +68,8 @@ TYPE_RUN = "transcription.run"
 #: Modes that process one named file. A mode here is a mode the API's
 #: ``TranscriptionRunRequest`` must also accept — the API rejects an
 #: unknown one with a 422 before it is enqueued, and this refuses one that
-#: got past it anyway.
+#: got past it anyway. ``NOTE_MODES`` are produced by the API itself, never
+#: requested through ``TranscriptionRunRequest``.
 FILE_MODES: dict[str, Callable[..., Any]] = {
     "wcs-transcripts": process_transcript,
     "voicenotes": voicenotes_ingest,
@@ -78,6 +79,15 @@ FILE_MODES: dict[str, Callable[..., Any]] = {
 SWEEP_MODES: dict[str, Callable[..., Any]] = {
     "voicenotes-cleanup": voicenotes_cleanup_run,
 }
+
+#: Modes that carry their text: a note written on the site (MINI-98), sent
+#: by the API's ``POST /v1/wcs/wiki/admin/notes``. No Drive file.
+NOTE_MODES: dict[str, Callable[..., Any]] = {
+    "wcs-note": process_note,
+}
+
+#: What a note payload must carry, each a non-empty string but ``title``.
+_NOTE_FIELDS = ("id", "date", "instructor", "text")
 
 # At import, not per invocation. A Lambda container is reused across
 # invocations, so this runs once per cold start; initialising per call
@@ -102,6 +112,7 @@ class Job:
 
     mode: str
     drive_file_id: str | None = None
+    note: dict[str, Any] | None = None
 
 
 def _job_of(body: str) -> Job:
@@ -140,7 +151,22 @@ def _job_of(body: str) -> Job:
             raise UnprocessableMessage(f"mode {mode!r} takes no drive_file_id")
         return Job(mode=mode)
 
-    supported = sorted([*FILE_MODES, *SWEEP_MODES])
+    if mode in NOTE_MODES:
+        if drive_file_id is not None:
+            raise UnprocessableMessage(f"mode {mode!r} takes no drive_file_id")
+        note = payload.get("note")
+        if not isinstance(note, dict):
+            raise UnprocessableMessage(f"mode {mode!r} needs a note object")
+        missing = [
+            k for k in _NOTE_FIELDS if not isinstance(note.get(k), str) or not note[k]
+        ]
+        if missing or not isinstance(note.get("title", ""), str):
+            raise UnprocessableMessage(
+                f"mode {mode!r}: the note is missing {missing or ['a text title']}"
+            )
+        return Job(mode=mode, note=note)
+
+    supported = sorted([*FILE_MODES, *SWEEP_MODES, *NOTE_MODES])
     raise UnprocessableMessage(f"unknown mode {mode!r}; supported: {supported}")
 
 
@@ -158,7 +184,9 @@ def process_message(body: str, *, run_id: str) -> None:
     log.info(
         "worker: run %s mode=%s drive_file_id=%s", run_id, job.mode, job.drive_file_id
     )
-    if job.drive_file_id is not None:
+    if job.note is not None:
+        NOTE_MODES[job.mode](job.note, run_id=run_id)
+    elif job.drive_file_id is not None:
         FILE_MODES[job.mode](job.drive_file_id, run_id=run_id)
     else:
         SWEEP_MODES[job.mode](run_id=run_id)

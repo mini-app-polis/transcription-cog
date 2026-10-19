@@ -43,9 +43,11 @@ def flows(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]:
     """Replace every flow; the tests are about routing, not the flows."""
     file_fakes = {mode: MagicMock(name=mode) for mode in worker.FILE_MODES}
     sweep_fakes = {mode: MagicMock(name=mode) for mode in worker.SWEEP_MODES}
+    note_fakes = {mode: MagicMock(name=mode) for mode in worker.NOTE_MODES}
     monkeypatch.setattr(worker, "FILE_MODES", file_fakes)
     monkeypatch.setattr(worker, "SWEEP_MODES", sweep_fakes)
-    return {**file_fakes, **sweep_fakes}
+    monkeypatch.setattr(worker, "NOTE_MODES", note_fakes)
+    return {**file_fakes, **sweep_fakes, **note_fakes}
 
 
 @pytest.fixture
@@ -59,6 +61,62 @@ def test_the_router_covers_exactly_the_modes_the_api_accepts() -> None:
     """The API's TranscriptionRunRequest accepts these three and no others."""
     assert set(worker.FILE_MODES) == {"wcs-transcripts", "voicenotes"}
     assert set(worker.SWEEP_MODES) == {"voicenotes-cleanup"}
+
+
+def test_the_router_covers_the_modes_the_api_produces_itself() -> None:
+    """POST /v1/wcs/wiki/admin/notes sends this one (MINI-98)."""
+    assert set(worker.NOTE_MODES) == {"wcs-note"}
+
+
+_NOTE = {
+    "id": "note:0123abcd",
+    "date": "2026-10-19",
+    "instructor": "Kaiano",
+    "title": "Underarm turn",
+    "text": "A right side pass with the arm raised is the underarm turn.",
+}
+
+
+def _note_body(note: object, **payload: object) -> str:
+    return json.dumps(
+        {
+            "type": "transcription.run",
+            "version": 1,
+            "payload": {"mode": "wcs-note", "note": note, **payload},
+        }
+    )
+
+
+def test_a_note_message_runs_the_note_under_the_message_id(
+    flows: dict[str, MagicMock], reported: MagicMock
+) -> None:
+    result = worker.lambda_handler(_event(_note_body(_NOTE)), None)
+
+    assert result == {"batchItemFailures": []}
+    flows["wcs-note"].assert_called_once_with(_NOTE, run_id="m-0")
+    reported.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _note_body(None),
+        _note_body("text"),
+        _note_body({**_NOTE, "text": ""}),
+        _note_body({k: v for k, v in _NOTE.items() if k != "id"}),
+        _note_body({**_NOTE, "title": 3}),
+        _note_body(_NOTE, drive_file_id="f-1"),
+    ],
+)
+def test_an_incomplete_note_is_unprocessable(
+    flows: dict[str, MagicMock], reported: MagicMock, body: str
+) -> None:
+    result = worker.lambda_handler(_event(body), None)
+
+    assert result == {"batchItemFailures": [{"itemIdentifier": "m-0"}]}
+    for flow in flows.values():
+        flow.assert_not_called()
+    reported.assert_called_once()
 
 
 @pytest.mark.parametrize("mode", ["wcs-transcripts", "voicenotes"])

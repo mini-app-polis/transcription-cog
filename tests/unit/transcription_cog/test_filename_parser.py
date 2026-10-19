@@ -134,11 +134,15 @@ def test_raw_filename_preserved() -> None:
 # ── authored notes (wiki-curator-cog ADR-005) ──
 
 
-@pytest.mark.parametrize("marker", ["Note", "note", "Notes", "NOTE"])
+@pytest.mark.parametrize(
+    "marker",
+    ["Note", "note", "Notes", "NOTE", "Correction", "correction", "Corrections"],
+)
 def test_note_marker_makes_an_authored_note(marker: str) -> None:
+    """Note and Correction, singular or plural, are the same kind of source (MINI-102)."""
     result = parse_filename(f"2026-10-16 Kaiano > {marker} - Anchor is an arrival.txt")
     assert result.is_note is True
-    assert result.session_type == "other"
+    assert result.session_type == "correction"
     assert result.instructors == ["Kaiano"]
     assert result.students == []
     assert result.organization == ""
@@ -156,3 +160,4 @@ def test_lessons_are_not_notes() -> None:
     assert parse_filename("2026-04-01 Kaiano > Sarah.txt").is_note is False
     assert parse_filename("2026-04-01 Kaiano > Swingesota.txt").is_note is False
     assert parse_filename("2026-04-01 Kaiano > Note+Sarah.txt").is_note is False
+    assert parse_filename("2026-04-01 Kaiano > Corrections+Sarah.txt").is_note is False
