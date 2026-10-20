@@ -4,7 +4,12 @@ Date: 2026-04-03
 
 ## Status
 
-Accepted
+Superseded. The API now upserts a transcript on its drive_file_id
+(re-ingestion replaces the active extraction), so a duplicate is never
+rejected and the skip branch below was removed: it could only fire on an
+unrelated error, and it returned before the file was archived, leaving it
+in the inbox to be redispatched. A store error now fails the job, and the
+queue's retry stores the file again and archives it.
 
 ## Context
 
