@@ -139,7 +139,7 @@ def test_raw_filename_preserved() -> None:
     ["Note", "note", "Notes", "NOTE", "Correction", "correction", "Corrections"],
 )
 def test_note_marker_makes_an_authored_note(marker: str) -> None:
-    """Note and Correction, singular or plural, are the same kind of source (MINI-102)."""
+    """Note and Correction, singular or plural, are the same kind of source."""
     result = parse_filename(f"2026-10-16 Kaiano > {marker} - Anchor is an arrival.txt")
     assert result.is_note is True
     assert result.session_type == "correction"

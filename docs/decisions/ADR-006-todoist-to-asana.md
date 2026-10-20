@@ -5,11 +5,10 @@
 ## Context
 
 The voicenotes pipeline has posted its extracted tasks to Todoist since
-before the merge into this repo (ADR-004). Task tracking for the
-ecosystem has since moved to an Asana board — one project with an
-Ideas → Scoped → Refining → In progress → Review → Done column
-process — and captured voice notes belong in the same place as
-everything else being groomed. Two inboxes is one too many.
+before the merge into this repo (ADR-004). Task tracking has
+since moved to Asana, and captured voice notes belong in the same place
+as everything else being groomed: the operator's Asana project and
+intake section, configured by environment. Two inboxes is one too many.
 
 Two things about the Todoist implementation were load-bearing and do
 not carry over:

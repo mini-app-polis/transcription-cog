@@ -237,19 +237,23 @@ def test_parsed_metadata_reaches_the_source(harness: _Harness) -> None:
     assert payload.title == "Connection"
 
 
-def test_an_already_processed_transcript_is_a_note(harness: _Harness) -> None:
-    """The unique constraint on drive_file_id is the dedup guard (ADR-002)."""
+def test_a_store_failure_is_raised_and_the_file_stays(harness: _Harness) -> None:
+    """The API upserts on drive_file_id, so a store error is a real failure.
+
+    It goes back to the queue with the file still in the inbox; the retry
+    stores it again and archives it. Nothing is skipped on the error text.
+    """
     harness.folder(_drive_item("file-1", _VALID_FILENAME))
     harness.api.create_wcs_transcript.side_effect = RuntimeError(
-        "duplicate key value violates unique constraint "
-        '"uq_wcs_transcripts_drive_file_id"'
+        "duplicate key value violates unique constraint"
     )
 
-    result = process_transcript("file-1", run_id="msg-1")
+    with pytest.raises(RuntimeError, match="unique constraint"):
+        process_transcript("file-1", run_id="msg-1")
 
     harness.api.create_wcs_source.assert_not_called()
-    assert result["files"][0]["reason"] == "already_processed"
-    assert harness.severity == "SUCCESS"
+    harness.g.drive.move_file.assert_not_called()
+    assert "processing_failed" in harness.text
 
 
 def test_an_unsupported_file_type_is_reported(harness: _Harness) -> None:
@@ -334,7 +338,7 @@ def test_an_extraction_the_api_would_refuse_is_never_sent(
     assert "processing_failed" in harness.text
 
 
-# ── a note written on the site (MINI-98) ──
+# ── a note written on the site ──
 
 _SITE_NOTE = {
     "id": "note:0123abcd",

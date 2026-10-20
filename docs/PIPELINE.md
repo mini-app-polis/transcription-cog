@@ -47,7 +47,7 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
    `distinct_from` (keep apart; undoes either). Newer statements win downstream
    (wiki-curator-cog ADR-005).
 
-   A note can also be written on the site, from a wiki page (MINI-98). The API
+   A note can also be written on the site, from a wiki page. The API
    sends it as a `wcs-note` message carrying the text, and `process_note` takes
    it through steps 3–6 under the name `<date> <instructor> > Note - <title>`,
    with source type `manual` and the id the API derived from the note's content

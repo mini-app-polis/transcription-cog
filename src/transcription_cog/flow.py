@@ -1,7 +1,7 @@
 """WCS lesson transcripts: one Drive file, end to end.
 
 Entry points: process_transcript(drive_file_id, run_id=...), and
-process_note(note, run_id=...) for a note written on the site (MINI-98).
+process_note(note, run_id=...) for a note written on the site.
 
 One queue message is one file. watcher-cog names each file that lands in
 the configured Google Drive input folder, the API enqueues one job per
@@ -336,24 +336,12 @@ def _ingest(
         )
         return {"skipped": True, "reason": "transcript_too_short", "file": file_name}
 
-    # Step 4: store raw transcript
-    try:
-        transcript_id = task_store_transcript(
-            api, raw_text, file_name, file_id, source_type
-        )
-    except Exception as exc:
-        if (
-            "uq_wcs_transcripts_drive_file_id" in str(exc)
-            or "unique" in str(exc).lower()
-        ):
-            logger.warning(
-                log.with_log_prefix(
-                    log.LOG_WARNING,
-                    f"Transcript already processed, skipping: {file_name!r}",
-                )
-            )
-            return {"skipped": True, "reason": "already_processed", "file": file_name}
-        raise
+    # Step 4: store raw transcript. The API upserts on drive_file_id, so a
+    # file stored before (and not archived) is stored again rather than
+    # rejected; any error here is a real failure and goes back to the queue.
+    transcript_id = task_store_transcript(
+        api, raw_text, file_name, file_id, source_type
+    )
 
     # Step 5: call LLM
     extraction, schema_valid = task_call_llm(cfg, raw_text, parsed)
@@ -463,15 +451,9 @@ def process_transcript(drive_file_id: str, *, run_id: str | None = None) -> dict
             raise
 
         if result.get("skipped"):
-            reason = str(result.get("reason") or "skipped")
-            # already_processed is the idempotency guard doing its job —
-            # counted so the totals add up, never escalated. The other two
-            # mean a file was dropped and nobody will notice unless this
-            # says so.
-            if reason == "already_processed":
-                report.note(reason, file_name)
-            else:
-                report.issue(reason, file_name)
+            # A skip means a file was dropped, and nobody will notice unless
+            # this says so.
+            report.issue(str(result.get("reason") or "skipped"), file_name)
             processed, skipped = 0, 1
         else:
             if result.get("schema_valid") is False:
@@ -509,7 +491,7 @@ def note_filename(note: dict) -> str:
 
 
 def process_note(note: dict, *, run_id: str | None = None) -> dict:
-    """Process a note written on the site, end to end (MINI-98).
+    """Process a note written on the site, end to end.
 
     ``note`` is the message's ``note`` payload, as the API built it:
     ``id`` (the transcript's drive_file_id, derived from the note's content,
@@ -581,11 +563,7 @@ def process_note(note: dict, *, run_id: str | None = None) -> dict:
             raise
 
         if result.get("skipped"):
-            reason = str(result.get("reason") or "skipped")
-            if reason == "already_processed":
-                report.note(reason, file_name)
-            else:
-                report.issue(reason, file_name)
+            report.issue(str(result.get("reason") or "skipped"), file_name)
             processed, skipped = 0, 1
         else:
             if result.get("schema_valid") is False:
