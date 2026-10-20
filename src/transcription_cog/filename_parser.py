@@ -53,7 +53,7 @@ _NOTE_MARKERS: frozenset[str] = frozenset(
     {"note", "notes", "correction", "corrections"}
 )
 
-#: Session type stored for an authored note (MINI-102).
+#: Session type stored for an authored note.
 NOTE_SESSION_TYPE = "correction"
 
 _DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\s+(.+)$")

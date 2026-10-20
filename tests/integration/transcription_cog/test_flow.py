@@ -338,7 +338,7 @@ def test_an_extraction_the_api_would_refuse_is_never_sent(
     assert "processing_failed" in harness.text
 
 
-# ── a note written on the site (MINI-98) ──
+# ── a note written on the site ──
 
 _SITE_NOTE = {
     "id": "note:0123abcd",

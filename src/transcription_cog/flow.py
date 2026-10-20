@@ -1,7 +1,7 @@
 """WCS lesson transcripts: one Drive file, end to end.
 
 Entry points: process_transcript(drive_file_id, run_id=...), and
-process_note(note, run_id=...) for a note written on the site (MINI-98).
+process_note(note, run_id=...) for a note written on the site.
 
 One queue message is one file. watcher-cog names each file that lands in
 the configured Google Drive input folder, the API enqueues one job per
@@ -491,7 +491,7 @@ def note_filename(note: dict) -> str:
 
 
 def process_note(note: dict, *, run_id: str | None = None) -> dict:
-    """Process a note written on the site, end to end (MINI-98).
+    """Process a note written on the site, end to end.
 
     ``note`` is the message's ``note`` payload, as the API built it:
     ``id`` (the transcript's drive_file_id, derived from the note's content,

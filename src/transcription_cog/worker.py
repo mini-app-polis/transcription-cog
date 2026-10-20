@@ -80,7 +80,7 @@ SWEEP_MODES: dict[str, Callable[..., Any]] = {
     "voicenotes-cleanup": voicenotes_cleanup_run,
 }
 
-#: Modes that carry their text: a note written on the site (MINI-98), sent
+#: Modes that carry their text: a note written on the site, sent
 #: by the API's ``POST /v1/wcs/wiki/admin/notes``. No Drive file.
 NOTE_MODES: dict[str, Callable[..., Any]] = {
     "wcs-note": process_note,

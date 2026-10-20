@@ -64,7 +64,7 @@ def test_the_router_covers_exactly_the_modes_the_api_accepts() -> None:
 
 
 def test_the_router_covers_the_modes_the_api_produces_itself() -> None:
-    """POST /v1/wcs/wiki/admin/notes sends this one (MINI-98)."""
+    """POST /v1/wcs/wiki/admin/notes sends this one."""
     assert set(worker.NOTE_MODES) == {"wcs-note"}
 
 
