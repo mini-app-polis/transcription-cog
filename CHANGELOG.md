@@ -1,3 +1,11 @@
+## [2.21.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.21.0...v2.21.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** bump certifi to 2026.10.19 for GHSA-6q48-6c7w-9gw2 ([2e62e91](https://github.com/mini-app-polis/transcription-cog/commit/2e62e9177ca57b70ace6821ceb249a0653ce5c15))
+* **flow:** stop skipping store errors that left files in the inbox ([53fd9b4](https://github.com/mini-app-polis/transcription-cog/commit/53fd9b4ccb50b111d459c4eb998cdeed2828271e))
+
 # [2.21.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.20.3...v2.21.0) (2026-10-19)
 
 
