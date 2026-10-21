@@ -1,6 +1,6 @@
 """Voicenotes sub-package — voice sticky-note pipeline.
 
-Drive → Whisper → Claude → Asana.
+Drive → Whisper → Claude → the task manager, through the API.
 
 Sentry initialization for this sub-package's errors flows through the
 parent cog's Sentry SDK init in ``transcription_cog.worker``; this

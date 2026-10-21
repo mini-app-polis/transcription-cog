@@ -1,7 +1,7 @@
 """Pydantic model for the structured task extracted from a voice transcript.
 
 The shape here is the contract between the Claude prompt
-(``src/transcription_cog/voicenotes/prompts/extract.md``) and the Asana post step.
+(``src/transcription_cog/voicenotes/prompts/extract.md``) and the task request step.
 Changes to this model require corresponding changes to the prompt and
 vice-versa.
 
@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field, field_validator
 class ExtractedTask(BaseModel):
     """A voice note distilled into task fields.
 
-    Returned by ``tasks/extract.py``, consumed by ``tasks/post_task.py``.
+    Returned by ``tasks/extract.py``, consumed by ``tasks/request_task.py``.
     """
 
     title: str = Field(

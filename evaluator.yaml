@@ -26,16 +26,9 @@ exemptions:
 
   - rule: CD-003
     reason: >
-      The two flagged print() sites inside src/transcription_cog/voicenotes/
-      are intentional and not candidates for the structured logger:
-
-      1. src/transcription_cog/voicenotes/scripts/setup_asana.py — a
-         one-time interactive operator-facing CLI script. The print() calls
-         render the Doppler-bound output the operator needs to copy/paste;
-         they are the script's user interface, not telemetry. Routing
-         through the structured logger would emit JSON to stderr instead
-         of human-readable terminal output.
-      2. src/transcription_cog/voicenotes/_shared.py — the FallbackLogger's
+      The flagged print() site inside src/transcription_cog/voicenotes/
+      is intentional and not a candidate for the structured logger:
+      src/transcription_cog/voicenotes/_shared.py — the FallbackLogger's
          _emit method. By design this is the local fallback when
          common-python-utils is not importable; emitting JSON lines to
          stderr via print() is its entire purpose. The site is gated by
@@ -60,11 +53,10 @@ exemptions:
 
   - rule: XSTACK-005
     reason: >
-      Scoped to ``src/transcription_cog/voicenotes/clients/``. Of the four
-      clients there, two already go through common-python-utils:
+      Scoped to ``src/transcription_cog/voicenotes/clients/``. Of the three
+      clients there, one already goes through common-python-utils:
       ``drive_client.py`` wraps ``mini_app_polis.google.GoogleAPI`` (via
-      ``_shared.get_google_api``) and adds only structured logging, and
-      ``asana_client.py`` constructs ``mini_app_polis.asana.AsanaClient``.
+      ``_shared.get_google_api``) and adds only structured logging.
       ``whisper_client.py`` calls OpenAI's audio transcription endpoint,
       which the shared library has no facade for. ``claude_client.py`` is
       the one client that bypasses a shared facade (``LLMClient``), and it

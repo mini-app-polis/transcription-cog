@@ -178,7 +178,8 @@ def process_message(body: str, *, run_id: str) -> None:
     nothing to do; a transcript stored but not archived is stored again by
     the API's upsert on its drive_file_id — the extraction is re-run and
     replaces the active one, nothing is duplicated; a voice note already
-    posted is found by its Asana external id.
+    handed to the task manager is asked for again under the same external
+    id, which the task manager finds before creating anything.
     """
     job = _job_of(body)
     log.info(

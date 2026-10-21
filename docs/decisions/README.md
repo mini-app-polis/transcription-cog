@@ -21,5 +21,6 @@ decision), **Decision** (what change is being made), and
 - [ADR-003: Use LLM schema validity as the pipeline_evaluations signal](./ADR-003-llm-output-as-pipeline-evaluation-signal.md) — amended: run reports go to `/v1/notify`
 - [ADR-004: Merge voicenotes-cog into transcription-cog](./ADR-004-voicenotes-merge.md) — partly superseded by ADR-007
 - [ADR-005: New extraction prompt and write path](./ADR-005-new-extraction-prompt-and-write-path.md)
-- [ADR-006: Move voicenotes task capture from Todoist to Asana](./ADR-006-todoist-to-asana.md)
+- [ADR-006: Move voicenotes task capture from Todoist to Asana](./ADR-006-todoist-to-asana.md) — superseded by ADR-008
 - [ADR-007: Run on Lambda behind SQS, one file per job, not Prefect on Railway](./ADR-007-lambda-behind-sqs.md) — amended (FIFO queue, three receives, 660 s visibility)
+- [ADR-008: Hand voice-note tasks to the task manager instead of writing to the board](./ADR-008-hand-tasks-to-the-task-manager.md)

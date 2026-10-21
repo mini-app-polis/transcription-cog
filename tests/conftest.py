@@ -14,25 +14,16 @@ import os
 
 # ---------------------------------------------------------------------------
 # Env-var bootstrap — MUST run before any voicenotes/transcription_cog import.
-#
-# Test mode forces Asana retry counts to 0 and delays to [] so failing
-# calls don't introduce real wall-clock waits.
 # ---------------------------------------------------------------------------
 
 _TEST_ENV_DEFAULTS = {
     # Required by voicenotes/config.py Settings
     "OPENAI_API_KEY": "test-openai-key",
     "ANTHROPIC_API_KEY": "test-anthropic-key",
-    "ASANA_ACCESS_TOKEN": "test-asana-token",
-    "ASANA_WORKSPACE_ID": "test-workspace-gid",
-    "ASANA_INBOX_PROJECT_ID": "test-project-gid",
-    "ASANA_INBOX_SECTION_ID": "test-section-gid",
     "GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID": "test-folder-id",
     "KAIANO_API_BASE_URL": "https://api.test.invalid",
     "TRANSCRIPTION_COG_API_KEY": "test-api-key",
     "ENVIRONMENT": "test",
-    "TASK_RETRIES": "0",
-    "TASK_RETRY_DELAYS_SECONDS": "[]",
 }
 
 for _key, _default in _TEST_ENV_DEFAULTS.items():
