@@ -1,16 +1,17 @@
 """End-to-end integration test for the voicenotes flows.
 
-All external clients (Drive, Whisper, Claude, Asana,
-api-kaianolevine-com) are mocked. Exercises one note end to end — find
-it in the inbox → download → transcribe → extract → post → archive —
-plus the retention sweep and the one report each run sends.
+All external clients (Drive, Whisper, Claude, api-kaianolevine-com) are
+mocked. Exercises one note end to end — find it in the inbox → download
+→ transcribe → extract → request the task → archive — plus the retention
+sweep and the one report each run sends.
 
 Covers:
-  - TEST-001 normalization: a plain transcript flows through and lands
-    as an Asana task with the normalized title.
-  - TEST-002 deduplication: a file whose external id already exists in
-    Asana skips create_task but still archives; a file an earlier job
-    already archived is a quiet no-op.
+  - TEST-001 normalization: a plain transcript flows through and is
+    requested as a task draft with the normalized title.
+  - TEST-002 deduplication: a redelivered note asks again under the same
+    external id, which the task manager finds; a refused request leaves
+    the file in the inbox; a file an earlier job already archived is a
+    quiet no-op.
   - TEST-003 failure: when Whisper fails, the file is NOT archived
     (it stays in the inbox), the run reports the failure, and the flow
     raises so the queue redelivers the job.
@@ -25,7 +26,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from mini_app_polis.asana import AsanaClient
+from mini_app_polis.api.contract import TaskCreateAccepted
 
 from transcription_cog.voicenotes.clients import (
     claude_client as claude_mod,
@@ -50,7 +51,7 @@ from transcription_cog.voicenotes.tasks import (
     extract as extract_mod,
 )
 from transcription_cog.voicenotes.tasks import (
-    post_task as post_task_mod,
+    request_task as request_task_mod,
 )
 from transcription_cog.voicenotes.tasks import (
     transcribe as transcribe_mod,
@@ -118,12 +119,18 @@ def stub_clients(monkeypatch, claude_message):
     real_claude = claude_mod.ClaudeClient(anthropic_client=fake_anthropic)
     monkeypatch.setattr(extract_mod, "get_claude_client", lambda: real_claude)
 
-    # ---- Asana ----
-    asana = MagicMock(spec=AsanaClient)
-    asana.find_task_by_external_id.return_value = None
-    asana.create_task.return_value = "as-100"
-    asana.find_or_create_tag.side_effect = lambda name: f"tag-{name}"
-    monkeypatch.setattr(post_task_mod, "get_asana_client", lambda: asana)
+    # ---- The task request (POST /v1/tasks) ----
+    tasks_api = MagicMock()
+    tasks_api.request_task.side_effect = lambda request: TaskCreateAccepted(
+        message_id="msg-task-1",
+        source=request.source,
+        external_id=request.external_id,
+    )
+    monkeypatch.setattr(
+        request_task_mod.KaianoApiClient,
+        "from_env",
+        classmethod(lambda _cls, *_a, **_kw: tasks_api),
+    )
 
     # ---- Drive (used by ingest scan, download, archive, and the
     # opportunistic cleanup that runs at the end of every ingest) ----
@@ -178,7 +185,7 @@ def stub_clients(monkeypatch, claude_message):
 
     return SimpleNamespace(
         whisper=whisper,
-        asana=asana,
+        tasks_api=tasks_api,
         drive=drive,
         kaiano=kaiano_client,
         anthropic_create=fake_anthropic.messages.create,
@@ -211,7 +218,8 @@ class TestIngestHappyPath:
 
         (file_result,) = result["results"]
         assert file_result["drive_file_id"] == "drive-abc"
-        assert file_result["asana_task_id"] == "as-100"
+        assert file_result["task_request_id"] == "msg-task-1"
+        assert file_result["task_title"] == "Send floor trials report to Mark"
         assert file_result["needs_review"] is False
 
         # Drive's ``list_files`` is called twice: once to find the note in
@@ -225,11 +233,15 @@ class TestIngestHappyPath:
         stub_clients.drive.download_file.assert_called_once_with("drive-abc")
         stub_clients.whisper.transcribe.assert_called_once()
         stub_clients.anthropic_create.assert_called()
-        stub_clients.asana.find_task_by_external_id.assert_called_once()
-        stub_clients.asana.create_task.assert_called_once()
+        stub_clients.tasks_api.request_task.assert_called_once()
+        (request,) = stub_clients.tasks_api.request_task.call_args.args
+        assert request.source == "voicenote"
+        assert request.external_id == "voicenote.drive-abc"
+        assert request.draft.title == "Send floor trials report to Mark"
+        assert request.draft.labels == ["follow-up"]
         stub_clients.drive.move_file.assert_called_once()
 
-        # One report, naming the task it created.
+        # One report, naming the task it requested.
         stub_clients.kaiano.notify.assert_called_once()
         stub_clients.kaiano.post.assert_not_called()
 
@@ -254,18 +266,29 @@ class TestIngestHappyPath:
 class TestIngestDeduplication:
     """TEST-002: nothing is done twice."""
 
-    def test_skips_create_when_marker_already_present(self, stub_clients):
-        """Existing task in Asana → no duplicate create, but archive still runs."""
-        stub_clients.asana.find_task_by_external_id.return_value = "as-existing"
+    def test_a_redelivered_note_asks_again_under_the_same_external_id(
+        self, stub_clients
+    ):
+        """The task manager looks the external id up first, so asking twice
+        makes one task. The key must not change between asks."""
+        voicenotes_ingest("drive-abc", run_id="msg-1")
+        voicenotes_ingest("drive-abc", run_id="msg-2")
 
-        result = voicenotes_ingest("drive-abc", run_id="msg-1")
+        keys = [
+            call.args[0].external_id
+            for call in stub_clients.tasks_api.request_task.call_args_list
+        ]
+        assert keys == ["voicenote.drive-abc", "voicenote.drive-abc"]
 
-        assert result["files_processed"] == 1
-        (file_result,) = result["results"]
-        assert file_result["asana_task_id"] == "as-existing"
-        stub_clients.asana.create_task.assert_not_called()
-        # Archive still runs, so the file leaves the inbox.
-        stub_clients.drive.move_file.assert_called_once()
+    def test_a_refused_request_leaves_the_file_in_the_inbox(self, stub_clients):
+        """No 202, no archive: the redelivered job asks again."""
+        stub_clients.tasks_api.request_task.side_effect = RuntimeError("502")
+
+        with pytest.raises(RuntimeError, match="502"):
+            voicenotes_ingest("drive-abc", run_id="msg-1")
+
+        stub_clients.drive.move_file.assert_not_called()
+        stub_clients.kaiano.notify.assert_called_once()
 
     def test_a_file_already_archived_is_a_quiet_no_op(self, stub_clients):
         """watcher asks again after a partial failure or a restart.
@@ -282,7 +305,7 @@ class TestIngestDeduplication:
         assert result["files_seen"] == 0
         assert result["files_failed"] == 0
         stub_clients.drive.download_file.assert_not_called()
-        stub_clients.asana.create_task.assert_not_called()
+        stub_clients.tasks_api.request_task.assert_not_called()
         stub_clients.kaiano.notify.assert_not_called()
 
 
@@ -297,7 +320,7 @@ class TestIngestFailurePath:
 
         # Not archived: the file stays in the inbox for the redelivered job.
         stub_clients.drive.move_file.assert_not_called()
-        stub_clients.asana.create_task.assert_not_called()
+        stub_clients.tasks_api.request_task.assert_not_called()
         # Reported once, before the raise — the worker sends nothing more.
         stub_clients.kaiano.notify.assert_called_once()
 

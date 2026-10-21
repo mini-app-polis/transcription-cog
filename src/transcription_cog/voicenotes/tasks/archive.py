@@ -76,8 +76,8 @@ def archive_audio(drive_file_id: str) -> str:
 
     Returns the destination folder ID for logging.
 
-    MUST run after ``post_task`` succeeds — running before would risk
-    losing the audio if the Asana post fails.
+    MUST run after ``request_task`` succeeds — running before would risk
+    losing the audio if the request does not land.
     """
     _logger.info(
         "voicenotes.archive.start",

@@ -6,8 +6,7 @@ this module just reads them. Defaults are deliberately conservative.
 Validation-deferral note
 ------------------------
 The voicenotes-specific required fields (``openai_api_key``,
-``anthropic_api_key``, ``asana_access_token``, ``asana_workspace_id``,
-``asana_inbox_project_id``, ``google_drive_voice_inbox_folder_id``)
+``anthropic_api_key``, ``google_drive_voice_inbox_folder_id``)
 are declared with empty-string
 defaults rather than ``Field(...)``-required. This is deliberate:
 transcription-cog ships as a single deployment hosting two
@@ -25,7 +24,7 @@ generic pydantic ValidationError at boot.
 
 Usage:
     from transcription_cog.voicenotes.config import settings
-    settings.asana_inbox_project_id
+    settings.google_drive_voice_inbox_folder_id
 """
 
 from __future__ import annotations
@@ -86,51 +85,6 @@ class Settings(BaseSettings):
         ),
     )
 
-    # --- Asana ---
-    # Asana uses a long-lived personal access token (no OAuth). The
-    # token is minted from the Asana app at My Settings → Apps →
-    # Manage Developer Apps → Personal Access Tokens and remains valid
-    # until the operator manually revokes it. On 401/403 the shared
-    # client raises AsanaAuthError; the fix is to mint a new token and
-    # rotate ASANA_ACCESS_TOKEN in Doppler.
-    #
-    # The client itself lives in common-python-utils
-    # (``mini_app_polis.asana``) so the planned Discord-sourced task
-    # path on api-kaianolevine-com consumes the same one. These fields
-    # exist here so every secret still flows through pydantic-settings
-    # and Doppler rather than being read out of os.environ directly.
-    # Empty-string defaults: see module docstring (validation deferred).
-    asana_access_token: str = Field(
-        default="",
-        description=(
-            "Long-lived Asana personal access token. Required for voicenotes "
-            "mode. Bootstrap via scripts/setup_asana.py."
-        ),
-    )
-    asana_workspace_id: str = Field(
-        default="",
-        description=(
-            "Asana workspace gid. Required for voicenotes mode: tags are "
-            "workspace-scoped objects, so resolving a tag name needs it."
-        ),
-    )
-    asana_inbox_project_id: str = Field(
-        default="",
-        description=(
-            "Asana project gid where voice notes are posted. Required for "
-            "voicenotes mode."
-        ),
-    )
-    asana_inbox_section_id: str = Field(
-        default="",
-        description=(
-            "Asana section gid (board column) for new voice notes — the "
-            "intake column, where notes wait to be groomed. Optional: when "
-            "empty the task lands in whichever section is leftmost, which is "
-            "a position rather than a decision, so set it in Doppler."
-        ),
-    )
-
     # --- Google Drive ---
     google_drive_voice_inbox_folder_id: str = Field(
         default="",
@@ -179,7 +133,7 @@ class Settings(BaseSettings):
             "trash after ~30 days, so the real floor is this plus that. "
             "7 days covers the typical 'I want to re-listen to that "
             "note from earlier this week' use case; older audio "
-            "is rarely consulted and the Asana task body is the "
+            "is rarely consulted and the task on the board is the "
             "durable record."
         ),
     )
@@ -210,26 +164,8 @@ class Settings(BaseSettings):
     )
 
     # --- Operational delays (TEST-013) ---
-    # Sourced from settings so tests can override to zero without
-    # touching source.
-    task_retries: int = Field(
-        default=3,
-        ge=0,
-        description=(
-            "Retries for a transient Asana failure when posting a task "
-            "(tenacity, in tasks/post_task.py). Every other call goes "
-            "through a client that retries itself."
-        ),
-    )
-    task_retry_delays_seconds: list[float] = Field(
-        default=[5.0, 15.0, 30.0],
-        description=(
-            "Delay (seconds) before each Asana retry; the last repeats. "
-            "Length should match task_retries."
-        ),
-    )
-    # HTTP client default timeout for outbound API calls (Asana,
-    # Drive, etc.). Surfaced in settings so tests can override to a
+    # HTTP client default timeout for outbound API calls (Drive,
+    # etc.). Surfaced in settings so tests can override to a
     # tiny value without monkeypatching, per TEST-013.
     http_timeout_seconds: float = Field(
         default=10.0,
@@ -239,7 +175,7 @@ class Settings(BaseSettings):
 
     # --- LLM request timeouts ---
     # One voice note must fit in one Lambda invocation (900 s), SDK
-    # retries included, with room for Drive, Asana and the retention
+    # retries included, with room for Drive, the task request and the retention
     # sweep. Without a timeout the SDKs default to ~600 s per request.
     #
     # Budget, every request running to its timeout: Whisper at 240 s × 2
@@ -247,9 +183,9 @@ class Settings(BaseSettings):
     # them (it honours Retry-After up to 120 s) is 600 s. Claude at 60 s × 2
     # attempts (max_retries=1) plus a wait of at most
     # claude_retry_wait_max_seconds, twice when the first answer does not
-    # parse, is 260 s. Asana, every tenacity attempt timing out, is ~190 s:
-    # 4 attempts × 2 requests × 10 s, 60 s of tag lookups, 50 s of waits.
-    # That is ~1,050 s before Drive, whose client library gives each
+    # parse, is 260 s. The task request, through the shared API client, is
+    # ~100 s: 3 attempts × 30 s and the waits between them.
+    # That is ~960 s before Drive, whose client library gives each
     # request 60 s: 9 requests for the note on a cold container, and
     # 1 + 2 × cleanup_max_buckets_per_run + cleanup_max_files_per_run for
     # the sweep. So the sum fits only while most of it is healthy; the
@@ -313,19 +249,13 @@ settings = get_settings()
 
 # Fields that MUST be populated for voicenotes mode to run. The pieces
 # of state the voicenotes pipeline can't fake: an OpenAI key for
-# Whisper, the three Asana values needed to post a task into the right
-# board, and the Drive folder that's the source of audio.
-# ``asana_inbox_section_id`` is deliberately absent — a task with no
-# section still lands in the project, so a missing column is a cosmetic
-# problem, not a reason to refuse the run. ``anthropic_api_key`` is
-# required too: the extraction call in clients/claude_client.py uses it
-# directly, so a voice note cannot be processed without it.
+# Whisper, the Anthropic key the extraction call in
+# clients/claude_client.py uses, and the Drive folder that's the source
+# of audio. The task itself is requested through the API with this cog's
+# own key, which the API client checks for itself.
 _VOICENOTES_REQUIRED_FIELDS: tuple[str, ...] = (
     "openai_api_key",
     "anthropic_api_key",
-    "asana_access_token",
-    "asana_workspace_id",
-    "asana_inbox_project_id",
     "google_drive_voice_inbox_folder_id",
 )
 

@@ -1,7 +1,7 @@
 [project]
 name = "transcription-cog"
 dynamic = ["version"]
-description = "Lambda pipeline cog. Two pipelines under one function: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → Asana)."
+description = "Lambda pipeline cog. Two pipelines under one function: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → a task request to the task manager)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -9,10 +9,6 @@ dependencies = [
     "pydantic>=2.0.0,<3.0.0",
     "pydantic-settings>=2.4.0,<3.0.0",
     "sentry-sdk>=2.0.0,<3.0.0",
-    # Retries a transient Asana failure at the call site (PIPE-007), which
-    # the old orchestrator's task retries used to do. Every other client
-    # retries itself.
-    "tenacity>=8.0",
     # voicenotes sub-pipeline (merged from voicenotes-cog, May 2026)
     "anthropic>=0.40",
     "openai>=1.50",

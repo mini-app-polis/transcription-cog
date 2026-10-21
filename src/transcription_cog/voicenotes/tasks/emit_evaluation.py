@@ -166,8 +166,8 @@ def emit_evaluation(
             ``drive_file_id``, and ``message``. Each becomes an issue,
             grouped by step.
         outcomes: What this run made exist or removed, as
-            ``{"op", "kind", "item", "link"}`` dicts. An Asana task
-            created, a recording the retention sweep trashed.
+            ``{"op", "kind", "item", "link"}`` dicts. A task requested,
+            a recording the retention sweep trashed.
         duration_sec: How long the batch took. Supplied rather than
             measured here because this task runs at the end of the flow,
             long after the clock started.

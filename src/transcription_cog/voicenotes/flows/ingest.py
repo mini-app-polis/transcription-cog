@@ -12,17 +12,18 @@ Per-file order matters:
   1. download
   2. transcribe
   3. extract
-  4. post_task         ← only commit point that creates external state
-  5. archive           ← MUST run after post_task; before would risk losing audio
+  4. request_task      ← hands the note to the task manager; the commit point
+  5. archive           ← MUST run after request_task; before would risk losing audio
 
-If any step before ``post_task`` fails, the file stays in
+If any step before ``request_task`` fails, the file stays in
 ``voice-inbox/`` and the flow raises, so the worker hands the message
 back and the queue redelivers it.
 
-If ``post_task`` succeeds but ``archive`` fails, the redelivered job
-sees the file again. The post_task idempotency check
-(``external.gid = voicenote.<drive_file_id>`` on the Asana task)
-prevents duplicate tasks, including for notes already completed.
+If ``request_task`` succeeds but ``archive`` fails, the redelivered job
+sees the file again and asks again. The request carries
+``voicenote.<drive_file_id>`` as its external id, and the task manager
+looks that up before creating anything, so asking twice makes one task,
+including for notes already completed.
 
 A file that is no longer in the inbox was archived by an earlier job for
 the same file — watcher asks again after a partial failure or a restart.
@@ -50,7 +51,7 @@ from transcription_cog.voicenotes.tasks.archive import archive_audio
 from transcription_cog.voicenotes.tasks.download import download_audio
 from transcription_cog.voicenotes.tasks.emit_evaluation import emit_evaluation
 from transcription_cog.voicenotes.tasks.extract import extract
-from transcription_cog.voicenotes.tasks.post_task import post_task
+from transcription_cog.voicenotes.tasks.request_task import request_task
 from transcription_cog.voicenotes.tasks.transcribe import transcribe
 
 _logger = get_logger("voicenotes-cog")
@@ -76,22 +77,19 @@ def _process_one_file(drive_file_id: str) -> dict[str, Any]:
 
     Raises whatever the underlying steps raise.
 
-    The task's title, url and whether it is new are carried back out
-    alongside the gid. They were not, and the batch report could
-    therefore only ever say how many files it had seen — the one fact
-    about a processed voice note that does not answer "and then what?".
+    The task's title and the request's message id are carried back out, so
+    the report can say what was asked for. The task itself is created
+    afterwards by the task manager, whose own report names it.
     """
     audio_bytes = download_audio(drive_file_id)
     transcription = transcribe(audio_bytes, drive_file_id=drive_file_id)
     extracted = extract(transcription.text, drive_file_id=drive_file_id)
-    posted = post_task(extracted, drive_file_id=drive_file_id)
+    requested = request_task(extracted, drive_file_id=drive_file_id)
     archive_audio(drive_file_id)
     return {
         "drive_file_id": drive_file_id,
-        "asana_task_id": posted.gid,
-        "asana_task_created": posted.created,
-        "asana_task_title": (extracted.title or "").strip() or posted.gid,
-        "asana_task_url": posted.url,
+        "task_request_id": requested.message_id,
+        "task_title": (extracted.title or "").strip() or "[Needs review]",
         "needs_review": extracted.needs_review,
         "transcription_cost_usd": float(
             getattr(transcription, "cost_usd_estimate", None) or 0.0
@@ -105,7 +103,7 @@ def _failed_step_from_exception(exc: BaseException) -> str:
         ("download", "download_audio"),
         ("transcribe", "transcribe"),
         ("extract", "extract"),
-        ("post_task", "post_task"),
+        ("request_task", "request_task"),
         ("archive", "archive_audio"),
     )
     tb = exc.__traceback__
@@ -340,19 +338,12 @@ def voicenotes_ingest(
     ]
     findings.extend(cleanup_findings)
 
-    # What this run made exist, which is what a person opening the
-    # channel actually wants from a voice note. A replayed file whose
-    # task was already there created nothing and says so by absence —
-    # the idempotency guard working is not news.
+    # What this run asked for. The task itself is the task manager's to
+    # create and to announce; this run's part is the request, which a
+    # redelivered job makes again harmlessly.
     outcomes: list[dict[str, Any]] = [
-        {
-            "op": CREATED,
-            "kind": "asana task",
-            "item": r["asana_task_title"],
-            "link": r["asana_task_url"],
-        }
+        {"op": CREATED, "kind": "task request", "item": r["task_title"]}
         for r in results
-        if r.get("asana_task_created")
     ]
     outcomes.extend(outcomes_from_cleanup)
 

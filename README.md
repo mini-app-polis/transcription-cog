@@ -10,7 +10,7 @@ One message is one file:
 | Mode (`mode=…`)         | What it does                                                       | Source folder | Sink                                  |
 | ----------------------- | ------------------------------------------------------------------ | ------------- | ------------------------------------- |
 | `wcs-transcripts`       | WCS lesson transcripts → structured notes (LLM) → Postgres        | `NOTES_INPUT_FOLDER_ID`            | `api-kaianolevine-com` (`/v1/wcs/transcripts`, `/v1/wcs/sources`) |
-| `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → Asana | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | Asana board intake column             |
+| `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → task request | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | `api-kaianolevine-com` (`/v1/tasks`) |
 | `voicenotes-cleanup`    | Manual operator sweep: trash archived audio older than retention  | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID/processed/` | (trashes in Drive)                  |
 
 `watcher-cog` asks `api-kaianolevine-com` for one run per changed file —
@@ -22,7 +22,7 @@ sweep outlives Lambda's 900-second ceiling; see
 [ADR-007](docs/decisions/ADR-007-lambda-behind-sqs.md).
 
 **WCS pipeline** — `wcs.kaianolevine.com` reads notes via `/v1/wcs/notes`.  
-**Voicenotes pipeline** — output lands in the intake column of the operator's Asana board, assigned to them; original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
+**Voicenotes pipeline** — the extracted note is handed to task-manager-cog through `POST /v1/tasks`, which puts it on the board ([ADR-008](docs/decisions/ADR-008-hand-tasks-to-the-task-manager.md)); original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
 
 See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
@@ -158,12 +158,11 @@ src/transcription_cog/
   voicenotes/       voice sticky-note sub-pipeline (merged from voicenotes-cog)
     _shared.py
     config.py       pydantic-settings Settings (voicenotes-specific env)
-    clients/        whisper, claude, asana, drive
+    clients/        whisper, claude, drive
     flows/          ingest (one note), cleanup (retention sweep)
     models/         ExtractedTask
     prompts/        extract.md (Claude extraction prompt)
-    tasks/          download, transcribe, extract, post_task, archive, emit_evaluation
-    scripts/        setup_asana.py (one-time operator helper)
+    tasks/          download, transcribe, extract, request_task, archive, emit_evaluation
 
 tests/
   conftest.py                env bootstrap
