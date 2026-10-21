@@ -1,3 +1,15 @@
+# [2.22.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.21.2...v2.22.0) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** bump virtualenv to clear pip-audit CVEs ([b074b66](https://github.com/mini-app-polis/transcription-cog/commit/b074b668e3a68870bf6a8a800da68edeaa4d15a7))
+
+
+### Features
+
+* **voicenotes:** hand each note's task to task-manager-cog ([16a45b4](https://github.com/mini-app-polis/transcription-cog/commit/16a45b4e322a139436de0b96d4c484e7fdebec1a))
+
 ## [2.21.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.21.1...v2.21.2) (2026-10-20)
 
 
