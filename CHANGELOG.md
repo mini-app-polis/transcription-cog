@@ -1,3 +1,14 @@
+## [2.22.3](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.2...v2.22.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.12.0 ([4bfe7ad](https://github.com/mini-app-polis/transcription-cog/commit/4bfe7adddff02d55de6dd9e21ca34aefbd9da4cb))
+* **deps:** bump miniapppolis-common-utils to 6.13.0 ([910c3cd](https://github.com/mini-app-polis/transcription-cog/commit/910c3cdd96949a4e3891a40f553abb690b15db10))
+* **deps:** bump miniapppolis-common-utils to 6.14.0 ([a39938f](https://github.com/mini-app-polis/transcription-cog/commit/a39938f09627a121c0eeb921d6dc72efeebbee0c))
+* **deps:** bump miniapppolis-common-utils to 6.15.1 ([3fecb8a](https://github.com/mini-app-polis/transcription-cog/commit/3fecb8a5963ebd4975d74a54cf57fb49ce03abb8))
+* **deps:** patch vulnerable dependencies (opentelemetry-api) ([eec7b1c](https://github.com/mini-app-polis/transcription-cog/commit/eec7b1cc0ce30cf535d6860cc620b0a8ddc0a6ca))
+
 ## [2.22.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.1...v2.22.2) (2026-10-21)
 
 
