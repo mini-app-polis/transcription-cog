@@ -12,10 +12,14 @@ One message is one file:
 | `wcs-transcripts`       | WCS lesson transcripts → structured notes (LLM) → Postgres        | `NOTES_INPUT_FOLDER_ID`            | `api-kaianolevine-com` (`/v1/wcs/transcripts`, `/v1/wcs/sources`) |
 | `voicenotes`            | Voice notes → Whisper transcription → Claude extraction → task request | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID` | `api-kaianolevine-com` (`/v1/tasks`) |
 | `voicenotes-cleanup`    | Manual operator sweep: trash archived audio older than retention  | `GOOGLE_DRIVE_VOICE_INBOX_FOLDER_ID/processed/` | (trashes in Drive)                  |
+| `wcs-note`              | A note written on the site → structured notes (LLM) → Postgres    | (none: the message carries the text) | `api-kaianolevine-com` (`/v1/wcs/transcripts`, `/v1/wcs/sources`) |
 
 `watcher-cog` asks `api-kaianolevine-com` for one run per changed file —
 `POST /v1/transcription/runs` with `{"mode", "drive_file_id"}` — and the
-API enqueues it. The `voicenotes` mode runs the retention sweep after every
+API enqueues it. A `wcs-note` message is enqueued by the API itself when a
+note is written on the site (`POST /v1/wcs/wiki/admin/notes`): it carries the
+note's text and names no file, and takes the same path as an authored note
+from Drive. The `voicenotes` mode runs the retention sweep after every
 note, so `voicenotes-cleanup` (which names no file) is for an operator's
 manual sweep only. One file per job rather than a folder sweep, because a
 sweep outlives Lambda's 900-second ceiling; see
@@ -95,8 +99,10 @@ rather than sending it.
 
 ## Environment variables
 
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full documentation
-of all environment variables.
+Every variable this cog reads is listed, with its default and whether it is
+required, in [`.env.example`](.env.example).
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) covers how the deployed
+worker loads them and when a change takes effect.
 
 ---
 
@@ -176,6 +182,6 @@ tests/
 
 docs/
   PIPELINE.md       ecosystem flow diagram and storage schema
-  CONFIGURATION.md  every environment variable documented
+  CONFIGURATION.md  how configuration reaches the worker
 
 ```
