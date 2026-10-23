@@ -14,7 +14,7 @@ watcher-cog
         ▼ POST /v1/transcription/runs {mode, drive_file_id}, once per file
 api-kaianolevine-com
         │
-        ▼ SQS transcription-jobs.fifo (one message = one file)
+        ▼ this cog's SQS FIFO queue (one message = one file)
 transcription-cog  ◄─── THIS COG (Lambda)
         │
         ├─► api-kaianolevine-com  POST /v1/wcs/transcripts  →  wcs_transcripts table
@@ -62,7 +62,7 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
 `watcher-cog` detects new and modified files in `NOTES_INPUT_FOLDER_ID` and
 asks the API for one run per file: `POST /v1/transcription/runs` with
 `{"mode": "wcs-transcripts", "drive_file_id": ...}`. The API enqueues onto
-`transcription-jobs.fifo`, and the Lambda worker runs `process_transcript` with
+this cog's queue, and the Lambda worker runs `process_transcript` with
 the file id and the queue message id as the run id. watcher asks again every
 minute while a file is still in the folder; the API's dispatch claims make the
 repeats one job.
