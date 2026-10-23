@@ -15,7 +15,7 @@ function loads (required and optional).
 | `NOTES_INPUT_FOLDER_ID` | Google Drive folder ID to watch for new transcripts |
 | `NOTES_PROCESSED_FOLDER_ID` | Google Drive folder ID to archive processed files into |
 | `ANTHROPIC_API_KEY` | Anthropic API key (required if `LLM_PROVIDER=anthropic`) |
-| `KAIANO_API_BASE_URL` | Base URL of `api-kaianolevine-com` (e.g. `https://api.kaianolevine.com`) |
+| `KAIANO_API_BASE_URL` / `KAIANO_API_BASE_URL_DEV` | Base URL of `api-kaianolevine-com`, read by the shared API client: production reads `KAIANO_API_BASE_URL`, every other environment `KAIANO_API_BASE_URL_DEV`, with no fallback between them |
 | `TRANSCRIPTION_COG_API_KEY` | This cog's own named API key. Sent directly as `Authorization: Bearer` on every internal request — no token exchange. The API matches it to identify this cog, so the audit trail records which cog acted. |
 
 ## Optional variables

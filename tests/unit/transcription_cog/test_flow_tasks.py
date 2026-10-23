@@ -42,7 +42,6 @@ def _cfg() -> MagicMock:
     cfg = MagicMock()
     cfg.llm_model = "claude-sonnet-4-6"
     cfg.llm_provider = "anthropic"
-    cfg.kaiano_api_base_url = "http://localhost:8000"
     return cfg
 
 

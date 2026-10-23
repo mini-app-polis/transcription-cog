@@ -20,20 +20,9 @@ deferrals:
 # scoping now covers these automatically — no exemptions needed.
 
 exemptions:
-  # The two exemptions below were carried over from voicenotes-cog when it
-  # was merged into this repo (May 2026, ADR-004). They scope to the
+  # The exemption below was carried over from voicenotes-cog when it was
+  # merged into this repo (ADR-004). It scopes to the
   # ``src/transcription_cog/voicenotes/`` sub-package only.
-
-  - rule: CD-003
-    reason: >
-      The flagged print() site inside src/transcription_cog/voicenotes/
-      is intentional and not a candidate for the structured logger:
-      src/transcription_cog/voicenotes/_shared.py — the FallbackLogger's
-         _emit method. By design this is the local fallback when
-         common-python-utils is not importable; emitting JSON lines to
-         stderr via print() is its entire purpose. The site is gated by
-         the same RuntimeWarning that fires on first fallback use, so it
-         can never silently mask a real logging path.
 
   - rule: CD-009
     reason: >
@@ -41,12 +30,9 @@ exemptions:
       bridge to the shared ``mini_app_polis`` (common-python-utils) logger.
       It cannot itself import from the shared logger because it IS the
       import-time adapter — defining the ``StructuredLogger`` Protocol
-      that voicenotes code calls, the ``_UpstreamLoggerAdapter`` that wraps
-      upstream's stdlib logger to emit CD-009-shaped JSON events, and the
-      ``_FallbackLogger`` that emits to stderr when upstream is not
-      importable (so tests can run on machines without the shared library
-      installed). Structurally analogous to watcher-cog's
-      ``logger-primitive`` trait. All voicenotes code OUTSIDE
+      that voicenotes code calls and the ``_UpstreamLoggerAdapter`` that
+      wraps upstream's stdlib logger to emit CD-009-shaped JSON events.
+      All voicenotes code OUTSIDE
       ``_shared.py`` consumes the shared logger through ``get_logger()``;
       the hand-rolled logging code is contained to this single bridge
       module.

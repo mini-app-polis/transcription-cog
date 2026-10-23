@@ -29,7 +29,6 @@ class Config:
     notes_processed_folder_id: str
     llm_provider: LLMProvider
     llm_model: str
-    kaiano_api_base_url: str
     logging_level: str
     min_transcript_chars: int = 200
     #: The length floor for an authored note. Far below the transcript floor:
@@ -54,15 +53,15 @@ def load_config() -> Config:
     provider: LLMProvider = provider_raw  # type: ignore[assignment]
     model = os.getenv("LLM_MODEL", _DEFAULT_MODELS[provider])
 
-    # Auth env vars (TRANSCRIPTION_COG_API_KEY) are read directly by
-    # KaianoApiClient.from_env() in flow.py — validated there rather
-    # than duplicated into Config.
+    # The API's base URL and this cog's key (TRANSCRIPTION_COG_API_KEY)
+    # are read directly by KaianoApiClient.from_env() in flow.py, which
+    # picks the name for this environment — validated there rather than
+    # duplicated into Config.
     return Config(
         notes_input_folder_id=_require("NOTES_INPUT_FOLDER_ID"),
         notes_processed_folder_id=_require("NOTES_PROCESSED_FOLDER_ID"),
         llm_provider=provider,
         llm_model=model,
-        kaiano_api_base_url=_require("KAIANO_API_BASE_URL"),
         logging_level=os.getenv("LOGGING_LEVEL", "INFO"),
         min_transcript_chars=int(os.getenv("MIN_TRANSCRIPT_CHARS", "200")),
         min_note_chars=int(os.getenv("MIN_NOTE_CHARS", "20")),
