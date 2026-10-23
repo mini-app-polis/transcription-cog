@@ -1,3 +1,11 @@
+## [2.22.5](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.4...v2.22.5) (2026-10-23)
+
+
+### Bug Fixes
+
+* **config:** run in dev without the production API URL, and remove the fallback logger ([66a2c7b](https://github.com/mini-app-polis/transcription-cog/commit/66a2c7b8f68184b5d707c34d3a0ba9ebe9c6c057))
+* **deps:** bump miniapppolis-common-utils to 6.18.0 ([4bf7b4e](https://github.com/mini-app-polis/transcription-cog/commit/4bf7b4e1b88e42df356a3702c92146c02bffd445))
+
 ## [2.22.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.3...v2.22.4) (2026-10-22)
 
 
