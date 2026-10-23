@@ -104,16 +104,10 @@ class Settings(BaseSettings):
     # worker initialises at import, from SENTRY_DSN_COGS.
 
     # --- API integration (per ecosystem-standards CD-012) ---
-    # ``mini_app_polis.api.KaianoApiClient`` reads these env vars
-    # itself; we surface them through Settings so all secrets flow
-    # through pydantic-settings + Doppler. The client presents this
-    # cog's named API key directly; there is no token exchange.
-    kaiano_api_base_url: str = Field(
-        default="https://api.kaianolevine.com",
-        description=(
-            "Base URL for api-kaianolevine-com (run reports to POST /v1/notify)."
-        ),
-    )
+    # ``mini_app_polis.api.KaianoApiClient`` reads the base URL for this
+    # environment itself (with no fallback to production), so it is not a
+    # setting here. The client presents this cog's named API key
+    # directly; there is no token exchange.
     transcription_cog_api_key: str | None = Field(
         default=None,
         description=(

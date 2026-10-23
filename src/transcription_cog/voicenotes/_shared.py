@@ -10,11 +10,7 @@ Centralizes every dependency on the shared library so that:
    the main case: upstream exposes a stdlib ``logging.Logger`` with
    emoji prefixes, not a structured emitter, so we serialize
    structured fields to a JSON string and hand them to the upstream
-   logger as the message. Documented in
-   ``docs/NEEDED_FROM_COMMON.md``.
-3. Tests can run on machines where ``mini_app_polis`` is not
-   importable. A local fallback emits JSON-lines to stderr; first use
-   raises a ``RuntimeWarning`` so we notice in CI.
+   logger as the message.
 
 Upstream API used (common-python-utils v2.5.0):
 
@@ -23,18 +19,16 @@ Upstream API used (common-python-utils v2.5.0):
   with ``.drive`` (``DriveFacade``) exposing ``download_file_bytes``,
   ``move_file``, ``delete_file``, ``ensure_folder``, ``list_files``,
   ``find_file_in_folder``.
-
-See ``docs/NEEDED_FROM_COMMON.md`` for what we'd want upstream to add.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import sys
-import warnings
 from datetime import UTC, datetime
 from typing import Any, Protocol
+
+from mini_app_polis import logger as _upstream_logger_mod
 
 
 class StructuredLogger(Protocol):
@@ -84,17 +78,6 @@ class StructuredLogger(Protocol):
 # ---------------------------------------------------------------------------
 # Logger
 # ---------------------------------------------------------------------------
-
-try:  # pragma: no cover — import-path branch
-    from mini_app_polis import logger as _upstream_logger_mod
-
-    _USING_UPSTREAM_LOGGER = True
-except ImportError:  # pragma: no cover — fallback branch
-    _upstream_logger_mod = None  # type: ignore[assignment]
-    _USING_UPSTREAM_LOGGER = False
-
-
-_FALLBACK_LOGGER_WARNED = False
 
 
 def _format_record(
@@ -188,100 +171,13 @@ class _UpstreamLoggerAdapter:
         self._emit("error", event, category, context)
 
 
-class _FallbackLogger:
-    """JSON-line emitter to stderr when upstream is unavailable."""
-
-    def __init__(self, service: str) -> None:
-        self._service = service
-
-    def _emit(
-        self,
-        level: str,
-        event: str,
-        category: str,
-        context: dict[str, Any] | None,
-    ) -> None:
-        record = _format_record(
-            service=self._service,
-            level=level,
-            event=event,
-            category=category,
-            context=context,
-        )
-        print(json.dumps(record), file=sys.stderr)
-
-    def debug(
-        self,
-        event: str,
-        *,
-        category: str = "infra",
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """Emit a DEBUG-level JSON line to stderr."""
-        self._emit("DEBUG", event, category, context)
-
-    def info(
-        self,
-        event: str,
-        *,
-        category: str = "infra",
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """Emit an INFO-level JSON line to stderr."""
-        self._emit("INFO", event, category, context)
-
-    def warning(
-        self,
-        event: str,
-        *,
-        category: str = "infra",
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """Emit a WARN-level JSON line to stderr."""
-        self._emit("WARN", event, category, context)
-
-    def error(
-        self,
-        event: str,
-        *,
-        category: str = "infra",
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """Emit an ERROR-level JSON line to stderr."""
-        self._emit("ERROR", event, category, context)
-
-
 def get_logger(service: str = "voicenotes-cog") -> StructuredLogger:
     """Return the structured logger for this cog.
 
     Wraps upstream's stdlib logger so cog code emits CD-009-shaped
-    events. Falls back to a stderr JSON-line emitter if upstream is
-    not importable; first use raises a ``RuntimeWarning`` so we
-    notice in CI.
+    events.
     """
-    global _FALLBACK_LOGGER_WARNED
-
-    if _USING_UPSTREAM_LOGGER and _upstream_logger_mod is not None:
-        return _UpstreamLoggerAdapter(
-            _upstream_logger_mod.get_logger(), service=service
-        )
-
-    if not _FALLBACK_LOGGER_WARNED:
-        warnings.warn(
-            (
-                "mini_app_polis (common-python-utils) not importable; using "
-                "local fallback logger. Production deploys must install the "
-                "shared library."
-            ),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        logging.getLogger(__name__).warning(
-            "mini_app_polis unavailable — using fallback logger"
-        )
-        _FALLBACK_LOGGER_WARNED = True
-
-    return _FallbackLogger(service)
+    return _UpstreamLoggerAdapter(_upstream_logger_mod.get_logger(), service=service)
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +259,7 @@ def get_kaiano_api_client(
 def using_upstream() -> dict[str, bool]:
     """Diagnostic — which subsystems are using the upstream package."""
     return {
-        "logger": _USING_UPSTREAM_LOGGER,
+        "logger": True,
         "drive": _USING_UPSTREAM_DRIVE,
         "api": _USING_UPSTREAM_API,
     }

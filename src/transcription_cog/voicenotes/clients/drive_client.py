@@ -11,7 +11,7 @@ directly?
     authenticated client; tests can swap it out wholesale.
   - One place to add cog-specific structured logging on every Drive
     call. CD-009 requires this and upstream's logger doesn't yet
-    structure events for us (see docs/NEEDED_FROM_COMMON.md).
+    structure events for us.
   - Keeps the cog's task-layer code clean of upstream's parameter
     names (``new_parent_id`` vs ``dest_folder_id``, etc).
 """
