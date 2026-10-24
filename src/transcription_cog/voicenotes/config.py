@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # No Healthchecks.io ping here: watcher-cog already has its own
     # healthcheck for the trigger arm, and on this side a job that fails
     # every retry lands in the dead-letter queue, whose alarm is the
-    # liveness signal (modules/cog-worker in mini-app-polis/infra).
+    # liveness signal (declared in mini-app-polis/infra).
     # No Sentry DSN field: both pipelines report to the one project the
     # worker initialises at import, from SENTRY_DSN_COGS.
 
@@ -184,11 +184,11 @@ class Settings(BaseSettings):
     # 1 + 2 × cleanup_max_buckets_per_run + cleanup_max_files_per_run for
     # the sweep. So the sum fits only while most of it is healthy; the
     # worker stops a run 30 s before the timeout so it still reports.
-    # A run that does not fit is not killed: the shared run deadline set in
-    # transcription_cog/_deadline.py stops the library's Drive retries
+    # A run that does not fit is not killed: the shared run deadline the
+    # worker sets stops the library's Drive retries
     # before that stop, and the stop leaves room for the report. A run that
-    # comes close is flagged by the Duration alarm of mini-app-polis/infra's
-    # cog-worker module (duration_alarm_ratio in modules/cog-worker).
+    # comes close is flagged by a duration alarm declared in
+    # mini-app-polis/infra.
     claude_request_timeout_seconds: float = Field(
         default=60.0,
         ge=1.0,
@@ -289,7 +289,7 @@ def require_voicenotes_settings(cfg: Settings | None = None) -> Settings:
         env_names = ", ".join(name.upper() for name in missing)
         raise RuntimeError(
             "voicenotes mode invoked but required configuration is missing. "
-            f"Populate the following in Doppler and list them in mini-app-polis/infra cogs.tf: "
+            f"Populate the following in Doppler and declare them in mini-app-polis/infra: "
             f"{env_names}. "
             "See .env.example for descriptions, or "
             "docs/decisions/ADR-004-voicenotes-merge.md for the merge context."

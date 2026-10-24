@@ -28,7 +28,8 @@ manually via `wcs.kaianolevine.com` or directly via the API.
 ## Doppler project structure
 
 - Project: `mini-app-polis-ecosystem`, configs `dev` and `prd`
-- `prd` syncs to SSM Parameter Store under `/mini-app-polis/prd/`; the worker
+- `prd` syncs to SSM Parameter Store, under a path declared in
+  `mini-app-polis/infra`; the worker
   loads its listed names at cold start and at every invocation. Local runs
   use `doppler run`.
 

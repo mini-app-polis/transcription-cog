@@ -47,6 +47,7 @@ from typing import Any
 from mini_app_polis.pipeline_status import CREATED, REMOVED, UPDATED, RunReport
 
 from transcription_cog._pipeline_eval import REPO
+from transcription_cog._version import __version__
 from transcription_cog.voicenotes._shared import get_logger
 
 _logger = get_logger("voicenotes-cog")
@@ -108,6 +109,7 @@ def build_report(
         repo=REPO,
         duration_sec=duration_sec,
         run_id=run_id,
+        version=__version__,
     )
     report.ok(files_processed)
     report.count("seen", files_seen)

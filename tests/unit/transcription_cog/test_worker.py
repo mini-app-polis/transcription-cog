@@ -6,8 +6,9 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from mini_app_polis.lambda_worker import RunOutOfTime
 
-from transcription_cog import _deadline, worker
+from transcription_cog import worker
 
 
 def _body(
@@ -239,7 +240,7 @@ def test_a_run_that_outlives_the_deadline_fails_the_ordinary_way(
     comes back — rather than a hard kill that tells nobody anything."""
     import time
 
-    monkeypatch.setattr(_deadline, "DEADLINE_MARGIN_SECONDS", 0)
+    monkeypatch.setattr(worker, "DEADLINE_MARGIN_SECONDS", 0)
     raised: list[BaseException] = []
 
     def _slow(*_args: object, **_kwargs: object) -> None:
@@ -255,7 +256,7 @@ def test_a_run_that_outlives_the_deadline_fails_the_ordinary_way(
 
     assert result == {"batchItemFailures": [{"itemIdentifier": "m-0"}]}
     assert len(raised) == 1
-    assert isinstance(raised[0], _deadline.RunOutOfTime)
+    assert isinstance(raised[0], RunOutOfTime)
     flows["wcs-transcripts"].assert_called_once_with("f-1", run_id="m-0")
     # The flow reports its own failure; the worker sends nothing more.
     reported.assert_not_called()
@@ -297,9 +298,7 @@ def test_the_shared_run_deadline_is_set_a_request_before_the_stop(
 
     worker.lambda_handler(_event(_body()), _Context(remaining_ms=900_000))
 
-    expected = (
-        900 - _deadline.DEADLINE_MARGIN_SECONDS - (_deadline.REQUEST_HEADROOM_SECONDS)
-    )
+    expected = 900 - worker.DEADLINE_MARGIN_SECONDS - (worker.REQUEST_HEADROOM_SECONDS)
     assert seen == [pytest.approx(expected, abs=1)]
     # Scoped to the run: nothing after it inherits a spent deadline.
     assert remaining_seconds() is None
@@ -317,8 +316,7 @@ def test_the_shared_run_deadline_never_goes_negative(
         remaining_seconds()
     )
     remaining_ms = int(
-        (_deadline.DEADLINE_MARGIN_SECONDS + _deadline.REQUEST_HEADROOM_SECONDS / 2)
-        * 1000
+        (worker.DEADLINE_MARGIN_SECONDS + worker.REQUEST_HEADROOM_SECONDS / 2) * 1000
     )
 
     worker.lambda_handler(_event(_body()), _Context(remaining_ms=remaining_ms))
@@ -350,7 +348,7 @@ def test_a_run_refused_by_the_shared_deadline_fails_like_one_stopped_at_it(
 
     outcomes = []
     for exc in (
-        _deadline.RunOutOfTime("stopped"),
+        RunOutOfTime("stopped"),
         RunDeadlineReached("Run deadline reached while listing"),
     ):
         flows["wcs-transcripts"].side_effect = exc

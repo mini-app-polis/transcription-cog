@@ -55,6 +55,7 @@ from mini_app_polis.api.contract import (
     WcsTranscriptCreate,
 )
 from mini_app_polis.google import GoogleAPI
+from mini_app_polis.lambda_worker import RunOutOfTime
 from mini_app_polis.llm import LLMMessage, build_llm
 from mini_app_polis.llm.errors import LLMTruncationError
 
@@ -434,7 +435,7 @@ def process_transcript(drive_file_id: str, *, run_id: str | None = None) -> dict
         logger.info(log.with_log_prefix(log.LOG_START, f"Processing: {file_name!r}"))
         try:
             result = _process_one(g, api, cfg, file_id, file_name, mime_type, logger)
-        except Exception as exc:
+        except (Exception, RunOutOfTime) as exc:
             # Named here, because the report's own record of the exception
             # carries its type and not the file. Re-raised so the message
             # goes back to the queue.
@@ -549,7 +550,7 @@ def process_note(note: dict, *, run_id: str | None = None) -> dict:
                 logger,
                 source_type="manual",
             )
-        except Exception as exc:
+        except (Exception, RunOutOfTime) as exc:
             report.issue(
                 "processing_failed",
                 file_name,

@@ -4,7 +4,7 @@
 [![Version](https://img.shields.io/github/v/tag/mini-app-polis/transcription-cog?label=version)](https://github.com/mini-app-polis/transcription-cog/releases)
 
 Pipeline cog that hosts two related pipelines in **one Lambda function**
-(`transcription-worker`) behind its own FIFO SQS queue (`transcription-jobs.fifo`).
+behind its own FIFO SQS queue, both declared in `mini-app-polis/infra`.
 One message is one file:
 
 | Mode (`mode=…`)         | What it does                                                       | Source folder | Sink                                  |
@@ -112,8 +112,8 @@ A Lambda function behind an SQS queue, both declared in [`mini-app-polis/infra`]
 CI's `deploy` job ships the code of each release through the shared
 `lambda-deploy.yml`; Terraform owns the function's configuration. Secrets are
 synced from Doppler to SSM Parameter Store and loaded by the worker at cold
-start (`mini_app_polis.ssm_secrets`); `cogs.tf` in the infra repository lists
-which ones by name.
+start (`mini_app_polis.ssm_secrets`); which ones, by name, is declared in
+`mini-app-polis/infra`.
 
 ### Prerequisites
 
