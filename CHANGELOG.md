@@ -1,3 +1,12 @@
+## [2.22.7](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.6...v2.22.7) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 6.22.1 ([295f762](https://github.com/mini-app-polis/transcription-cog/commit/295f7626e94a4c6b4a86284d37b78004dc008c6b))
+* **deps:** bump miniapppolis-common-utils to 6.22.2 ([fcfc207](https://github.com/mini-app-polis/transcription-cog/commit/fcfc207bf17cdcad0a60570dbe0f631f2a8e2952))
+* **worker:** use the shared Lambda worker module and queue message models ([9498621](https://github.com/mini-app-polis/transcription-cog/commit/949862164d73b9f2ae13d814bebbb32417ce2937))
+
 ## [2.22.6](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.5...v2.22.6) (2026-10-23)
 
 
