@@ -184,8 +184,8 @@ class Settings(BaseSettings):
     # 1 + 2 × cleanup_max_buckets_per_run + cleanup_max_files_per_run for
     # the sweep. So the sum fits only while most of it is healthy; the
     # worker stops a run 30 s before the timeout so it still reports.
-    # A run that does not fit is not killed: the shared run deadline set in
-    # transcription_cog/_deadline.py stops the library's Drive retries
+    # A run that does not fit is not killed: the shared run deadline the
+    # worker sets stops the library's Drive retries
     # before that stop, and the stop leaves room for the report. A run that
     # comes close is flagged by a duration alarm declared in
     # mini-app-polis/infra.

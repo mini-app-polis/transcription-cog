@@ -38,6 +38,8 @@ from mini_app_polis.pipeline_status import (
     run_report as _run_report,
 )
 
+from transcription_cog._version import __version__
+
 REPO = "transcription-cog"
 """Repo identifier sent on every self-reported finding from this cog."""
 
@@ -57,7 +59,8 @@ def post_run_finding(
     """Emit one self-reported finding for this transcription-cog run.
 
     Identical to :func:`mini_app_polis.pipeline_status.post_run_finding`
-    except that ``repo`` is pre-bound to ``"transcription-cog"``.
+    except that ``repo`` is pre-bound to ``"transcription-cog"`` and the
+    message is stamped with this cog's version, from ``_version.py``.
     """
     return _post_run_finding(
         flow_name,
@@ -69,6 +72,7 @@ def post_run_finding(
         source=source,
         notable=notable,
         run_id=run_id,
+        version=__version__,
         **extras,
     )
 
@@ -84,8 +88,9 @@ def run_report(
     """Open a run report for this cog, with ``repo`` pre-bound.
 
     Identical to :func:`mini_app_polis.pipeline_status.run_report` except
-    that ``repo`` is fixed to ``"transcription-cog"``. Pass ``run_id``:
-    the library's fallback only knows Prefect's ids.
+    that ``repo`` is fixed to ``"transcription-cog"`` and the report is
+    stamped with this cog's version. Pass ``run_id``: the library's
+    fallback only knows Prefect's ids.
     """
     return _run_report(
         flow_name,
@@ -94,6 +99,7 @@ def run_report(
         notable=notable,
         source=source,
         run_id=run_id,
+        version=__version__,
     )
 
 

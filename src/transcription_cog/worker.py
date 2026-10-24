@@ -21,9 +21,10 @@ on the archive.
 
 **Nothing is deleted until the work is done.** This code deletes nothing
 at all: the event source mapping deletes every record the handler does not
-name in ``batchItemFailures``. So "do not delete" means "name it", and every
-failure below appends to that list. Get that backwards and a failed run is
-silently discarded — the property the queue exists to remove.
+name in ``batchItemFailures``. So "do not delete" means "name it", and
+:func:`mini_app_polis.lambda_worker.process_records` names every record
+whose run raised. Get that backwards and a failed run is silently
+discarded — the property the queue exists to remove.
 
 **An unrecognised message is a producer bug.** The queue is
 transcription-cog's alone, so a type, version, mode or file this consumer
@@ -41,16 +42,23 @@ watcher's log to the report without a join table.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from googleapiclient.http import DEFAULT_HTTP_TIMEOUT_SEC
 from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
+from mini_app_polis.api.contract import TranscriptionRunMessage
+from mini_app_polis.lambda_worker import (
+    UnprocessableMessage,
+    all_failed,
+    deadline,
+    parse_message,
+    process_records,
+)
 from mini_app_polis.sentry import init_sentry
 
-from transcription_cog._deadline import deadline
 from transcription_cog._pipeline_eval import post_run_finding
 from transcription_cog.flow import process_note, process_transcript
 from transcription_cog.voicenotes.flows.ingest import (
@@ -60,10 +68,17 @@ from transcription_cog.voicenotes.flows.ingest import (
 
 log = logger_mod.get_logger()
 
-#: Must match api-kaianolevine-com's transcription_dispatch. A mismatch is
-#: a message this consumer refuses rather than misreads.
-MESSAGE_VERSION = 1
-TYPE_RUN = "transcription.run"
+#: How long before the function's timeout a run is stopped, so that its
+#: report can still be sent and the handler can still return.
+DEADLINE_MARGIN_SECONDS = 30
+
+#: How much earlier still the shared library's Google retries stop. The
+#: library checks its deadline between attempts, never during one, so a
+#: request started just before it can run for the client's whole timeout.
+#: That request is a Drive or Sheets call, whose timeout is the one
+#: googleapiclient's ``build()`` gives the library's clients when no socket
+#: default timeout is set.
+REQUEST_HEADROOM_SECONDS: float = DEFAULT_HTTP_TIMEOUT_SEC
 
 #: Modes that process one named file. A mode here is a mode the API's
 #: ``TranscriptionRunRequest`` must also accept — the API rejects an
@@ -97,15 +112,6 @@ _NOTE_FIELDS = ("id", "date", "instructor", "text")
 init_sentry("transcription-cog")
 
 
-class UnprocessableMessage(RuntimeError):
-    """The message cannot be handled by this consumer, ever.
-
-    Distinct from a run that failed: retrying will not help. It is still
-    returned to the queue rather than dropped, so it reaches the dead-letter
-    queue and someone sees what produced it.
-    """
-
-
 @dataclass(frozen=True)
 class Job:
     """What one message asks for."""
@@ -117,32 +123,12 @@ class Job:
 
 def _job_of(body: str) -> Job:
     """The job a message asks for. Raises UnprocessableMessage otherwise."""
-    try:
-        message = json.loads(body)
-    except ValueError as exc:
-        raise UnprocessableMessage(f"body is not JSON: {exc}") from exc
-    if not isinstance(message, dict):
-        raise UnprocessableMessage("body is not an object")
-
-    version = message.get("version")
-    if version != MESSAGE_VERSION:
-        raise UnprocessableMessage(
-            f"message version {version!r}, this consumer speaks {MESSAGE_VERSION}"
-        )
-
-    kind = message.get("type")
-    if kind != TYPE_RUN:
-        raise UnprocessableMessage(f"unknown message type {kind!r}")
-
-    payload = message.get("payload")
-    if not isinstance(payload, dict):
-        raise UnprocessableMessage("message carries no payload object")
-
-    mode = payload.get("mode")
-    drive_file_id = payload.get("drive_file_id")
+    payload = parse_message(body, TranscriptionRunMessage).payload
+    mode = payload.mode
+    drive_file_id = payload.drive_file_id
 
     if mode in FILE_MODES:
-        if not isinstance(drive_file_id, str) or not drive_file_id:
+        if not drive_file_id:
             raise UnprocessableMessage(f"mode {mode!r} needs a drive_file_id")
         return Job(mode=mode, drive_file_id=drive_file_id)
 
@@ -154,17 +140,13 @@ def _job_of(body: str) -> Job:
     if mode in NOTE_MODES:
         if drive_file_id is not None:
             raise UnprocessableMessage(f"mode {mode!r} takes no drive_file_id")
-        note = payload.get("note")
-        if not isinstance(note, dict):
+        note = payload.note
+        if note is None:
             raise UnprocessableMessage(f"mode {mode!r} needs a note object")
-        missing = [
-            k for k in _NOTE_FIELDS if not isinstance(note.get(k), str) or not note[k]
-        ]
-        if missing or not isinstance(note.get("title", ""), str):
-            raise UnprocessableMessage(
-                f"mode {mode!r}: the note is missing {missing or ['a text title']}"
-            )
-        return Job(mode=mode, note=note)
+        missing = [k for k in _NOTE_FIELDS if not note.get(k)]
+        if missing:
+            raise UnprocessableMessage(f"mode {mode!r}: the note is missing {missing}")
+        return Job(mode=mode, note=dict(note))
 
     supported = sorted([*FILE_MODES, *SWEEP_MODES, *NOTE_MODES])
     raise UnprocessableMessage(f"unknown mode {mode!r}; supported: {supported}")
@@ -220,6 +202,11 @@ def _mode_label(body: str) -> str:
         return "unreadable"
 
 
+def _attempt(record: dict[str, Any]) -> str:
+    """Which receive of this message this is, or "?" when unknown."""
+    return str((record.get("attributes") or {}).get("ApproximateReceiveCount", "?"))
+
+
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Run each record's job, and name the records that must come back.
 
@@ -229,8 +216,6 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     at every size, and ``ReportBatchItemFailures`` on the mapping is what
     makes this return shape mean something.
     """
-    records = event.get("Records", []) if isinstance(event, dict) else []
-
     # Settings first: a warm container would otherwise run on what it read
     # at cold start, and a credential rotated in Doppler would keep failing
     # until the next one. Without its settings nothing can run, so every
@@ -239,17 +224,12 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         load_secrets(refresh=True)
     except Exception:  # noqa: BLE001 — nothing can run without its settings
         log.exception("worker: could not refresh settings from SSM")
-        return {
-            "batchItemFailures": [
-                {"itemIdentifier": str(r.get("messageId") or "")} for r in records
-            ]
-        }
-    failures: list[dict[str, str]] = []
+        return all_failed(event)
 
-    for record in records:
+    def handle(record: dict[str, Any]) -> None:
         message_id = str(record.get("messageId") or "")
         body = record.get("body") or ""
-        attempt = (record.get("attributes") or {}).get("ApproximateReceiveCount", "?")
+        attempt = _attempt(record)
 
         # One timing line per record: how much of the run was waiting,
         # and on what (mini_app_polis.timing).
@@ -257,35 +237,37 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             cog="transcription", mode=_mode_label(body), attempt=attempt
         ) as timed:
             try:
-                with deadline(context):
+                with deadline(
+                    context,
+                    margin_seconds=DEADLINE_MARGIN_SECONDS,
+                    request_headroom_seconds=REQUEST_HEADROOM_SECONDS,
+                ):
                     process_message(body, run_id=message_id)
-            except UnprocessableMessage as exc:
+            except UnprocessableMessage:
                 timed.label(outcome="unprocessable")
-                log.error(
-                    "worker: unprocessable message (attempt %s): %s", attempt, exc
-                )
-                # Once, on the first receive. Every later receive fails the same
-                # way, and where it ends up — the dead-letter queue — has an
-                # alarm of its own; five reports of one bad message is noise.
-                if attempt in ("1", "?"):
-                    _report_unprocessable(exc, message_id)
-                failures.append({"itemIdentifier": message_id})
-            except Exception:  # noqa: BLE001 — every failure is a retry
+                raise
+            except BaseException:
                 timed.label(outcome="failed")
                 # Already reported by the flow; see _report_unprocessable.
                 log.exception("worker: run failed (attempt %s)", attempt)
-                failures.append({"itemIdentifier": message_id})
-            else:
-                timed.label(outcome="ok")
+                raise
+            timed.label(outcome="ok")
 
+    def on_unprocessable(exc: UnprocessableMessage, record: dict[str, Any]) -> None:
+        # Once, on the first receive. Every later receive fails the same way,
+        # and where it ends up — the dead-letter queue — has an alarm of its
+        # own; five reports of one bad message is noise.
+        if _attempt(record) in ("1", "?"):
+            _report_unprocessable(exc, str(record.get("messageId") or ""))
+
+    result = process_records(event, handle, on_unprocessable=on_unprocessable)
+    failures = result["batchItemFailures"]
     if failures:
+        records = event.get("Records", []) if isinstance(event, dict) else []
         log.warning(
             "worker: %d of %d record(s) returned to the queue",
             len(failures),
             len(records),
         )
-
-    # Anything absent from this list is deleted by the mapping. An empty
-    # list means "all of it is done" — true only because every failure
-    # above appended to it.
-    return {"batchItemFailures": failures}
+    # Anything absent from this list is deleted by the mapping.
+    return result

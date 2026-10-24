@@ -352,7 +352,7 @@ class TestIngestFailurePath:
 
     def test_out_of_time_skips_the_sweep_and_still_reports(self, stub_clients):
         """What is left of the margin belongs to the report, not the archive."""
-        from transcription_cog._deadline import RunOutOfTime
+        from mini_app_polis.lambda_worker import RunOutOfTime
 
         stub_clients.whisper.transcribe.side_effect = RunOutOfTime("stopped")
 

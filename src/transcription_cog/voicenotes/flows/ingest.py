@@ -40,9 +40,9 @@ from typing import Any
 
 from mini_app_polis import logger as log
 from mini_app_polis.deadline import RunDeadlineReached
+from mini_app_polis.lambda_worker import RunOutOfTime
 from mini_app_polis.pipeline_status import CREATED, REMOVED
 
-from transcription_cog._deadline import RunOutOfTime
 from transcription_cog.voicenotes._shared import get_logger
 from transcription_cog.voicenotes.clients.drive_client import get_drive_client
 from transcription_cog.voicenotes.config import require_voicenotes_settings, settings
@@ -194,7 +194,9 @@ def _run_cleanup() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                     "failed_at_task": "cleanup",
                 }
             )
-    except Exception as exc:  # noqa: BLE001 — see docstring
+    # RunOutOfTime is a BaseException, so that a flow's ``except Exception``
+    # does not swallow it; named here because this must never raise.
+    except (Exception, RunOutOfTime) as exc:  # noqa: BLE001 — see docstring
         _log.warning(f"voicenotes.flow.cleanup_failed error={exc!r}")
         _logger.warning(
             "voicenotes.flow.cleanup_failed",
@@ -274,7 +276,9 @@ def voicenotes_ingest(
             files_seen = 1
             try:
                 results.append(_process_one_file(drive_file_id))
-            except Exception as exc:
+            # RunOutOfTime is a BaseException; named so a note stopped at the
+            # deadline is recorded against its step, not as a setup failure.
+            except (Exception, RunOutOfTime) as exc:
                 failed_at = _failed_step_from_exception(exc)
                 failures.append(
                     {
