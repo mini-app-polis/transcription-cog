@@ -5,7 +5,7 @@ in ``voice-inbox/``, the API enqueues one job per file, and the Lambda
 worker calls :func:`voicenotes_ingest` with its id. This used to be a
 Prefect flow that swept the whole inbox; a sweep of several notes could
 outlive Lambda's 900-second ceiling, and one note cannot. See
-docs/decisions/ADR-007-lambda-behind-sqs.md.
+docs/decisions/ADR-0007-lambda-behind-sqs.md.
 
 Per-file order matters:
 

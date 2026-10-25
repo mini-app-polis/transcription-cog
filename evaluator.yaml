@@ -1,5 +1,5 @@
 # transcription-cog / evaluator.yaml
-# Per-repo evaluation configuration — ecosystem-standards ADR-001, ADR-002
+# Per-repo evaluation configuration — ecosystem-standards ADR-0001, ADR-0002
 
 type: pipeline-cog
 
@@ -20,7 +20,7 @@ deferrals:
 
 exemptions:
   # The exemption below was carried over from voicenotes-cog when it was
-  # merged into this repo (ADR-004). It scopes to the
+  # merged into this repo (ADR-0004). It scopes to the
   # ``src/transcription_cog/voicenotes/`` sub-package only.
 
   - rule: CD-009
@@ -60,4 +60,4 @@ exemptions:
   # NB: voicenotes-cog also held a CD-010 (Healthchecks.io ping) exemption.
   # It does not apply here. On Lambda, CD-010's liveness layer is the
   # dead-letter-queue alarm with an action, declared in mini-app-polis/infra
-  # (ADR-009 in ecosystem-standards; ADR-007 here).
+  # (ecosystem-standards ADR-0009; ADR-0007 here).

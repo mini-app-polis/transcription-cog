@@ -1,11 +1,11 @@
-# ADR-006: Move voicenotes task capture from Todoist to Asana
+# ADR-0006: Move voicenotes task capture from Todoist to Asana
 
 **Status:** Accepted (September 2026)
 
 ## Context
 
 The voicenotes pipeline has posted its extracted tasks to Todoist since
-before the merge into this repo (ADR-004). Task tracking has
+before the merge into this repo (ADR-0004). Task tracking has
 since moved to Asana, and captured voice notes belong in the same place
 as everything else being groomed: the operator's Asana project and
 intake section, configured by environment. Two inboxes is one too many.

@@ -58,7 +58,7 @@ _logger = get_logger("voicenotes-cog")
 #
 # Both pipelines in this repo report under the same ``transcription-cog``
 # repo label since the May-2026 merge from the old ``notes-ingest-cog``
-# and ``voicenotes-cog`` standalone repos (ADR-004). They stay
+# and ``voicenotes-cog`` standalone repos (ADR-0004). They stay
 # distinguishable in Pipeline Health via ``flow_name`` —
 # ``process-transcript`` for WCS transcripts, ``voicenotes-ingest`` for
 # voicenotes — not via a per-pipeline repo facet.

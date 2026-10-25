@@ -5,7 +5,7 @@ validates it before the cog POSTs to api-kaianolevine-com.
 
 See:
   - prompt.py for the human-readable extraction instructions
-  - transcription-cog ADR-005 for the change rationale
+  - transcription-cog ADR-0005 for the change rationale
   - api-kaianolevine-com ADR-0002 for the downstream substrate
 
 The schema validates structure only — required fields, types, and enums.

@@ -1,10 +1,10 @@
-# ADR-001: Guard folder scan and writes with a Prefect concurrency slot
+# ADR-0001: Guard folder scan and writes with a Prefect concurrency slot
 
 Date: 2026-04-03
 
 ## Status
 
-Superseded 2026-09-21 by [ADR-007](./ADR-007-lambda-behind-sqs.md). There is no
+Superseded 2026-09-21 by [ADR-0007](./ADR-0007-lambda-behind-sqs.md). There is no
 Prefect slot any more; one file per job and `reserved_concurrency = 1` on the
 Lambda function do what the slot did.
 

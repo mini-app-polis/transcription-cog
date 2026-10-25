@@ -16,7 +16,7 @@ Rules:
           note: session_type "correction", no students or organization,
           is_note True. A note is a deliberate addition or correction to the
           wiki by the instructor on the left, ingested the same way as a
-          lesson (wiki-curator-cog ADR-005: corrections are sources; newer
+          lesson (wiki-curator-cog ADR-0005: corrections are sources; newer
           statements win). Both markers mean the same kind of source.
     - Case insensitive parsing throughout
     - Files that do not match are rejected with a clear reason

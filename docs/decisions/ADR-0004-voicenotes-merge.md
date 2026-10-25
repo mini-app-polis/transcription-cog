@@ -1,7 +1,7 @@
-# ADR-004: Merge voicenotes-cog into transcription-cog
+# ADR-0004: Merge voicenotes-cog into transcription-cog
 
 **Status:** Accepted (May 2026). Partly superseded 2026-09-21 by
-[ADR-007](./ADR-007-lambda-behind-sqs.md): the two pipelines still share one
+[ADR-0007](./ADR-0007-lambda-behind-sqs.md): the two pipelines still share one
 repo and one deployment, but the deployment is a Lambda function behind SQS,
 not a Prefect router on Railway.
 
@@ -48,7 +48,7 @@ Mirrors deejay-cog's pattern exactly.
 - One Sentry project (voicenotes errors now route to the parent cog's DSN;
   `SENTRY_DSN_VOICENOTES` is no longer read by the runtime. That DSN was
   `SENTRY_DSN_NOTES_INGEST_COG` until the move to Lambda renamed it
-  `SENTRY_DSN` — see [ADR-007](./ADR-007-lambda-behind-sqs.md))
+  `SENTRY_DSN` — see [ADR-0007](./ADR-0007-lambda-behind-sqs.md))
 - One CI release pipeline
 
 **Cost:**

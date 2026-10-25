@@ -7,7 +7,7 @@ into canonical entity tables.
 See:
   - api-kaianolevine-com ADR-0002 (WCS entity substrate)
   - api-kaianolevine-com ADR-0003 (Versioned extractions and corrections)
-  - transcription-cog ADR-005 (New extraction prompt and write path)
+  - transcription-cog ADR-0005 (New extraction prompt and write path)
 
 Prompt versioning:
   PROMPT_VERSION is sent with every extraction and stored on

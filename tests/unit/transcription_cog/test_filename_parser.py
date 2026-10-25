@@ -131,7 +131,7 @@ def test_raw_filename_preserved() -> None:
     assert p.raw_filename == filename
 
 
-# ── authored notes (wiki-curator-cog ADR-005) ──
+# ── authored notes (wiki-curator-cog ADR-0005) ──
 
 
 @pytest.mark.parametrize(

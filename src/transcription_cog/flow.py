@@ -8,7 +8,7 @@ the configured Google Drive input folder, the API enqueues one job per
 file, and the Lambda worker (``worker.py``) calls this. It used to be a
 Prefect flow that swept the whole folder; a sweep of a few transcripts
 outlived Lambda's 900-second ceiling, one file does not. See
-docs/decisions/ADR-007-lambda-behind-sqs.md.
+docs/decisions/ADR-0007-lambda-behind-sqs.md.
 
 Filename convention (required):
     YYYY-MM-DD [instructors] > [students or organization].ext
@@ -325,7 +325,7 @@ def _ingest(
     raw_text = raw_text.strip()
 
     # Step 3: length guard. An authored note has its own, much lower floor:
-    # a one-sentence correction is a whole note (wiki-curator-cog ADR-005).
+    # a one-sentence correction is a whole note (wiki-curator-cog ADR-0005).
     min_chars = cfg.min_note_chars if parsed.is_note else cfg.min_transcript_chars
     if len(raw_text) < min_chars:
         logger.warning(

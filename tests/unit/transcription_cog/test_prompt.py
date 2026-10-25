@@ -143,7 +143,7 @@ def test_schema_rejects_drill_purpose_missing_required_field() -> None:
         validate(instance=extraction, schema=EXTRACTION_SCHEMA)
 
 
-# ── authored notes (wiki-curator-cog ADR-005) ──
+# ── authored notes (wiki-curator-cog ADR-0005) ──
 
 
 def test_a_note_gets_the_note_instructions() -> None:
