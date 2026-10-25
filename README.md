@@ -155,7 +155,7 @@ Commit message format:
 ```
 src/transcription_cog/
   __init__.py       package init
-  config.py         typed config from env vars (WCS pipeline)
+  config.py         pydantic-settings WcsSettings and typed Config (WCS pipeline)
   schema.py         LLM JSON schema for structured notes output
   prompt.py         LLM system + user message builder
   drive.py          Google Drive read + archive helpers (WCS pipeline)
