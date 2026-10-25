@@ -292,6 +292,6 @@ def require_voicenotes_settings(cfg: Settings | None = None) -> Settings:
             f"Populate the following in Doppler and declare them in mini-app-polis/infra: "
             f"{env_names}. "
             "See .env.example for descriptions, or "
-            "docs/decisions/ADR-004-voicenotes-merge.md for the merge context."
+            "docs/decisions/ADR-0004-voicenotes-merge.md for the merge context."
         )
     return cfg

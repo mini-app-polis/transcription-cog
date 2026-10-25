@@ -1,4 +1,4 @@
-# ADR-005: New extraction prompt and write path for entity substrate
+# ADR-0005: New extraction prompt and write path for entity substrate
 
 Date: 2026-05-19
 
@@ -103,7 +103,7 @@ The schema lives in `transcription_cog/schema.py` as `NOTES_SCHEMA` is replaced 
 
 ### Pipeline evaluation signal
 
-Per `transcription-cog` ADR-003, the cog emits one `pipeline_evaluations` finding per flow run summarizing schema validity. This continues unchanged. The dimension and severity rules apply identically — a schema-invalid extraction is a WARN regardless of which schema it failed against.
+Per `transcription-cog` ADR-0003, the cog emits one `pipeline_evaluations` finding per flow run summarizing schema validity. This continues unchanged. The dimension and severity rules apply identically — a schema-invalid extraction is a WARN regardless of which schema it failed against.
 
 ### Migration
 

@@ -1,4 +1,4 @@
-# ADR-007: Run on Lambda behind SQS, one file per job, not Prefect on Railway
+# ADR-0007: Run on Lambda behind SQS, one file per job, not Prefect on Railway
 
 Date: 2026-09-21
 
@@ -6,9 +6,9 @@ Date: 2026-09-21
 
 Accepted
 
-Supersedes [ADR-001](./ADR-001-prefect-concurrency-slot.md), and the
+Supersedes [ADR-0001](./ADR-0001-prefect-concurrency-slot.md), and the
 Prefect-deployment and Railway-service parts of
-[ADR-004](./ADR-004-voicenotes-merge.md). The merge itself stands.
+[ADR-0004](./ADR-0004-voicenotes-merge.md). The merge itself stands.
 
 > **Amended (Oct 2026).** Some queue numbers below are out of date. In
 > mini-app-polis/infra `cogs.tf` the function timeout is 900 s, so the

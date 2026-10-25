@@ -45,7 +45,7 @@ wcs.kaianolevine.com  ◄─── reads from api-kaianolevine-com /v1/wcs/notes
    corrections as such, and to record identity fixes as relations: `alias_of`
    (same thing, other name), `facet_of` (a detail of a broader concept) and
    `distinct_from` (keep apart; undoes either). Newer statements win downstream
-   (wiki-curator-cog ADR-005).
+   (wiki-curator-cog ADR-0005).
 
    A note can also be written on the site, from a wiki page. The API
    sends it as a `wcs-note` message carrying the text, and `process_note` takes

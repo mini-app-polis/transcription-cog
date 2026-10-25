@@ -1,8 +1,8 @@
-# ADR-008: Hand voice-note tasks to the task manager instead of writing to the board
+# ADR-0008: Hand voice-note tasks to the task manager instead of writing to the board
 
 ## Status
 
-Accepted. Supersedes ADR-006's write path; the Todoist-to-Asana move it records
+Accepted. Supersedes ADR-0006's write path; the Todoist-to-Asana move it records
 still stands.
 
 ## Context

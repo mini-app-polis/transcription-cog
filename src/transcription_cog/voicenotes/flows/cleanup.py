@@ -183,7 +183,7 @@ def voicenotes_cleanup() -> dict[str, Any]:
     """
     # Fail fast and loud if voicenotes config is missing. Module import
     # accepts empty defaults so the parent cog can boot without
-    # voicenotes secrets — see voicenotes.config docstring and ADR-004.
+    # voicenotes secrets — see voicenotes.config docstring and ADR-0004.
     require_voicenotes_settings()
 
     flow_logger = _flow_logger()

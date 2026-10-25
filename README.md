@@ -23,10 +23,10 @@ from Drive. The `voicenotes` mode runs the retention sweep after every
 note, so `voicenotes-cleanup` (which names no file) is for an operator's
 manual sweep only. One file per job rather than a folder sweep, because a
 sweep outlives Lambda's 900-second ceiling; see
-[ADR-007](docs/decisions/ADR-007-lambda-behind-sqs.md).
+[ADR-0007](docs/decisions/ADR-0007-lambda-behind-sqs.md).
 
 **WCS pipeline** — `wcs.kaianolevine.com` reads notes via `/v1/wcs/notes`.  
-**Voicenotes pipeline** — the extracted note is handed to task-manager-cog through `POST /v1/tasks`, which puts it on the board ([ADR-008](docs/decisions/ADR-008-hand-tasks-to-the-task-manager.md)); original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
+**Voicenotes pipeline** — the extracted note is handed to task-manager-cog through `POST /v1/tasks`, which puts it on the board ([ADR-0008](docs/decisions/ADR-0008-hand-tasks-to-the-task-manager.md)); original audio is archived to `voice-inbox/processed/YYYY-MM-DD/` (one folder per processing day; legacy `YYYY-MM/` monthly folders from before the daily-bucket change remain in place and are still drained by the cleanup flow).
 
 See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
