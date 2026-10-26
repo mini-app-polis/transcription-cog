@@ -26,7 +26,7 @@ Prefect-deployment and Railway-service parts of
 transcription-cog held a Railway container (4 CPU, 4 GB) open to poll
 Prefect Cloud for runs that arrive when a transcript or a voice note lands
 in Drive. The fleet is moving off Prefect onto one SQS queue and one Lambda
-function per cog; the decision and its reasoning are evaluator-cog's
+function per cog; the decision and its reasoning are in ecosystem-standards'
 `docs/serverless-migration.md`, and evaluator-cog and deejay-cog are the
 reference implementations. This is cog 3 of 4.
 
