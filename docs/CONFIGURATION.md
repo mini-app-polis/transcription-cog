@@ -27,11 +27,12 @@ manually via `wcs.kaianolevine.com` or directly via the API.
 
 ## Doppler project structure
 
-- Project: `mini-app-polis-ecosystem`, configs `dev` and `prd`
+- Project: `transcription-cog`, configs `dev` and `prd`. Each value is a
+  reference to the one in `mini-app-polis-ecosystem`, where it is edited.
 - `prd` syncs to SSM Parameter Store, under a path declared in
   `mini-app-polis/infra`; the worker
   loads its listed names at cold start and at every invocation. Local runs
-  use `doppler run`.
+  use `doppler run`, which reads `dev` (`doppler.yaml`).
 
 ## Notes on secret rotation
 
