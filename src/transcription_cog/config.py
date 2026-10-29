@@ -30,6 +30,9 @@ class WcsSettings(BaseSettings):
         # locally, SSM on Lambda), and no .env file is read.
         extra="ignore",
         case_sensitive=False,
+        # An optional setting is held empty in Doppler until it is set, and
+        # `doppler run` passes it through as "": empty means the default.
+        env_ignore_empty=True,
     )
 
     notes_input_folder_id: str = Field(

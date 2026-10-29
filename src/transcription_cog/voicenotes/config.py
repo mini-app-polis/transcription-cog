@@ -49,6 +49,9 @@ class Settings(BaseSettings):
         # Avoid silently picking up unrelated env vars from the host.
         extra="ignore",
         case_sensitive=False,
+        # An optional setting is held empty in Doppler until it is set, and
+        # `doppler run` passes it through as "": empty means the default.
+        env_ignore_empty=True,
     )
 
     # --- LLM providers ---

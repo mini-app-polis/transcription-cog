@@ -67,3 +67,34 @@ def test_load_config_custom_model(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = load_config()
 
     assert cfg.llm_model == "claude-opus-4-6"
+
+
+def test_empty_optional_settings_use_their_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doppler holds an unset optional setting empty, and `doppler run`
+    passes it through as "": empty means the default, not a value."""
+    from transcription_cog.voicenotes.config import Settings
+
+    monkeypatch.setenv("NOTES_INPUT_FOLDER_ID", "input-folder")
+    monkeypatch.setenv("NOTES_PROCESSED_FOLDER_ID", "processed-folder")
+    monkeypatch.setenv("KAIANO_API_BASE_URL", "http://localhost:8000")
+    for name in (
+        "LLM_PROVIDER",
+        "LLM_MODEL",
+        "MIN_TRANSCRIPT_CHARS",
+        "ARCHIVE_RETENTION_DAYS",
+        "CLAUDE_MODEL",
+        "WHISPER_MODEL",
+    ):
+        monkeypatch.setenv(name, "")
+
+    cfg = load_config()
+    assert cfg.llm_provider == "anthropic"
+    assert cfg.llm_model == "claude-sonnet-4-6"
+    assert cfg.min_transcript_chars == 200
+
+    settings = Settings()
+    assert settings.archive_retention_days == 7
+    assert settings.claude_model == "claude-sonnet-4-6"
+    assert settings.whisper_model == "whisper-1"
