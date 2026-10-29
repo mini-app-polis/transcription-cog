@@ -87,7 +87,7 @@ class TestWhatTheRunMade:
     def test_the_asana_task_is_in_the_message(self) -> None:
         report = build_report(files_seen=1, files_processed=1, outcomes=[_task()])
         text = report.text()
-        assert "+ asana task: [Send the floor trials report]" in text
+        assert "asana task\n  + [Send the floor trials report]" in text
         assert "https://app.asana.com/0/proj/as-100" in text
 
     def test_a_run_that_created_nothing_says_nothing_about_tasks(self) -> None:
@@ -108,17 +108,17 @@ class TestWhatTheRunMade:
                 }
             ],
         )
-        assert "- recording: 4 archived before 2026-08-12" in report.text()
+        assert "recording\n  - 4 archived before 2026-08-12" in report.text()
 
-    def test_several_tasks_group_onto_one_line(self) -> None:
+    def test_several_tasks_group_under_one_label(self) -> None:
         report = build_report(
             files_seen=3,
             files_processed=3,
             outcomes=[_task(f"note {i}", f"as-{i}") for i in range(3)],
         )
-        lines = [ln for ln in report.text().splitlines() if ln.startswith("+")]
-        assert len(lines) == 1
-        assert lines[0].count("asana task") == 1
+        text = report.text()
+        assert text.count("asana task") == 1
+        assert len([ln for ln in text.splitlines() if ln.startswith("  + ")]) == 3
 
     def test_an_unknown_op_still_reaches_the_message(self) -> None:
         """The library walks a fixed list of three; a typo must not vanish."""
@@ -127,7 +127,7 @@ class TestWhatTheRunMade:
             files_processed=1,
             outcomes=[{"op": "made", "kind": "asana task", "item": "x"}],
         )
-        assert "asana task: x" in report.text()
+        assert "asana task\n  + x" in report.text()
 
 
 class TestFailures:
@@ -142,9 +142,12 @@ class TestFailures:
                 {**_failure("500 from whisper", "id2", "transcribe"), "name": "b.m4a"},
             ],
         )
-        line = [ln for ln in report.text().splitlines() if ln.startswith("transcribe:")]
-        assert len(line) == 1
-        assert "a.m4a" in line[0] and "b.m4a" in line[0]
+        (section,) = [
+            block
+            for block in report.text().split("\n\n")
+            if block.startswith("transcribe")
+        ]
+        assert "a.m4a" in section and "b.m4a" in section
 
     def test_the_drive_id_is_used_when_there_is_no_name(self) -> None:
         report = build_report(
@@ -158,7 +161,7 @@ class TestFailures:
         report = build_report(
             files_seen=1, files_processed=0, findings=[_failure("boom")]
         )
-        assert "failed:" in report.text()
+        assert "failed\n  f1 (boom)" in report.text()
 
     def test_the_failure_detail_is_carried(self) -> None:
         report = build_report(
@@ -178,7 +181,7 @@ class TestCounters:
 
     def test_the_headline_counts_work_done_not_files_found(self) -> None:
         report = build_report(files_seen=4, files_processed=1, duration_sec=1.0)
-        assert "processed=1" in report.text().splitlines()[0]
+        assert "1 processed" in report.text().splitlines()[0]
 
     def test_a_non_file_problem_does_not_inflate_the_file_count(self) -> None:
         """A failed retention sweep is one issue and zero failed files."""
@@ -188,7 +191,7 @@ class TestCounters:
             findings=[_failure("sweep raised", "cleanup", "cleanup")],
             duration_sec=1.0,
         )
-        assert "processed=1" in report.text().splitlines()[0]
+        assert "1 processed" in report.text().splitlines()[0]
 
 
 class TestDuration:
