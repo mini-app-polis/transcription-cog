@@ -1,3 +1,14 @@
+## [2.22.14](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.13...v2.22.14) (2026-10-29)
+
+
+### Bug Fixes
+
+* **config:** treat an empty setting as unset so its default applies ([d6d6db6](https://github.com/mini-app-polis/transcription-cog/commit/d6d6db6582334c8d26d7004e314428f80c976cf7))
+* **deps:** bump miniapppolis-common-utils to 6.35.0 ([8943b5a](https://github.com/mini-app-polis/transcription-cog/commit/8943b5a7fc8e8cfb89002a57ca2777d236d7d7e7))
+* **deps:** bump miniapppolis-common-utils to 6.36.0 ([cb8994d](https://github.com/mini-app-polis/transcription-cog/commit/cb8994d7818c2f3a636b15a455ff274d2496c526))
+* **deps:** bump miniapppolis-common-utils to 7.1.0 ([73ff13e](https://github.com/mini-app-polis/transcription-cog/commit/73ff13e6125e016a22e90f22f7c2edc9b8735535))
+* **deps:** move to common-python-utils 7.x ([c9d3e21](https://github.com/mini-app-polis/transcription-cog/commit/c9d3e219f140719d33af3dd900b3d89af3ff0ece))
+
 ## [2.22.13](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.12...v2.22.13) (2026-10-28)
 
 
