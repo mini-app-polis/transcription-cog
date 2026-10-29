@@ -19,14 +19,10 @@ auth, delivery, the processor-version stamp, the message layout and the
 best-effort semantics. This file's only job is folding the cog's
 batch-shape input into that object's vocabulary.
 
-It used to compose the message itself, and that is how a processed voice
-note came to announce ``1 file(s) seen`` and nothing about the Asana task
-it had just created. Composing here meant the cog could only say what it
-had thought to say; the run's *outcomes* — the tasks created, the
-recordings the retention sweep removed — had no shape to go in. The
-sweep eventually got one, as a local ``notices`` parameter invented for
-that single case. Both are now ordinary library outcomes, and the next
-thing this pipeline starts doing will be too.
+The run's *outcomes* — the tasks created, the recordings the retention
+sweep removed — are ordinary library outcomes, so the report says what
+the run did rather than only what it counted, and the next thing this
+pipeline starts doing will be an outcome too.
 
 Failure semantics: delivery failures are logged and reported to Sentry
 by the library, never raised. Notification is observability, not the

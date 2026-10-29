@@ -97,8 +97,8 @@ def test_system_instructs_no_guessing() -> None:
 
 def test_schema_accepts_long_skill_description_that_previously_failed() -> None:
     """Regression test for the Robert Royston workshop case: a 161-char
-    skill description is now valid. Previously failed under the
-    _SKILL_DESCRIPTION_MAX_LENGTH=120 cap.
+    skill description is valid, because the schema caps no skill
+    description's length.
     """
     extraction = _minimal_valid_extraction()
     extraction["drill_purposes"] = [
@@ -116,7 +116,7 @@ def test_schema_accepts_long_skill_description_that_previously_failed() -> None:
 
 
 def test_schema_accepts_long_entity_name() -> None:
-    """Entity names are no longer capped at 80 characters."""
+    """Entity names are not capped at 80 characters."""
     extraction = _minimal_valid_extraction()
     extraction["entities"] = [
         {

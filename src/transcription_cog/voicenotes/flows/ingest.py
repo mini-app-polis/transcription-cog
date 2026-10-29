@@ -2,9 +2,9 @@
 
 One queue message is one file. watcher-cog names each file that changes
 in ``voice-inbox/``, the API enqueues one job per file, and the Lambda
-worker calls :func:`voicenotes_ingest` with its id. This used to be a
-Prefect flow that swept the whole inbox; a sweep of several notes could
-outlive Lambda's 900-second ceiling, and one note cannot. See
+worker calls :func:`voicenotes_ingest` with its id. One note fits
+inside Lambda's 900-second ceiling; a sweep of several could outlive it.
+See
 docs/decisions/ADR-0007-lambda-behind-sqs.md.
 
 Per-file order matters:
