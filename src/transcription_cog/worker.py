@@ -1,9 +1,7 @@
 """The Lambda entrypoint: one queue message in, one run out.
 
-transcription-cog used to register a Prefect router deployment and poll
-Prefect Cloud for runs from a resident Railway container. It now runs on
-Lambda behind its own FIFO queue, declared in mini-app-polis/infra: AWS polls the queue
-and invokes :func:`lambda_handler`, so nothing of ours stays awake between
+transcription-cog runs on Lambda behind its own FIFO queue, declared in
+mini-app-polis/infra: AWS polls the queue and invokes :func:`lambda_handler`, so nothing of ours stays awake between
 recordings.
 
 The API is the only producer. watcher-cog asks it to process one file, and
@@ -156,7 +154,7 @@ def process_message(body: str, *, run_id: str) -> None:
     """Run the job one message asks for. Raises if it must be redelivered.
 
     A run that raises is retried whole. That is safe: a file an earlier
-    attempt archived is no longer in its inbox, and the next attempt finds
+    attempt archived is gone from its inbox, and the next attempt finds
     nothing to do; a transcript stored but not archived is stored again by
     the API's upsert on its drive_file_id — the extraction is re-run and
     replaces the active one, nothing is duplicated; a voice note already

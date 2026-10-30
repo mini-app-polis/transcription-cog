@@ -12,10 +12,9 @@ Layout:
 Buckets are per processing-day (YYYY-MM-DD), not per month. Per-day
 folders keep each batch visually grouped — operators can open the
 folder for today and see exactly what ran today, instead of paging
-through a month's accumulation. Monthly buckets used to be the layout
-(``processed/YYYY-MM/``) but they collapsed every run in a month into
-the same folder, which made the archive opaque for triage and
-auditing.
+through a month's accumulation. Monthly buckets
+(``processed/YYYY-MM/``) collapse every run in a month into the same
+folder, which makes the archive opaque for triage and auditing.
 
 Legacy monthly folders (``processed/2026-05/``) remain in place — the
 cleanup flow walks every immediate child of ``processed/`` uniformly

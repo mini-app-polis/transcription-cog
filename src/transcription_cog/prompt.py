@@ -34,16 +34,11 @@ class PromptMessage(TypedDict):
 
 PROMPT_VERSION = "2.4.0"
 
-# Version history:
-# 2.4.0: Removed hard length caps from the schema (entity names, skill
-#       descriptions, reference names). Length is now a preference
-#       expressed in this prompt, not a hard schema rule. This avoids
-#       failing the entire extraction over verbose-but-valid output
-#       (encountered on dense workshop transcripts like Robert Royston
-#       2025-06-28, where one accurate skill description ran to 161
-#       characters — well under any "this is broken" threshold, but
-#       over the conservative 120-character cap that was previously
-#       enforced).
+# The schema sets no hard length caps on entity names, skill descriptions
+# or reference names. Length is a preference expressed in this prompt, not
+# a schema rule, so verbose-but-valid output (an accurate 161-character
+# skill description from a dense workshop transcript) does not fail the
+# whole extraction.
 
 
 # Each known section in EXTRACTION_SCHEMA, with the one-line gloss the LLM

@@ -3,8 +3,6 @@
 A plain module, not a conftest: both layers' voicenotes conftests import
 these fixtures by name, so each layer keeps them without one importing the other.
 
-Originally the voicenotes sub-package conftest.
-
 Per-test concerns only — singleton resets between tests, the
 deterministic transcript fixtures, and a defense-in-depth no-sleep
 patch. The project-wide env-var bootstrap lives in the parent

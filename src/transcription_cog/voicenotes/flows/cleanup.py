@@ -23,8 +23,8 @@ older than ``ARCHIVE_RETENTION_DAYS`` days.
 
 Trash, not delete
 -----------------
-This used to call ``files.delete`` and never once succeeded: every
-attempt returned 404 while the archive step's moves worked perfectly.
+The sweep trashes files rather than calling ``files.delete``, which
+returns 404 for this cog while the archive step's moves succeed.
 ``files.delete`` is Drive's irreversible path and requires the
 *organizer* role on a shared drive — the Manager access level. This
 cog's service account is a Content manager, which can add, move and
@@ -45,14 +45,13 @@ before that change also remain in the archive.
 Which clock retention runs on
 -----------------------------
 The bucket folder name is the archive date, so it is what retention is
-measured against. This flow used to ignore the name and filter on each
-file's Drive ``modifiedTime`` instead, which is a property of the audio
-— roughly when it was recorded — not of when it was archived. The
-setting promises "days to keep audio in processed/", and those are only
-the same clock when a note is processed the day it is recorded. A voice
-note sitting in the inbox for three weeks before a run picked it up
-could satisfy the retention test the moment it landed, and be deleted on
-the very next sweep.
+measured against. Each file's Drive ``modifiedTime`` is a property of
+the audio — roughly when it was recorded — not of when it was archived.
+The setting promises "days to keep audio in processed/", and those are
+only the same clock when a note is processed the day it is recorded. A
+voice note sitting in the inbox for three weeks before a run picked it
+up would satisfy a ``modifiedTime`` test the moment it landed, and be
+deleted on the very next sweep.
 
 Per-day buckets are therefore drained whole once the bucket's own date
 falls outside the window — every file in a ``YYYY-MM-DD/`` folder was
@@ -64,8 +63,7 @@ imprecision ages out on its own.
 A per-day bucket is trashed once it has been drained, so the archive
 shows only dates that still hold audio rather than accumulating empty
 folders forever. Trashing a folder is an edit like trashing a file, so
-it needs no privilege the sweep does not already have — which is why
-this became possible only once the sweep stopped trying to delete.
+it needs no privilege the sweep does not already have.
 
 A bucket is trashed only when every file in it was trashed
 successfully: a partial drain leaves the folder alone so nothing is
@@ -92,14 +90,11 @@ log line is the audit trail. The ingest flow that invokes us also
 swallows our exceptions — cleanup is best-effort housekeeping, not
 on the success path.
 
-Best-effort is not the same as unreported, and this flow used to
-conflate the two. It logged ``voicenotes.cleanup.success`` with the
-counts interpolated into it, so a sweep that attempted 38 deletions
-and completed none announced itself as a success — the same shape as
-the September 2026 finding-delivery outage, where three instruments
-reported green while nothing landed. The final log line now takes its
-level from the outcome, and the batch returns ``attempted`` so the
-caller can tell "nothing to do" apart from "nothing worked".
+Best-effort is not the same as unreported. The final log line takes
+its level from the outcome, so a sweep that attempted deletions and
+completed none does not announce itself as a success, and the batch
+returns ``attempted`` so the caller can tell "nothing to do" apart from
+"nothing worked".
 """
 
 from __future__ import annotations

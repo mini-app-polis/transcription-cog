@@ -5,9 +5,9 @@ process_note(note, run_id=...) for a note written on the site.
 
 One queue message is one file. watcher-cog names each file that lands in
 the configured Google Drive input folder, the API enqueues one job per
-file, and the Lambda worker (``worker.py``) calls this. It used to be a
-Prefect flow that swept the whole folder; a sweep of a few transcripts
-outlived Lambda's 900-second ceiling, one file does not. See
+file, and the Lambda worker (``worker.py``) calls this. One file fits
+inside Lambda's 900-second ceiling; a sweep of a few transcripts does
+not. See
 docs/decisions/ADR-0007-lambda-behind-sqs.md.
 
 Filename convention (required):
