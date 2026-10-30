@@ -25,7 +25,7 @@ sees the file again and asks again. The request carries
 looks that up before creating anything, so asking twice makes one task,
 including for notes already completed.
 
-A file that is no longer in the inbox was archived by an earlier job for
+A file missing from the inbox was archived by an earlier job for
 the same file — watcher asks again after a partial failure or a restart.
 That run does nothing and says so quietly.
 
