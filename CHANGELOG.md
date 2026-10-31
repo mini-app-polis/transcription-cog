@@ -1,3 +1,15 @@
+# [2.23.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.17...v2.23.0) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.8.0 ([e402002](https://github.com/mini-app-polis/transcription-cog/commit/e402002a48995cc06d81f044c495ea290187631c))
+
+
+### Features
+
+* **worker:** log effective settings once at cold start with the shared helper ([429e2ad](https://github.com/mini-app-polis/transcription-cog/commit/429e2ad5a1b5e1d13597a8d0a608ce8a42192d28))
+
 ## [2.22.17](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.16...v2.22.17) (2026-10-31)
 
 
