@@ -40,6 +40,7 @@ watcher's log to the report without a join table.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -48,6 +49,7 @@ from googleapiclient.http import DEFAULT_HTTP_TIMEOUT_SEC
 from mini_app_polis import load_secrets, timing
 from mini_app_polis import logger as logger_mod
 from mini_app_polis.api.contract import TranscriptionRunMessage
+from mini_app_polis.environment import log_settings
 from mini_app_polis.lambda_worker import (
     UnprocessableMessage,
     all_failed,
@@ -58,7 +60,9 @@ from mini_app_polis.lambda_worker import (
 from mini_app_polis.sentry import init_sentry
 
 from transcription_cog._pipeline_eval import post_run_finding
+from transcription_cog.config import WcsSettings
 from transcription_cog.flow import process_note, process_transcript
+from transcription_cog.voicenotes.config import settings as voicenotes_settings
 from transcription_cog.voicenotes.flows.ingest import (
     voicenotes_cleanup_run,
     voicenotes_ingest,
@@ -108,6 +112,36 @@ _NOTE_FIELDS = ("id", "date", "instructor", "text")
 # An empty DSN in production logs an ERROR rather than passing silently
 # (CD-038); the service tag tells this cog's events apart in the shared project.
 init_sentry("transcription-cog")
+
+#: Names this cog reads that neither settings class holds: the shared
+#: library reads them itself.
+_LIBRARY_SETTINGS: tuple[str, ...] = ("SENTRY_DSN_COGS", "GOOGLE_CREDENTIALS_JSON")
+
+
+def effective_settings() -> dict[str, Any]:
+    """Every name this cog reads, mapped to the value in effect, defaults applied.
+
+    Both pipelines' settings, so one cold start reports every mode. The
+    voicenotes values are the cached object its flows use; the WCS values
+    are read now, as :func:`transcription_cog.config.load_config` does.
+    """
+    values: dict[str, Any] = {
+        **WcsSettings().model_dump(),
+        **voicenotes_settings.model_dump(),
+    }
+    for name in _LIBRARY_SETTINGS:
+        values[name] = os.environ.get(name) or ""
+    return values
+
+
+def log_effective_settings() -> None:
+    """Log the effective settings, values only for names in SETTINGS_ALLOWLIST."""
+    log_settings(effective_settings())
+
+
+# Once per cold start, beside Sentry's init: the package's import has
+# already loaded the settings from SSM, and a warm container keeps them.
+log_effective_settings()
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -426,3 +427,47 @@ def test_each_record_writes_one_timing_line(
         ("wcs-transcripts", "failed"),
     ]
     assert all(t["labels"]["cog"] == "transcription" for t in lines)
+
+
+_SECRET = "credentials-that-must-not-be-logged"
+
+
+def test_settings_log_shows_values_only_for_allowlisted_names(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A default, a value from the environment, and a secret kept out of the log."""
+    monkeypatch.setenv("SETTINGS_ALLOWLIST", "LLM_PROVIDER,MIN_TRANSCRIPT_CHARS")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("MIN_TRANSCRIPT_CHARS", raising=False)
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", _SECRET)
+
+    with caplog.at_level(logging.INFO):
+        worker.log_effective_settings()
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert "LLM_PROVIDER=openai (set)" in lines
+    assert "MIN_TRANSCRIPT_CHARS=200 (default)" in lines
+    assert "GOOGLE_CREDENTIALS_JSON (set)" in lines
+    assert "TRANSCRIPTION_COG_API_KEY (set)" in lines
+    for record in caplog.records:
+        assert _SECRET not in record.getMessage()
+        assert "test-api-key" not in record.getMessage()
+
+
+def test_settings_are_logged_at_cold_start_not_per_message(
+    flows: dict[str, MagicMock],
+    reported: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every mode runs without logging the settings again."""
+    logged = MagicMock()
+    monkeypatch.setattr(worker, "log_settings", logged)
+    monkeypatch.setattr(worker, "load_secrets", lambda **_kw: [])
+
+    worker.lambda_handler(
+        _event(_body(), _body("voicenotes"), _body("voicenotes-cleanup", None)), None
+    )
+
+    logged.assert_not_called()
+    for mode in ("wcs-transcripts", "voicenotes", "voicenotes-cleanup"):
+        flows[mode].assert_called_once()
