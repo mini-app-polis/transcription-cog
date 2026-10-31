@@ -1,3 +1,10 @@
+## [2.22.17](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.16...v2.22.17) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** patch vulnerable dependencies (pyasn1) ([8ff84dc](https://github.com/mini-app-polis/transcription-cog/commit/8ff84dcd905ef82e81b463cfb56497edf9ee0a6e))
+
 ## [2.22.16](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.15...v2.22.16) (2026-10-30)
 
 
