@@ -100,7 +100,7 @@ _SUPPORTED_MIME_TYPES = {
 
 
 def _get_logger():
-    """The shared logger. Prefect's run logger went with Prefect."""
+    """The shared logger."""
     return LOG
 
 
@@ -363,7 +363,7 @@ def process_transcript(drive_file_id: str, *, run_id: str | None = None) -> dict
     """Process one transcript file from the input folder, end to end.
 
     ``run_id`` is the queue message id when the Lambda worker runs this,
-    passed rather than resolved: ``get_run_id()`` only knew Prefect's ids.
+    passed in because the library cannot resolve it.
 
     Raises when the file could not be processed, so the worker returns the
     message to the queue. The run report is sent first, however the run

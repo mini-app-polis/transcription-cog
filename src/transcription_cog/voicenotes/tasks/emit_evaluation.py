@@ -53,11 +53,9 @@ _logger = get_logger("voicenotes-cog")
 # decorator name in flows/ingest.py — keep these in sync.
 #
 # Both pipelines in this repo report under the same ``transcription-cog``
-# repo label since the May-2026 merge from the old ``notes-ingest-cog``
-# and ``voicenotes-cog`` standalone repos (ADR-0004). They stay
-# distinguishable in Pipeline Health via ``flow_name`` —
-# ``process-transcript`` for WCS transcripts, ``voicenotes-ingest`` for
-# voicenotes — not via a per-pipeline repo facet.
+# repo label (ADR-0004). They stay distinguishable in Pipeline Health via
+# ``flow_name`` — ``process-transcript`` for WCS transcripts,
+# ``voicenotes-ingest`` for voicenotes — not via a per-pipeline repo facet.
 _FLOW_NAME = "voicenotes-ingest"
 
 # Canonical ``source`` values per ecosystem-standards
@@ -157,7 +155,8 @@ def emit_evaluation(
 
     Args:
         run_id: The queue message id this run is. Passed rather than
-            resolved: the library's fallback only knew Prefect's ids.
+            resolved: the library's fallback cannot resolve a queue
+            message id.
         files_seen: How many audio files the run found to work on.
         files_processed: How many came through the pipeline cleanly.
         findings: Per-file failure dicts — ``failed_at_task``, ``name`` or

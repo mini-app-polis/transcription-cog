@@ -30,11 +30,10 @@ sweep outlives Lambda's 900-second ceiling; see
 
 See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
-> **History:** The `voicenotes` and `voicenotes-cleanup` modes were merged
-> in from the standalone [`voicenotes-cog`](https://github.com/mini-app-polis/voicenotes-cog)
-> repository in May 2026 so the two pipelines share one deployment — then
-> a Prefect router on Railway, since September 2026 one Lambda function. The
-> legacy repo is deprecated. Sub-package code
+> The `voicenotes` and `voicenotes-cleanup` modes share one deployment with
+> the WCS pipeline — one Lambda function behind its SQS queue
+> ([ADR-0004](docs/decisions/ADR-0004-voicenotes-merge.md),
+> [ADR-0007](docs/decisions/ADR-0007-lambda-behind-sqs.md)). Sub-package code
 > lives under `src/transcription_cog/voicenotes/`.
 
 ---

@@ -395,8 +395,7 @@ def voicenotes_cleanup_run(*, run_id: str | None = None) -> dict[str, Any]:
     """The retention sweep on its own, for an operator who asks for one.
 
     Ingest runs the sweep after every note. This is the
-    ``voicenotes-cleanup`` mode: the same sweep, reported as its own run —
-    which the Prefect router's cleanup mode never did.
+    ``voicenotes-cleanup`` mode: the same sweep, reported as its own run.
     """
     started_at = datetime.now(UTC)
     raised: BaseException | None = None

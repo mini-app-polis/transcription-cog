@@ -10,11 +10,10 @@ The shim's only job is to pre-bind ``repo="transcription-cog"`` on
 ``post_run_finding`` and ``run_report`` so call sites don't have to
 repeat it.
 
-The Prefect pieces of the library — ``make_failure_hook``,
-``get_prefect_logger`` and ``get_run_id`` — are not re-exported. This cog
-runs on Lambda: a run's id is the queue message id, passed in by the
-worker, and a run that raises is reported by ``run_report`` on its way
-out rather than by a Prefect state hook.
+This cog runs on Lambda: a run's id is the queue message id, passed in
+by the worker, and a run that raises is reported by ``run_report`` on
+its way out. The library's orchestrator helpers (failure state hook, run
+logger, run-id lookup) are not re-exported.
 
 The voicenotes flow inside this package has its own per-row translation
 needs, so it builds a :class:`RunReport` directly rather than going
@@ -90,7 +89,7 @@ def run_report(
     Identical to :func:`mini_app_polis.pipeline_status.run_report` except
     that ``repo`` is fixed to ``"transcription-cog"`` and the report is
     stamped with this cog's version. Pass ``run_id``: the library's
-    fallback only knows Prefect's ids.
+    fallback cannot resolve a queue message id.
     """
     return _run_report(
         flow_name,
