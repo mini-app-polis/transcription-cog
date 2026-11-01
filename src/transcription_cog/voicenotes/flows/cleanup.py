@@ -159,7 +159,7 @@ def _oldest_first(files: list[Any]) -> list[Any]:
 
 
 def _flow_logger():
-    """The shared logger. Prefect's run logger went with Prefect."""
+    """The shared logger."""
     return _log
 
 

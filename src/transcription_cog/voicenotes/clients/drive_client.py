@@ -26,7 +26,7 @@ _logger = get_logger("voicenotes-cog")
 
 
 class DriveClient:
-    """Drive operations needed by voicenotes-cog.
+    """Drive operations needed by the voicenotes pipeline.
 
     Operations:
         - download_file(file_id) -> bytes
