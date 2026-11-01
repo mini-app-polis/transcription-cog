@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "anthropic"
-version = "1.15.0"
+version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -32,9 +32,9 @@ dependencies = [
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/37/5a2a4316df8babd28f096477a707cd75f240b4264c97fb128c32375105d6/anthropic-1.15.0.tar.gz", hash = "sha256:90caa9df83e2fc8bddb4ddeb83b7191bce255f635c03eae055deec521741df08", size = 1726101, upload-time = "2026-10-15T19:45:34.635Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3e/ba/4c91947e0d0062d66d371db371597287153f7685fbed512d3294d0cde3c7/anthropic-2.3.0.tar.gz", hash = "sha256:edfdea1e3fa7b3ce25df1511953408b2f03bfa61eb6f6268f766101a9e18ad53", size = 1869656, upload-time = "2026-10-23T23:18:47.649Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/65/54437e7edea49a3be9ef56f6b5965999bfdc52b9dadc9b448124ca51a594/anthropic-1.15.0-py3-none-any.whl", hash = "sha256:10189a7993c5c71a0a2d4bb80020ca6a2fd27679f51e627405da37251d15ff49", size = 2047755, upload-time = "2026-10-15T19:45:32.951Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/29/eb3558ab6bf252a07ac41c76ac5b0ea24a0aa0c23f87a40aaf31a5f8dba4/anthropic-2.3.0-py3-none-any.whl", hash = "sha256:aa6a3984f9276f307933d42dc6f58b6efc821a5ecafbc8d1bb5993a066767622", size = 2216980, upload-time = "2026-10-23T23:18:45.779Z" },
 ]
 
 [[package]]
@@ -1129,7 +1129,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "7.8.0"
+version = "7.8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1146,9 +1146,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/ae/fd923c3d1c37ce249714f17ec79d2c71b7a3f4a6fd983b5c87fa94150cfd/miniapppolis_common_utils-7.8.0.tar.gz", hash = "sha256:bc9447766fd9c1487263a1dc76fc0bcbb2017423e11ab76963195bbc8190b0d0", size = 490701, upload-time = "2026-10-31T17:12:03.403Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/12/91c7256cc7d1dfd1e76fe7057d44b49c71b158616ac563cbc202763fbead/miniapppolis_common_utils-7.8.2.tar.gz", hash = "sha256:07e6c2b10823b8e4f09f3a9745abf32587fd36aca3eac23a69e7720a07cff3dc", size = 487674, upload-time = "2026-11-01T17:19:04.994Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/5b/20799fbe0bfd00a054ed030588807a4fc5dbfdcc2685a591aa013df20275/miniapppolis_common_utils-7.8.0-py3-none-any.whl", hash = "sha256:93134c1c1b7092bc4aa44a6992d8fc6356b11bf845751b5365b309b54e23d70b", size = 223633, upload-time = "2026-10-31T17:12:01.588Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/d6/125d64a342e4dc6a925c7d9a8719f8a82fb8a61db73ced1c070fc13fc653/miniapppolis_common_utils-7.8.2-py3-none-any.whl", hash = "sha256:e2b160975a11e240c5e0402cb1ea7762bde00465b4e2d02f2af88dbc2592b49a", size = 224153, upload-time = "2026-11-01T17:19:03.6Z" },
 ]
 
 [package.optional-dependencies]
