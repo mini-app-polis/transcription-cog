@@ -1,3 +1,12 @@
+## [2.23.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.23.0...v2.23.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **deps:** bump anthropic from 1.15.0 to 2.3.0 in the majors group ([d5a6a7a](https://github.com/mini-app-polis/transcription-cog/commit/d5a6a7a5d2bc8c7e25a14b8879c71d2863043a84))
+* **deps:** bump miniapppolis-common-utils to 7.8.3 ([9ad0fb4](https://github.com/mini-app-polis/transcription-cog/commit/9ad0fb4cd9b6d7f2f74e36976b607b1883578bf9))
+* **deps:** bump the minor-and-patch group with 5 updates ([fb994ed](https://github.com/mini-app-polis/transcription-cog/commit/fb994edfddc641225196b0fcce522ebc710d6080))
+
 # [2.23.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.22.17...v2.23.0) (2026-10-31)
 
 
