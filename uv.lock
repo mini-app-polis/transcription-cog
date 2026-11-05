@@ -1129,7 +1129,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "7.13.0"
+version = "7.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1147,9 +1147,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/56/90/a3a743125e906082d5ecc344e20d5bb7597eb71ecce26368ec3d35e877cb/miniapppolis_common_utils-7.13.0.tar.gz", hash = "sha256:bc08fbc592d837eb4ea681e810f27d9564936ce207561f3bf0aabfdbd79c9555", size = 494647, upload-time = "2026-11-04T21:36:11.652Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/eb/8e/2954deba9ca47e06b003d6c8d42de0651e57c1faa78c4d126b5b404c9cf8/miniapppolis_common_utils-7.18.0.tar.gz", hash = "sha256:d6e30edebfc5d6e78760a4bc72c8712fa8324a1be108a4ca0df30d799e3ec342", size = 500200, upload-time = "2026-11-05T01:42:08.56Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/a5/11e0ba5462a18c66aa858b55975b5b3266834fa29aeb4f9983d9bf620795/miniapppolis_common_utils-7.13.0-py3-none-any.whl", hash = "sha256:b8f037180545a1b466da7de80a3527cf391102d41fc7afd85309fb71d5006281", size = 228591, upload-time = "2026-11-04T21:36:10.299Z" },
+    { url = "https://files.pythonhosted.org/packages/92/09/83b9a6ecb09283b0e4bf8e6c609886b70fefb37a97375d15b880d6f1824c/miniapppolis_common_utils-7.18.0-py3-none-any.whl", hash = "sha256:d9118e8859d5e3c9db4a1d4f4b53362b89df471a4bc56055279682fe1303ad17", size = 232467, upload-time = "2026-11-05T01:42:07.153Z" },
 ]
 
 [package.optional-dependencies]

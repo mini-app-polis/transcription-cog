@@ -7,7 +7,7 @@
 The voicenotes pipeline has posted its extracted tasks to Todoist since
 before the merge into this repo (ADR-0004). Task tracking has
 since moved to Asana, and captured voice notes belong in the same place
-as everything else being groomed: the operator's Asana project and
+as everything else being refined: the operator's Asana project and
 intake section, configured by environment. Two inboxes is one too many.
 
 Two things about the Todoist implementation were load-bearing and do
@@ -62,12 +62,12 @@ mirroring the "TEMPLATE — do not work" card in the intake column:
     **Audio** <- Drive link
 
 All six template lines are emitted whether or not the note filled them:
-an empty `Effort:` is a prompt to fill it during grooming, while an
-absent one is a card that cannot be groomed without being reshaped by
+an empty `Effort:` is a prompt to fill it during refining, while an
+absent one is a card that cannot be refined without being reshaped by
 hand first. Only `Where` is ever auto-filled — it already means the
 system, repo or location the work happens in, which is what the board's
 existing `Where: deejaytools` entries record. A definition of done, an
-effort estimate and a PR link are grooming decisions a voice note has
+effort estimate and a PR link are refining decisions a voice note has
 no basis to invent, so they are left blank rather than guessed at.
 
 The region below the blank line is the layout carried over from
@@ -83,7 +83,7 @@ cached for the life of the process.
 **Tasks are assigned to the token holder and land in the intake
 column.** `assignee="me"` puts every note in My Tasks as well as on the
 board; `ASANA_INBOX_SECTION_ID` places it in the intake column, where
-notes wait to be groomed.
+notes wait to be refined.
 
 Todoist support is removed outright rather than kept behind a provider
 flag. A provider abstraction with one provider in use is a seam that
@@ -98,7 +98,7 @@ nothing exercises, and this pipeline has exactly one sink.
 - The dedup marker is no longer prose. Reformatting the task body can
   no longer break idempotency.
 - Captured notes land on the same board as the rest of the work,
-  already in the column the grooming process starts from.
+  already in the column the refining process starts from.
 - The next source to create tasks writes no client of its own.
 
 **Worse / to watch:**
@@ -133,7 +133,7 @@ nothing exercises, and this pipeline has exactly one sink.
 The first deployed version emitted only the Todoist-era layout
 (description prose, then `Context` / `Peers` / `Timeline` / `Audio`) and
 no template block, so machine-created cards did not match the board's
-existing format and could not be groomed in place. The board's card
+existing format and could not be refined in place. The board's card
 template had been agreed before this work started and was visible on
 every existing card; it simply was not consulted. The Decision section
 above records the corrected format.
