@@ -4,6 +4,15 @@
 ### Bug Fixes
 
 * **deps:** bump miniapppolis-common-utils to 7.19.0 ([5e9eb8c](https://github.com/mini-app-polis/transcription-cog/commit/5e9eb8c13e7fc73f6f417e6c7e33643208695421))
+* **deps:** bump miniapppolis-common-utils to 8.0.1 ([e3f2926](https://github.com/mini-app-polis/transcription-cog/commit/e3f292665bd32b0b33fe8a5eecc93a7b8e81bffc))
+* **deps:** bump oauthlib to 4.0.1 and miniapppolis-common-utils to 7.20.0 ([40b1c98](https://github.com/mini-app-polis/transcription-cog/commit/40b1c98da453adf90bf06489ce3a79934797d3e2))
+
+## [2.24.2](https://github.com/mini-app-polis/transcription-cog/compare/v2.24.1...v2.24.2) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.19.0 ([5e9eb8c](https://github.com/mini-app-polis/transcription-cog/commit/5e9eb8c13e7fc73f6f417e6c7e33643208695421))
 * **deps:** bump oauthlib to 4.0.1 and miniapppolis-common-utils to 7.20.0 ([40b1c98](https://github.com/mini-app-polis/transcription-cog/commit/40b1c98da453adf90bf06489ce3a79934797d3e2))
 
 ## [2.24.1](https://github.com/mini-app-polis/transcription-cog/compare/v2.24.0...v2.24.1) (2026-11-05)
