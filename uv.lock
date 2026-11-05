@@ -1129,7 +1129,7 @@ wheels = [
 
 [[package]]
 name = "miniapppolis-common-utils"
-version = "7.18.1"
+version = "7.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-python-client" },
@@ -1147,9 +1147,9 @@ dependencies = [
     { name = "spotipy" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/80/67/8ffd0ead247be97f2551b4d6ae3b881fb6d1c65fac90688a4ffb748ba1ae/miniapppolis_common_utils-7.18.1.tar.gz", hash = "sha256:2759b2705edef655ed024272a6f196f5160a5f8ebde8e4329f277dd60b5dfe58", size = 500165, upload-time = "2026-11-05T02:12:46.1Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/7e/f55012f88ed7fa943426dc9e297df0960341abf0464d59e2e7441dd3234a/miniapppolis_common_utils-7.20.0.tar.gz", hash = "sha256:42c61b78cd5526918f1afe227b5055337d96bfc4a8a9f7f0b1bf0e1a72a712b8", size = 498859, upload-time = "2026-11-05T22:19:40.347Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cc/e3/fa6beb9ffccfd553d6b75703cac89551d9b85093f4d0bae6b6894ef2501b/miniapppolis_common_utils-7.18.1-py3-none-any.whl", hash = "sha256:303fa2bc98f00a628668c3e9e17af46f8befeffbd5f3309aa1fa9c6cd28ecb9e", size = 232465, upload-time = "2026-11-05T02:12:44.525Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/f7/e958ae9d80cb5538f129e68fbed718bad4d6dfd9d66dffe4e13b56cb72c3/miniapppolis_common_utils-7.20.0-py3-none-any.whl", hash = "sha256:ff110bf06a56854087164fd1f9398df33d1bb5300494d056332157859977917a", size = 229976, upload-time = "2026-11-05T22:19:38.924Z" },
 ]
 
 [package.optional-dependencies]
@@ -1265,11 +1265,11 @@ wheels = [
 
 [[package]]
 name = "oauthlib"
-version = "4.0.0"
+version = "4.0.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7a/d8/a1bcc8ba112a627f8ffbdc212a78ce18d3ac07e91a5ca65d27918eee25a1/oauthlib-4.0.0.tar.gz", hash = "sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86", size = 187232, upload-time = "2026-09-28T06:01:18.77Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/17/2bb072de0b990303c985f26869fd47bb179024a051f47e7f9d208eb92f8e/oauthlib-4.0.1.tar.gz", hash = "sha256:3d73febdb6faa00f277c81fb04be7b7586fb96fc3b7f0b9c772dada69a25ede7", size = 191219, upload-time = "2026-10-31T09:52:58.008Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/f4/78229a1066068ca14fc60fb26cf7381cabe4382261392b90e5f9552722d4/oauthlib-4.0.0-py3-none-any.whl", hash = "sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd", size = 159715, upload-time = "2026-09-28T06:01:17.008Z" },
+    { url = "https://files.pythonhosted.org/packages/df/ef/3b8adde1b32a6f540758bff734d3442c621734c83708e5f02b0ba2f43b84/oauthlib-4.0.1-py3-none-any.whl", hash = "sha256:498a298876e996301950a5b053d12c31628bb7b895db03666430c69ce182eb61", size = 161934, upload-time = "2026-10-31T09:52:56.206Z" },
 ]
 
 [[package]]
