@@ -1,3 +1,18 @@
+# [2.24.0](https://github.com/mini-app-polis/transcription-cog/compare/v2.23.4...v2.24.0) (2026-11-05)
+
+
+### Bug Fixes
+
+* **deps:** bump miniapppolis-common-utils to 7.15.0 ([d1cd040](https://github.com/mini-app-polis/transcription-cog/commit/d1cd040d37b669f86747f71c013244d05013c644))
+* **deps:** bump miniapppolis-common-utils to 7.16.0 ([ae640d0](https://github.com/mini-app-polis/transcription-cog/commit/ae640d04a2264d9a477e5e1a3ba339f7c0f3ded2))
+* **deps:** bump miniapppolis-common-utils to 7.17.0 ([861888d](https://github.com/mini-app-polis/transcription-cog/commit/861888d9d09f3c513dcf94f28d36d8c220a1b3aa))
+* **deps:** bump miniapppolis-common-utils to 7.18.0 ([18624a5](https://github.com/mini-app-polis/transcription-cog/commit/18624a59dc324a4f412ec06a39fe2cfb5f100141))
+
+
+### Features
+
+* **facts:** publish the test-function count ([42fc35b](https://github.com/mini-app-polis/transcription-cog/commit/42fc35b2681af6affff90dfe0054fbcf212aeefa))
+
 ## [2.23.4](https://github.com/mini-app-polis/transcription-cog/compare/v2.23.3...v2.23.4) (2026-11-04)
 
 
