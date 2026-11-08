@@ -3,7 +3,7 @@ name = "transcription-cog"
 dynamic = ["version"]
 description = "Lambda pipeline cog. Two pipelines under one function: WCS lesson transcripts → Postgres, and voicenotes (Drive → Whisper → Claude → a task request to the task manager)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "miniapppolis-common-utils[google,llm]>=8.0.0,<9",
     "pydantic>=2.0.0,<3.0.0",
@@ -68,7 +68,7 @@ testpaths = ["tests/unit", "tests/integration"]
 addopts = "--cov=transcription_cog --cov-report=term-missing"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 strict = false
 ignore_missing_imports = true
 

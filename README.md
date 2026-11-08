@@ -42,7 +42,7 @@ See [docs/PIPELINE.md](docs/PIPELINE.md) for the full ecosystem flow diagram.
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.14+
 - [uv](https://docs.astral.sh/uv/) installed
 - Access to Doppler's `dev` config (the names are listed in `.env.example`)
 - Google service account credentials with Drive access
